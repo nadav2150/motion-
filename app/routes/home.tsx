@@ -1,13 +1,25 @@
+import { useNavigate } from "react-router";
 import type { Route } from "./+types/home";
-import { Welcome } from "../welcome/welcome";
+import { HomeScreen } from "../motionflow/screens/home";
+import type { NavKey } from "../motionflow/primitives";
 
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "New React Router App" },
-    { name: "description", content: "Welcome to React Router!" },
-  ];
+export function meta(_: Route.MetaArgs) {
+  return [{ title: "Home — MotionFlow AI" }];
 }
 
-export default function Home() {
-  return <Welcome />;
+const navPath: Record<NavKey, string> = {
+  home: "/home",
+  projects: "/projects",
+  settings: "/settings",
+};
+
+export default function HomeRoute() {
+  const navigate = useNavigate();
+  return (
+    <HomeScreen
+      onNav={(k) => navigate(navPath[k])}
+      onPickTemplate={() => navigate("/editor")}
+      onNewBlank={() => navigate("/editor?empty=1")}
+    />
+  );
 }

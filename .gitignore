@@ -5,3 +5,6 @@
 # React Router
 /.react-router/
 /build/
+
+# Local script outputs (smoke tests, frame renders, etc.)
+/out/

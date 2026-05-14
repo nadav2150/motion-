@@ -1,3 +1,25 @@
-import { type RouteConfig, index } from "@react-router/dev/routes";
+import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
-export default [index("routes/home.tsx")] satisfies RouteConfig;
+export default [
+  index("routes/landing.tsx"),
+  route("signin", "routes/signin.tsx"),
+  route("register", "routes/register.tsx"),
+  route("forgot-password", "routes/forgot-password.tsx"),
+  route("reset-password", "routes/reset-password.tsx"),
+  route("home", "routes/home.tsx"),
+  route("projects", "routes/projects.tsx"),
+  route("editor", "routes/editor.tsx"),
+  route("export", "routes/export.tsx"),
+  route("settings", "routes/settings.tsx"),
+  route("api/jobs", "routes/api.jobs.tsx"),
+  route("api/jobs/:id", "routes/api.jobs.$id.tsx"),
+  route("api/shots/:id/retry", "routes/api.shots.$id.retry.tsx"),
+  route("api/shots/:id/clip", "routes/api.shots.$id.clip.tsx"),
+  route("api/shots/:id/scene-html", "routes/api.shots.$id.scene-html.tsx"),
+  route("api/jobs/:id/stitch", "routes/api.jobs.$id.stitch.tsx"),
+  route("api/jobs/:id/export", "routes/api.jobs.$id.export.tsx"),
+  route("api/brand/logo", "routes/api.brand.logo.tsx"),
+  route("api/auth/signout", "routes/api.auth.signout.tsx"),
+  route("api/auth/forgot-password", "routes/api.auth.forgot-password.tsx"),
+  route("api/auth/reset-password", "routes/api.auth.reset-password.tsx"),
+] satisfies RouteConfig;

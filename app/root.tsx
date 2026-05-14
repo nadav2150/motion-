@@ -8,7 +8,13 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { getUserFromRequest } from "./lib/auth";
 import "./app.css";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUserFromRequest(request);
+  return { user };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -19,7 +25,7 @@ export const links: Route.LinksFunction = () => [
   },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800;900&display=swap",
   },
 ];
 
@@ -62,11 +68,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
-      <h1>{message}</h1>
-      <p>{details}</p>
+    <main style={{ padding: "64px 24px", maxWidth: 720, margin: "0 auto", color: "var(--ink-0)" }}>
+      <h1 style={{ fontSize: 48, fontWeight: 500, letterSpacing: "-0.03em" }}>{message}</h1>
+      <p style={{ color: "var(--ink-2)" }}>{details}</p>
       {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
+        <pre style={{ width: "100%", padding: 16, overflowX: "auto", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
           <code>{stack}</code>
         </pre>
       )}

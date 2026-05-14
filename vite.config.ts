@@ -7,4 +7,10 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  optimizeDeps: {
+    include: ["@iconify/react"],
+  },
+  ssr: {
+    noExternal: ["@iconify/react"],
+  },
 });
