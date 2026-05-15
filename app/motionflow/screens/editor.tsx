@@ -3409,6 +3409,8 @@ export const EditorScreen = ({
                 style={{
                   flex: 1,
                   minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
                   position: "relative",
                   borderRadius: 14,
                   outline: previewDragOver

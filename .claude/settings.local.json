@@ -102,7 +102,8 @@
       "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 40)",
       "PowerShell(Remove-Item *)",
       "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 30)",
-      "PowerShell(Get-Content *)"
+      "PowerShell(Get-Content *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\\\\app\\\\motionflow\" -File, Directory)"
     ]
   },
   "enabledPlugins": {
