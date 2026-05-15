@@ -37,7 +37,16 @@ create table if not exists jobs (
   error               text,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
-  completed_at        timestamptz
+  completed_at        timestamptz,
+  music_track_id      text,
+  music_url           text,
+  music_title         text,
+  music_artist        text,
+  sfx_id              text,
+  sfx_url             text,
+  sfx_name            text,
+  sfx_author          text,
+  sfx_license         text
 );
 
 create index if not exists jobs_user_created_idx on jobs (user_id, created_at desc);

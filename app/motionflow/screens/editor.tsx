@@ -1,18 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+﻿import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   AppChrome,
   Button,
+  CinemaPreview,
   IconArrowRight,
   IconChevron,
   IconClose,
   IconFolder,
+  IconImage,
   IconLayers,
   IconMic,
   IconMusic,
   IconPalette,
+  IconPause,
+  IconPlay,
   IconPlus,
+  IconScissors,
   IconShare,
   IconSparkle,
+  IconType,
   IconUpload,
   IconWand,
   IconWave,
@@ -20,6 +26,8 @@ import {
   useFrame,
   type NavKey,
 } from "../primitives";
+import { MusicPicker, type CurrentMusic } from "../MusicPicker";
+import { SfxPicker, type CurrentSfx } from "../SfxPicker";
 
 type JobStatus =
   | "pending"
@@ -55,6 +63,17 @@ type JobRow = {
   error: string | null;
   created_at: string;
   completed_at: string | null;
+  music_track_id: string | null;
+  music_url: string | null;
+  music_title: string | null;
+  music_artist: string | null;
+  sfx_id: string | null;
+  sfx_url: string | null;
+  sfx_name: string | null;
+  sfx_author: string | null;
+  sfx_license: string | null;
+  // Project-level asset library (see supabase/migrations/20260520_job_assets.sql).
+  assets?: unknown;
 };
 
 type ShotRow = {
@@ -104,6 +123,10 @@ type ShotRow = {
   scene_thumbnail_path: string | null;
   rendered_video_url: string | null;
   render_status: string | null;
+  // Per-scene user comments (see supabase/migrations/20260518_shot_comments.sql).
+  comments?: unknown;
+  // Per-scene attached assets (see supabase/migrations/20260519_shot_assets.sql).
+  assets?: unknown;
 };
 
 type JobResponse = { job: JobRow; shots: ShotRow[] };
@@ -141,6 +164,13 @@ const STATUS_TONE: Record<JobStatus, { tone: "default" | "glow" | "success"; dot
 };
 
 const fmtDuration = (s: number) => `${s.toFixed(1).replace(/\.0$/, "")}s`;
+
+const fmtTime = (t: number) => {
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  const c = Math.floor((t % 1) * 100);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(c).padStart(2, "0")}`;
+};
 
 const GenerateButton = ({
   onClick,
@@ -501,7 +531,7 @@ const SceneWindowVideo = ({
       muted
       playsInline
       preload="metadata"
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block", background: "#050505" }}
     />
   );
 };
@@ -561,7 +591,7 @@ const ShotCard = ({
         display: "flex", flexDirection: "column", gap: 0,
       }}
     >
-      <div style={{ position: "relative", aspectRatio: "16/9", background: "rgba(0,0,0,0.5)", overflow: "hidden" }}>
+      <div style={{ position: "relative", aspectRatio: "16/9", background: "#050505", overflow: "hidden" }}>
         {shot.rendered_video_url ? (
           <SceneWindowVideo
             src={shot.rendered_video_url}
@@ -574,7 +604,7 @@ const ShotCard = ({
             src={shot.scene_thumbnail_path}
             alt={`Scene ${shot.shot_index + 1}`}
             loading="lazy"
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }}
           />
         ) : shot.scene_html_path ? (
           // Fallback for older jobs that ran before thumbnail capture existed.
@@ -613,13 +643,13 @@ const ShotCard = ({
             loop
             playsInline
             preload="metadata"
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block", background: "#050505" }}
           />
         ) : shot.status === "ready" && shot.image_url ? (
           <img
             src={shot.image_url}
             alt={shot.shot_goal ?? `Shot ${shot.shot_index + 1}`}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block", background: "#050505" }}
           />
         ) : shot.status === "failed" ? (
           <div
@@ -895,32 +925,82 @@ const EmptyState = ({ f }: { f: number }) => (
 // Scene HTML is authored against a fixed 1920×1080 stage (see emit.ts and
 // the llm-director spec). HyperFrames renders it at a true 1920×1080
 // viewport, but the preview iframe is much smaller, so without scaling the
-// stage overflows. The shim transforms `body` rather than `#stage` so it
-// doesn't clobber GSAP tweens that animate the stage's own transform.
+// stage overflows.
+//
+// Strategy: force html/body to fill the iframe viewport, flex-center #root,
+// then visually scale only #root by min(viewportW/1920, viewportH/1080).
+// We DO NOT touch the body or #root's layout dimensions — that keeps GSAP's
+// tweens against #root children running against the same 1920×1080 space the
+// scene was authored in (no positioning math goes off the rails).
+//
+// Anything outside the scaled #root falls back to the body's #050505
+// background → natural letterbox / pillarbox if the iframe's aspect ratio
+// doesn't match 16:9.
+//
+// `!important` is required because composition.html declares
+// `html, body { width: 1920px; height: 1080px; background: var(--bg) }`
+// at equal specificity earlier in <head>.
+// Bulletproof preview-fit: position #root absolutely at the iframe's
+// dead-center, then transform: translate(-50%, -50%) scale(s) where
+// s = min(viewportW/1920, viewportH/1080). Centering doesn't depend on
+// flex/grid alignment cooperating with the composition's own CSS — the
+// element's own transform places it, full stop.
 const fitToViewportShim = `
 <style id="mg-preview-fit">
-  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; }
-  body { transform-origin: 0 0; position: absolute; }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    background: #050505 !important;
+  }
+  body { position: relative !important; }
+  #stage, #root {
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform-origin: 0 0 !important;
+    margin: 0 !important;
+  }
 </style>
 <script id="mg-preview-fit-script">
 (function(){
+  var stage = null;
   function fit(){
-    var stage = document.getElementById("stage") || document.getElementById("root");
-    if(!stage) return;
+    if (!stage) stage = document.getElementById("stage") || document.getElementById("root");
+    if (!stage) return;
     var w = parseFloat(stage.getAttribute("data-width")) || 1920;
     var h = parseFloat(stage.getAttribute("data-height")) || 1080;
-    var s = Math.min(window.innerWidth / w, window.innerHeight / h);
-    var b = document.body;
-    b.style.width = w + "px";
-    b.style.height = h + "px";
-    b.style.transform = "scale(" + s + ")";
-    b.style.left = ((window.innerWidth - w * s) / 2) + "px";
-    b.style.top = ((window.innerHeight - h * s) / 2) + "px";
+    var vw = document.documentElement.clientWidth;
+    var vh = document.documentElement.clientHeight;
+    if (vw <= 0 || vh <= 0) return;
+    var s = Math.min(vw / w, vh / h);
+    // translate(-50%, -50%) shifts the element's OWN top-left back by half its
+    // own (unscaled) box, so the visual center lands on body's 50%/50% anchor.
+    // Then scale(s) shrinks around top-left (transform-origin: 0 0), but the
+    // shift was computed against the unscaled box so visual centering survives.
+    // Transform order matters: scale runs LAST (applied first to the point in
+    // CSS's right-to-left chain), so translate(-50%, -50%) in unscaled local
+    // coords becomes (-s*half, -s*half) in body coords — i.e. the offset is
+    // also scaled, matching the visual element size exactly. Reversing this
+    // (translate then scale) leaves the offset un-scaled and miscentres.
+    stage.style.transform = "scale(" + s + ") translate(-50%, -50%)";
+    try { console.log("[fit] viewport", vw, "x", vh, "stage", w, "x", h, "→ scale", s.toFixed(4)); } catch(_) {}
   }
-  if(document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", fit);
-  } else { fit(); }
+  var start = (performance && performance.now) ? performance.now() : Date.now();
+  function tick(){
+    fit();
+    var now = (performance && performance.now) ? performance.now() : Date.now();
+    if (now - start < 1000) requestAnimationFrame(tick);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", tick);
+  } else { tick(); }
   window.addEventListener("resize", fit);
+  if (typeof ResizeObserver !== "undefined") {
+    try { new ResizeObserver(fit).observe(document.documentElement); } catch(_) {}
+  }
 })();
 </script>`;
 
@@ -950,11 +1030,44 @@ function sceneScopeShim(startSeconds: number, durationSeconds: number): string {
 </script>`;
 }
 
+// Forward all iframe console output + uncaught errors + unhandled promise
+// rejections to the parent window via postMessage, so the developer sees one
+// merged log stream in their DevTools when debugging a scene.
+const consoleBridgeShim = `
+<script id="mg-console-bridge">
+(function(){
+  function serialize(args){
+    try { return Array.prototype.slice.call(args).map(function(a){
+      if (a && a.stack) return String(a.stack);
+      if (typeof a === "object") { try { return JSON.stringify(a); } catch(_) { return String(a); } }
+      return String(a);
+    }); } catch(_) { return ["<unserializable log args>"]; }
+  }
+  function send(level, args){
+    try {
+      parent.postMessage({ __mgScene: true, level: level, args: serialize(args), url: location.href }, "*");
+    } catch(_) {}
+  }
+  ["log","info","warn","error","debug"].forEach(function(level){
+    var orig = console[level];
+    console[level] = function(){ send(level, arguments); try { orig.apply(console, arguments); } catch(_) {} };
+  });
+  window.addEventListener("error", function(e){
+    send("error", [e.message + " @ " + (e.filename || "?") + ":" + (e.lineno || "?") + ":" + (e.colno || "?")]);
+  });
+  window.addEventListener("unhandledrejection", function(e){
+    var r = e && (e.reason && (e.reason.stack || e.reason.message)) || String(e && e.reason);
+    send("error", ["unhandledrejection: " + r]);
+  });
+  send("log", ["scene iframe loaded — bridge active"]);
+})();
+</script>`;
+
 function injectPreviewFit(
   html: string,
   scope?: { startSeconds: number; durationSeconds: number },
 ): string {
-  const head = scope ? fitToViewportShim : fitToViewportShim;
+  const head = fitToViewportShim + consoleBridgeShim;
   const tailScope = scope ? sceneScopeShim(scope.startSeconds, scope.durationSeconds) : "";
   let out = html;
   if (out.includes("</head>")) {
@@ -999,6 +1112,21 @@ const ScenePreviewModal = ({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  // Relay every console / error / rejection event from the scene iframe into
+  // this window's console so all scene-debug output lands in one DevTools.
+  useEffect(() => {
+    const tag = `[scene ${shot.shot_index + 1} · ${shot.id.slice(0, 8)}]`;
+    const handler = (e: MessageEvent) => {
+      const d = e.data as { __mgScene?: boolean; level?: string; args?: string[] } | null;
+      if (!d || !d.__mgScene) return;
+      const level = (d.level ?? "log") as "log" | "info" | "warn" | "error" | "debug";
+      const fn = (console[level] ?? console.log).bind(console);
+      fn(tag, ...(d.args ?? []));
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [shot.id, shot.shot_index]);
+
   // When the rendered film is available, seek it to this scene's start every
   // time the modal opens for a different shot.
   useEffect(() => {
@@ -1017,19 +1145,37 @@ const ScenePreviewModal = ({
   const playing = playKey !== null;
 
   const handlePlay = async () => {
+    const tag = `[scene ${shot.shot_index + 1} · ${shot.id.slice(0, 8)}]`;
+    console.log(
+      tag,
+      "play clicked — sceneStart=",
+      sceneStartSeconds,
+      "s · duration=",
+      Number(shot.duration) || 0,
+      "s · htmlPath=",
+      shot.scene_html_path,
+    );
     setPlayKey((k) => (k ?? 0) + 1);
-    if (!shot.scene_html_path) return;
+    if (!shot.scene_html_path) {
+      console.warn(tag, "no scene_html_path on this shot — nothing to load");
+      return;
+    }
     setLoadStatus("loading");
     setLoadError(null);
+    const t0 = performance.now();
     try {
       // Route handles both public-URL and legacy storage-path values and
       // always returns text/html, sidestepping Supabase Content-Type quirks.
-      const res = await fetch(`/api/shots/${shot.id}/scene-html`);
+      const url = `/api/shots/${shot.id}/scene-html`;
+      console.log(tag, "GET", url);
+      const res = await fetch(url);
+      console.log(tag, "response", res.status, res.statusText, `${Math.round(performance.now() - t0)}ms`);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
       const text = await res.text();
+      console.log(tag, "html size", text.length, "chars · injecting shims + mounting iframe");
       setHtml(
         injectPreviewFit(text, {
           startSeconds: sceneStartSeconds,
@@ -1038,7 +1184,9 @@ const ScenePreviewModal = ({
       );
       setLoadStatus("idle");
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(tag, "load failed:", message);
+      setLoadError(message);
       setLoadStatus("error");
     }
   };
@@ -1209,6 +1357,476 @@ const ScenePreviewModal = ({
   );
 };
 
+// Loads a scene's HTML via /api/shots/:id/scene-html (which forces text/html
+// and bypasses Supabase's Content-Type quirks) and renders it via srcDoc so
+// the browser actually executes the scene's JS instead of showing source.
+const HtmlScenePane = ({
+  shot,
+  playing,
+  startSeconds,
+}: {
+  shot: ShotRow;
+  playing: boolean;
+  /** Scene start time on the master film timeline. The composition.html
+   *  contains all N scenes on one GSAP timeline; without seeking to the
+   *  correct offset the iframe always replays scene 1 from t=0. */
+  startSeconds: number;
+}) => {
+  const [html, setHtml] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    setHtml(null);
+  }, [shot.id]);
+
+  useEffect(() => {
+    if (!playing) return;
+    let cancelled = false;
+    const tag = `[timeline scene ${shot.shot_index + 1} · ${shot.id.slice(0, 8)}]`;
+    const t0 = performance.now();
+    console.log(
+      tag,
+      "play — seeking iframe to startSeconds=",
+      startSeconds,
+      "duration=",
+      Number(shot.duration) || 0,
+    );
+    (async () => {
+      try {
+        const url = `/api/shots/${shot.id}/scene-html`;
+        console.log(tag, "GET", url);
+        const res = await fetch(url);
+        console.log(
+          tag,
+          "response",
+          res.status,
+          `${Math.round(performance.now() - t0)}ms`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        if (cancelled) return;
+        console.log(tag, "html size", text.length, "chars · mounting iframe");
+        setHtml(
+          injectPreviewFit(text, {
+            startSeconds,
+            durationSeconds: Number(shot.duration) || 0,
+          }),
+        );
+        setNonce((n) => n + 1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(tag, "load failed:", message);
+        if (!cancelled) setHtml(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [playing, shot.id, shot.duration, startSeconds]);
+
+  // While paused (or before fetch resolves) fall back to the static thumbnail
+  // so the user sees the right scene rather than a blank frame.
+  if (!playing || !html) {
+    if (shot.scene_thumbnail_path) {
+      return (
+        <img
+          src={shot.scene_thumbnail_path}
+          alt=""
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            objectFit: "contain",
+            background: "#050505",
+          }}
+        />
+      );
+    }
+    return null;
+  }
+
+  return (
+    <iframe
+      key={`${shot.id}-${nonce}`}
+      srcDoc={html}
+      title={`Scene ${shot.shot_index + 1}`}
+      sandbox="allow-scripts"
+      style={{
+        position: "absolute", inset: 0,
+        width: "100%", height: "100%",
+        border: "none", background: "#050505",
+        pointerEvents: "none",
+      }}
+    />
+  );
+};
+
+const TransportBtn = ({
+  children,
+  primary,
+  onClick,
+}: {
+  children: ReactNode;
+  primary?: boolean;
+  onClick?: () => void;
+}) => (
+  <button
+    onClick={onClick}
+    style={{
+      width: primary ? 40 : 32, height: primary ? 40 : 32, borderRadius: "50%",
+      background: primary ? "linear-gradient(180deg, #FFFFFF, #E6E8EE)" : "rgba(255,255,255,0.04)",
+      border: primary ? "1px solid rgba(255,255,255,0.4)" : "1px solid var(--line)",
+      color: primary ? "#06070A" : "var(--ink-1)", cursor: "pointer",
+      display: "grid", placeItems: "center",
+      boxShadow: primary ? "0 8px 24px -8px rgba(255,255,255,0.4)" : "none",
+      fontFamily: "inherit", padding: 0,
+    }}
+  >
+    {children}
+  </button>
+);
+
+// Tracks the playhead position; a click anywhere on a track seeks `time`. The
+// VIDEO row hosts per-scene blocks; MOTION/TEXT/AUDIO are visual stand-ins
+// that mirror the scene grid until those pipelines land.
+const TimelineRow = ({
+  shots,
+  totalDuration,
+  time,
+  setTime,
+  setPlaying,
+  selectedId,
+  onSelect,
+  onPreview,
+  sceneTimings,
+  onAssetDrop,
+}: {
+  shots: ShotRow[];
+  totalDuration: number;
+  time: number;
+  setTime: (t: number) => void;
+  setPlaying: (p: boolean) => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onPreview: (id: string) => void;
+  sceneTimings: Map<string, { startSeconds: number; durationSeconds: number; totalSeconds: number }>;
+  onAssetDrop?: (
+    shotId: string,
+    trackKind: "video" | "motion" | "text" | "audio",
+    asset: JobAsset,
+  ) => void;
+}) => {
+  // Tracks which scene tile currently has a draggable hovering over it, so we
+  // can light up just that tile's border. Cleared on dragleave / drop.
+  const [dragOverShotId, setDragOverShotId] = useState<string | null>(null);
+  const total = Math.max(totalDuration, 0.001);
+  const tickStep = total > 30 ? 10 : total > 10 ? 5 : 1;
+  const ticks: number[] = [];
+  for (let t = 0; t <= total; t += tickStep) ticks.push(t);
+  if (ticks[ticks.length - 1] !== total) ticks.push(total);
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = Math.max(0, Math.min(1, x / rect.width));
+    setTime(pct * total);
+  };
+
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", background: "rgba(8,9,13,0.55)", padding: "16px 28px 18px", minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          <span className="mf-eyebrow">TIMELINE</span>
+          <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-4)", letterSpacing: "0.08em" }}>
+            {shots.length} {shots.length === 1 ? "SCENE" : "SCENES"} · 4 TRACKS
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <Button variant="ghost" size="sm" icon={<IconScissors size={12}/>}>Split</Button>
+          <Button variant="ghost" size="sm" icon={<IconWand size={12}/>}>Auto-fit</Button>
+        </div>
+      </div>
+
+      {/* Ruler */}
+      <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 10, marginBottom: 6 }}>
+        <div/>
+        <div style={{ position: "relative", height: 14 }}>
+          {ticks.map((t, i) => (
+            <div key={i} style={{ position: "absolute", left: `${(t / total) * 100}%`, transform: i === ticks.length - 1 ? "translateX(-100%)" : undefined }}>
+              <span className="mf-mono" style={{ fontSize: 9, color: "var(--ink-4)", letterSpacing: "0.08em" }}>
+                {fmtTime(t).slice(0, 5)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tracks */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, position: "relative" }}>
+        {([
+          { l: "SCENES", icon: <IconImage size={11}/>, kind: "video" as const },
+          { l: "VOICE OVER", icon: <IconWand size={11}/>, kind: "motion" as const },
+          { l: "SOUND EFFECTS", icon: <IconType size={11}/>, kind: "text" as const },
+          { l: "AUDIO", icon: <IconMusic size={11}/>, kind: "audio" as const },
+        ]).map((tr) => (
+          <div key={tr.l} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-3)", minWidth: 0 }}>
+              {tr.icon}
+              <span
+                className="mf-mono"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.1em",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {tr.l}
+              </span>
+            </div>
+            <div
+              onClick={handleSeek}
+              style={{
+                display: "flex", gap: 3, height: tr.kind === "audio" ? 30 : 28,
+                cursor: "pointer", userSelect: "none",
+              }}
+            >
+              {tr.kind === "audio" || tr.kind === "motion" || tr.kind === "text" ? (
+                // Per-scene asset blocks for audio-style tracks. Each shot
+                // either has a matching asset (filled block with name) or
+                // nothing (dashed empty placeholder). Tracks aren't drop
+                // targets — assets attach to scenes via the scenes row, the
+                // right panel, or the cinema preview.
+                (() => {
+                  const targetKind: SceneAssetKind =
+                    tr.kind === "motion"
+                      ? "voiceover"
+                      : tr.kind === "text"
+                        ? "sfx"
+                        : "music";
+                  const emptyLabel =
+                    tr.kind === "motion"
+                      ? "NO VOICE OVER"
+                      : tr.kind === "text"
+                        ? "NO SOUND EFFECTS"
+                        : "NO AUDIO";
+                  const accent =
+                    tr.kind === "audio"
+                      ? "rgba(167,139,250,0.18)"
+                      : tr.kind === "motion"
+                        ? "rgba(122,162,255,0.18)"
+                        : "rgba(103,232,249,0.18)";
+                  const anyAttached = shots.some(
+                    (s) =>
+                      isSceneAssetArray(s.assets) &&
+                      s.assets.some((a) => a.kind === targetKind),
+                  );
+                  // If nothing is attached anywhere, render one wide empty
+                  // strip rather than N dashed blocks (cleaner empty state).
+                  if (!anyAttached) {
+                    return (
+                      <div
+                        style={{
+                          flex: 1, borderRadius: 4,
+                          background: "rgba(255,255,255,0.015)",
+                          border: "1px dashed var(--line-2)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "var(--ink-4)",
+                        }}
+                      >
+                        <span
+                          className="mf-mono"
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.14em",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {emptyLabel}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return shots.map((s) => {
+                    const len = Number(s.duration) || 0;
+                    const allAssets = isSceneAssetArray(s.assets) ? s.assets : [];
+                    const matched = allAssets.find((a) => a.kind === targetKind);
+                    return (
+                      <div
+                        key={s.id}
+                        title={matched?.name ?? `${emptyLabel} on scene ${s.shot_index + 1}`}
+                        style={{
+                          flex: len,
+                          borderRadius: 4,
+                          background: matched ? accent : "rgba(255,255,255,0.015)",
+                          border: `1px ${matched ? "solid" : "dashed"} ${
+                            matched ? "rgba(255,255,255,0.10)" : "var(--line-2)"
+                          }`,
+                          padding: "0 8px",
+                          display: "flex",
+                          alignItems: "center",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {matched ? (
+                          tr.kind === "audio" ? (
+                            // Waveform stand-in only for the AUDIO track; voice
+                            // / sfx blocks get a plain name label so they read
+                            // cleanly even at tile-width.
+                            <div
+                              style={{
+                                flex: 1,
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 2,
+                                overflow: "hidden",
+                              }}
+                            >
+                              {Array.from({ length: 24 }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  style={{
+                                    width: 2,
+                                    height: `${20 + Math.abs(Math.sin((i + s.shot_index * 3) / 2.4)) * 70}%`,
+                                    background: "rgba(167,139,250,0.7)",
+                                    borderRadius: 1,
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          ) : (
+                            <span
+                              className="mf-mono"
+                              style={{
+                                fontSize: 9,
+                                color: "rgba(255,255,255,0.85)",
+                                letterSpacing: "0.04em",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {matched.name.toUpperCase()}
+                            </span>
+                          )
+                        ) : null}
+                      </div>
+                    );
+                  });
+                })()
+              ) : (
+                // Scenes track — one tile per shot, click to seek, double-click to preview.
+                shots.map((s) => {
+                  const len = Number(s.duration) || 0;
+                  const isSelected = selectedId === s.id;
+                  const thumb = s.scene_thumbnail_path ?? s.image_url ?? null;
+                  const baseBg = thumb
+                    ? `#050505 center/cover no-repeat url(${thumb})`
+                    : "linear-gradient(135deg, #1F2937, #5468FF)";
+                  const isDropTarget = dragOverShotId === s.id;
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(s.id);
+                        const start = sceneTimings.get(s.id)?.startSeconds ?? 0;
+                        console.log(
+                          `[timeline] clicked scene ${s.shot_index + 1} · ${s.id.slice(0, 8)} — seeking playhead to ${start}s (duration ${Number(s.duration) || 0}s)`,
+                        );
+                        setTime(start + 0.001);
+                        setPlaying(true);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        onPreview(s.id);
+                      }}
+                      onDragOver={(e) => {
+                        if (!onAssetDrop) return;
+                        if (
+                          Array.from(e.dataTransfer.types).includes(
+                            "application/x-mg-asset",
+                          )
+                        ) {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "copy";
+                          setDragOverShotId(s.id);
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverShotId === s.id) setDragOverShotId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDragOverShotId(null);
+                        if (!onAssetDrop) return;
+                        const asset = readDraggedAsset(e);
+                        if (!asset) return;
+                        onAssetDrop(s.id, tr.kind, asset);
+                      }}
+                      title={s.shot_goal ?? ""}
+                      style={{
+                        flex: len, borderRadius: 4,
+                        background: baseBg,
+                        border: `1px solid ${
+                          isDropTarget
+                            ? "rgba(122,162,255,0.9)"
+                            : isSelected
+                              ? "rgba(122,162,255,0.7)"
+                              : "rgba(255,255,255,0.08)"
+                        }`,
+                        padding: "0 10px",
+                        display: "flex", alignItems: "center", overflow: "hidden",
+                        position: "relative", cursor: "pointer",
+                        boxShadow: isDropTarget
+                          ? "0 0 0 2px rgba(122,162,255,0.55), 0 10px 30px -8px rgba(122,162,255,0.55)"
+                          : isSelected
+                            ? "0 0 0 1px rgba(122,162,255,0.4), 0 8px 24px -8px rgba(122,162,255,0.4)"
+                            : "none",
+                        transition: "border-color 120ms, box-shadow 120ms",
+                      }}
+                    >
+                      {thumb && (
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.0) 40%, rgba(0,0,0,0.55))" }}/>
+                      )}
+                      <span
+                        className="mf-mono"
+                        style={{
+                          position: "relative",
+                          fontSize: 9, color: "rgba(255,255,255,0.85)",
+                          letterSpacing: "0.04em", whiteSpace: "nowrap",
+                          overflow: "hidden", textOverflow: "ellipsis",
+                        }}
+                      >
+                        {(s.shot_goal ?? `SCENE ${s.shot_index + 1}`).toUpperCase()}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Playhead */}
+        <div
+          style={{
+            position: "absolute", top: -10, bottom: -2,
+            left: `calc(110px + 10px + (100% - 110px - 10px) * ${Math.max(0, Math.min(1, time / total))})`,
+            width: 1, background: "#7AA2FF",
+            boxShadow: "0 0 10px rgba(122,162,255,0.8)",
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ position: "absolute", top: -6, left: -4, width: 9, height: 9, borderRadius: "50%", background: "#7AA2FF", boxShadow: "0 0 12px rgba(122,162,255,0.9)" }}/>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const EditorScreen = ({
   onNav,
   onContinue,
@@ -1221,11 +1839,15 @@ export const EditorScreen = ({
   initialJobId?: string | null;
 }) => {
   const f = useFrame();
+  // When opening an existing project we start blank and let the hydrate
+  // effect below fill in `job.script` once the job row loads. Only the
+  // empty/new-project flow uses the placeholder copy.
   const [script, setScript] = useState(
-    empty
+    empty || initialJobId
       ? ""
       : `Meet Lattice — the OS for high-performing teams.\nBuilt for teams that ship.\nFrom goals to growth, every conversation lives here.\nStart free. Ship faster.`,
   );
+  const scriptHydratedJobIdRef = useRef<string | null>(null);
   const [openSections, setOpenSections] = useState<Set<string>>(
     () => new Set(["script"]),
   );
@@ -1247,8 +1869,18 @@ export const EditorScreen = ({
   const [brandLogoError, setBrandLogoError] = useState<string | null>(null);
   const [brandColors, setBrandColors] = useState<string[]>([]);
   const [draftColor, setDraftColor] = useState<string>("#7AA2FF");
+  const [brandSourceUrl, setBrandSourceUrl] = useState<string>("");
+  const [brandScraping, setBrandScraping] = useState(false);
+  const [brandScrapeError, setBrandScrapeError] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const brandHydratedJobIdRef = useRef<string | null>(null);
+
+  // Project-level asset library (left sidebar ASSETS panel).
+  const [jobAssets, setJobAssets] = useState<JobAsset[]>([]);
+  const [assetsUploading, setAssetsUploading] = useState(false);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
+  const assetsInputRef = useRef<HTMLInputElement | null>(null);
+  const assetsHydratedJobIdRef = useRef<string | null>(null);
 
   const jobIdRef = useRef<string | null>(null);
   // Best-effort PATCH to persist a brand patch onto the current job. No-op
@@ -1323,6 +1955,47 @@ export const EditorScreen = ({
     });
   };
 
+  const handleScrapeFromUrl = async () => {
+    const trimmed = brandSourceUrl.trim();
+    if (!trimmed) return;
+    setBrandScrapeError(null);
+    setBrandScraping(true);
+    try {
+      const res = await fetch("/api/brand/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        palette?: string[];
+        logoUrl?: string | null;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? `Scrape failed (${res.status})`);
+      const colors = (data.palette ?? [])
+        .map((c) => c.toLowerCase())
+        .filter((c) => /^#[0-9a-f]{6}$/.test(c));
+      const patch: { brandColors?: string[]; brandLogoUrl?: string | null } = {};
+      if (colors.length > 0) {
+        setBrandColors(colors);
+        patch.brandColors = colors;
+      }
+      if (data.logoUrl) {
+        setBrandLogoUrl(data.logoUrl);
+        setBrandLogoStoragePath(null);
+        setBrandLogoName(new URL(data.logoUrl).hostname);
+        patch.brandLogoUrl = data.logoUrl;
+      }
+      if (Object.keys(patch).length > 0) {
+        void persistBrandPatch(patch);
+      }
+    } catch (err) {
+      setBrandScrapeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBrandScraping(false);
+    }
+  };
+
   const removeColor = (c: string) =>
     setBrandColors((prev) => {
       const next = prev.filter((x) => x !== c);
@@ -1349,6 +2022,12 @@ export const EditorScreen = ({
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
   const [generatingClips, setGeneratingClips] = useState<Set<string>>(new Set());
   const [pollNonce, setPollNonce] = useState(0);
+
+  // Transport state for the preview/timeline. `time` is in seconds across the
+  // full assembled film; the playhead and scene focus are derived from it.
+  const [time, setTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [previewDragOver, setPreviewDragOver] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -1408,6 +2087,134 @@ export const EditorScreen = ({
     setBrandColors(Array.isArray(job.brand_colors) ? job.brand_colors : []);
     setBrandLogoError(null);
     brandHydratedJobIdRef.current = job.id;
+  }, [job]);
+
+  // Hydrate the asset library once per job. Subsequent polls don't overwrite
+  // local additions because we gate on assetsHydratedJobIdRef.
+  useEffect(() => {
+    if (!job) return;
+    if (assetsHydratedJobIdRef.current === job.id) return;
+    setJobAssets(isJobAssetArray(job.assets) ? job.assets : []);
+    setAssetsError(null);
+    assetsHydratedJobIdRef.current = job.id;
+  }, [job]);
+
+  const uploadAsset = async (file: File) => {
+    const id = jobIdRef.current;
+    if (!id) {
+      setAssetsError("Generate the storyboard before uploading assets.");
+      return;
+    }
+    setAssetsError(null);
+    setAssetsUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/jobs/${id}/assets`, { method: "POST", body: fd });
+      const data = (await res.json().catch(() => ({}))) as {
+        assets?: JobAsset[];
+        error?: string;
+      };
+      if (!res.ok || !data.assets) {
+        throw new Error(data.error ?? `Upload failed (${res.status})`);
+      }
+      setJobAssets(data.assets);
+    } catch (err) {
+      setAssetsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAssetsUploading(false);
+    }
+  };
+
+  const onAssetsChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    for (const file of files) {
+      // sequential to keep server load predictable and surface per-file errors
+      await uploadAsset(file);
+    }
+  };
+
+  // Drop handler — called by the three scene-level drop targets (timeline
+  // scene tiles, right Assets tab, cinema preview). Whatever the source
+  // asset's kind is, that becomes the SceneAsset kind; image/video/audio map
+  // 1:1, anything else is rejected. (Voice-over / sfx classification isn't
+  // disambiguated here — audio defaults to "music"; future UX can re-classify.)
+  // The `_targetTrackKind` arg is kept for the timeline tile call so the same
+  // signature works there, but it's not currently used in the mapping.
+  const handleAssetDrop = async (
+    shotId: string,
+    _targetTrackKind: "video" | "motion" | "text" | "audio",
+    asset: JobAsset,
+  ) => {
+    let sceneKind: SceneAssetKind | null = null;
+    if (asset.kind === "image") sceneKind = "image";
+    else if (asset.kind === "video") sceneKind = "video";
+    else if (asset.kind === "audio") sceneKind = "music";
+    if (!sceneKind) {
+      console.warn(`[drop] rejected: unsupported asset kind=${asset.kind}`);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/shots/${shotId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: sceneKind,
+          url: asset.url,
+          name: asset.name,
+          source_asset_id: asset.id,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        assets?: unknown;
+        error?: string;
+      };
+      if (!res.ok || !Array.isArray(data.assets)) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setShots((prev) =>
+        prev.map((s) => (s.id === shotId ? { ...s, assets: data.assets } : s)),
+      );
+      console.log(
+        `[drop] scene ${shotId.slice(0, 8)} ← ${sceneKind} (from "${asset.name}")`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[drop] failed:`, message);
+    }
+  };
+
+  const removeAsset = async (assetId: string) => {
+    const id = jobIdRef.current;
+    if (!id) return;
+    setAssetsError(null);
+    try {
+      const res = await fetch(
+        `/api/jobs/${id}/assets?assetId=${encodeURIComponent(assetId)}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        assets?: JobAsset[];
+        error?: string;
+      };
+      if (!res.ok || !data.assets) {
+        throw new Error(data.error ?? `Delete failed (${res.status})`);
+      }
+      setJobAssets(data.assets);
+    } catch (err) {
+      setAssetsError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Hydrate the script field from the saved job row once per job. Gated so
+  // polling doesn't clobber the user's in-progress edits.
+  useEffect(() => {
+    if (!job) return;
+    if (scriptHydratedJobIdRef.current === job.id) return;
+    if (typeof job.script === "string") setScript(job.script);
+    scriptHydratedJobIdRef.current = job.id;
   }, [job]);
 
   useEffect(() => {
@@ -1593,6 +2400,107 @@ export const EditorScreen = ({
 
   const previewTiming = previewShot ? sceneTimings.get(previewShot.id) ?? null : null;
 
+  // Tick the playhead while playing. Wraps at totalDuration (or pauses at 0
+  // when there is nothing to play yet).
+  useEffect(() => {
+    if (!playing) return;
+    if (totalDuration <= 0) return;
+    const id = setInterval(() => {
+      setTime((t) => {
+        const next = t + 0.1;
+        return next >= totalDuration ? 0 : next;
+      });
+    }, 100);
+    return () => clearInterval(id);
+  }, [playing, totalDuration]);
+
+  // The shot the playhead is currently inside. Independent of `selected`,
+  // which tracks the user's pinned inspector target.
+  const currentShot = useMemo(() => {
+    if (shots.length === 0) return null;
+    let acc = 0;
+    for (const s of shots) {
+      const d = Number(s.duration) || 0;
+      if (time < acc + d) return s;
+      acc += d;
+    }
+    return shots[shots.length - 1] ?? null;
+  }, [shots, time]);
+
+  // Music asset attached to whichever scene the playhead is in. Background
+  // music applied to every scene gives the same URL across all of them so
+  // playback is continuous; if a scene has no music attached this becomes
+  // null and the <audio> element pauses.
+  const activeMusicUrl = useMemo(() => {
+    if (!currentShot) return null;
+    const list = isSceneAssetArray(currentShot.assets) ? currentShot.assets : [];
+    return list.find((a) => a.kind === "music")?.url ?? null;
+  }, [currentShot]);
+
+  // Hidden <audio> element drives playback. Two effects sync it with the
+  // editor's play/pause state and the active URL:
+  //   - URL change → reload src
+  //   - playing flip → call .play() / .pause()
+  // The rendered scene video is muted so this doesn't double-play.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (!activeMusicUrl) {
+      a.pause();
+      return;
+    }
+    if (a.src !== activeMusicUrl) {
+      a.src = activeMusicUrl;
+      a.load();
+    }
+    if (playing) {
+      const p = a.play();
+      if (p && typeof p.catch === "function") {
+        p.catch((err) =>
+          console.warn(
+            "[bg-music] play() rejected (likely autoplay policy):",
+            err instanceof Error ? err.message : err,
+          ),
+        );
+      }
+    } else {
+      a.pause();
+    }
+  }, [activeMusicUrl, playing]);
+
+  // Preview always tracks the playhead so clicking a timeline scene (which
+  // seeks `time`) updates the visible scene without depending on selection.
+  const previewShotInline = currentShot;
+
+  const goPrevScene = () => {
+    if (shots.length === 0) return;
+    let acc = 0;
+    const starts: number[] = [];
+    for (const s of shots) {
+      starts.push(acc);
+      acc += Number(s.duration) || 0;
+    }
+    // Find the largest start <= time - small epsilon
+    let target = 0;
+    for (let i = 0; i < starts.length; i++) {
+      if (starts[i] < time - 0.2) target = starts[i];
+      else break;
+    }
+    setTime(target);
+  };
+  const goNextScene = () => {
+    if (shots.length === 0) return;
+    let acc = 0;
+    for (const s of shots) {
+      acc += Number(s.duration) || 0;
+      if (acc > time + 0.05) {
+        setTime(Math.min(acc, Math.max(0, totalDuration - 0.01)));
+        return;
+      }
+    }
+  };
+
   return (
     <>
     <AppChrome
@@ -1645,7 +2553,16 @@ export const EditorScreen = ({
         </>
       }
     >
-      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", height: "100%", minHeight: 0 }}>
+      <div style={{ display: "grid", gridTemplateRows: "1fr auto", height: "100%", minHeight: 0, minWidth: 0, width: "100%" }}>
+       <div
+         style={{
+           display: "grid",
+           gridTemplateColumns: showStoryboard ? "360px minmax(0, 1fr) 320px" : "360px minmax(0, 1fr)",
+           minHeight: 0,
+           minWidth: 0,
+           width: "100%",
+         }}
+       >
         {/* Left: script input */}
         <aside
           style={{
@@ -1745,41 +2662,285 @@ export const EditorScreen = ({
 
             <AccordionSection
               label="MUSIC"
-              badge="—"
+              badge={
+                job?.music_title
+                  ? job.music_title.length > 18
+                    ? `${job.music_title.slice(0, 18)}…`
+                    : job.music_title
+                  : "—"
+              }
               open={openSections.has("music")}
               onToggle={() => toggleSection("music")}
             >
-              <ComingSoonPanel
-                icon={<IconMusic size={14}/>}
-                title="Music bed"
-                hint="Choose a track from the library or upload your own. Pacing will respect downbeats."
-              />
+              {jobId ? (
+                <MusicPicker
+                  jobId={jobId}
+                  current={
+                    job?.music_track_id && job?.music_url
+                      ? ({
+                          trackId: job.music_track_id,
+                          title: job.music_title ?? "",
+                          artist: job.music_artist ?? "",
+                          streamUrl: job.music_url,
+                        } satisfies CurrentMusic)
+                      : null
+                  }
+                  onChange={(next) => {
+                    setJob((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            music_track_id: next?.trackId ?? null,
+                            music_title: next?.title ?? null,
+                            music_artist: next?.artist ?? null,
+                            music_url: next?.streamUrl ?? null,
+                          }
+                        : prev,
+                    );
+                  }}
+                  onApplyAsBackground={async (track) => {
+                    // Attach the same track as kind="music" to every scene so
+                    // it lights up the AUDIO row across the whole timeline.
+                    // POSTs are fired sequentially to keep server load
+                    // predictable and surface per-scene errors.
+                    for (const s of shots) {
+                      const res = await fetch(`/api/shots/${s.id}/assets`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          kind: "music",
+                          url: track.streamUrl,
+                          name: `${track.title} — ${track.artist}`,
+                        }),
+                      });
+                      const data = (await res.json().catch(() => ({}))) as {
+                        assets?: unknown;
+                        error?: string;
+                      };
+                      if (!res.ok || !Array.isArray(data.assets)) {
+                        console.warn(
+                          `[bg-music] failed for scene ${s.id.slice(0, 8)}: ${data.error ?? res.status}`,
+                        );
+                        continue;
+                      }
+                      setShots((prev) =>
+                        prev.map((row) =>
+                          row.id === s.id ? { ...row, assets: data.assets } : row,
+                        ),
+                      );
+                    }
+                  }}
+                />
+              ) : (
+                <ComingSoonPanel
+                  icon={<IconMusic size={14}/>}
+                  title="Music bed"
+                  hint="Generate or open a project to choose a track."
+                />
+              )}
             </AccordionSection>
 
             <AccordionSection
               label="SFX"
-              badge="—"
+              badge={
+                job?.sfx_name
+                  ? job.sfx_name.length > 18
+                    ? `${job.sfx_name.slice(0, 18)}…`
+                    : job.sfx_name
+                  : "—"
+              }
               open={openSections.has("sfx")}
               onToggle={() => toggleSection("sfx")}
             >
-              <ComingSoonPanel
-                icon={<IconWave size={14}/>}
-                title="Sound effects"
-                hint="Tie SFX to transitions, focal beats, and UI interactions per scene."
-              />
+              {jobId ? (
+                <SfxPicker
+                  jobId={jobId}
+                  current={
+                    job?.sfx_id && job?.sfx_url
+                      ? ({
+                          sfxId: job.sfx_id,
+                          name: job.sfx_name ?? "",
+                          author: job.sfx_author ?? "",
+                          previewUrl: job.sfx_url,
+                          license: job.sfx_license ?? "",
+                        } satisfies CurrentSfx)
+                      : null
+                  }
+                  onChange={(next) => {
+                    setJob((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            sfx_id: next?.sfxId ?? null,
+                            sfx_name: next?.name ?? null,
+                            sfx_author: next?.author ?? null,
+                            sfx_url: next?.previewUrl ?? null,
+                            sfx_license: next?.license ?? null,
+                          }
+                        : prev,
+                    );
+                  }}
+                />
+              ) : (
+                <ComingSoonPanel
+                  icon={<IconWave size={14}/>}
+                  title="Sound effects"
+                  hint="Generate or open a project to choose a sound effect."
+                />
+              )}
             </AccordionSection>
 
             <AccordionSection
               label="ASSETS"
-              badge="0 FILES"
+              badge={
+                jobAssets.length > 0
+                  ? `${jobAssets.length} ${jobAssets.length === 1 ? "FILE" : "FILES"}`
+                  : "—"
+              }
               open={openSections.has("assets")}
               onToggle={() => toggleSection("assets")}
             >
-              <ComingSoonPanel
-                icon={<IconFolder size={14}/>}
-                title="Project assets"
-                hint="Upload logos, product screenshots, and reference media to ground the director."
+              <input
+                ref={assetsInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,audio/*"
+                onChange={onAssetsChange}
+                style={{ display: "none" }}
               />
+
+              {jobAssets.length === 0 ? (
+                <button
+                  onClick={() => assetsInputRef.current?.click()}
+                  disabled={assetsUploading || !jobIdRef.current}
+                  style={{
+                    width: "100%",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    padding: "16px 12px",
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.015)",
+                    border: "1px dashed var(--line-2)",
+                    color: "var(--ink-2)",
+                    cursor: assetsUploading ? "wait" : "pointer",
+                    fontFamily: "inherit", fontSize: 12,
+                    opacity: assetsUploading || !jobIdRef.current ? 0.65 : 1,
+                  }}
+                >
+                  {assetsUploading ? "Uploading…" : (
+                    <>
+                      <IconUpload size={13}/>
+                      Upload assets (images · videos · audio)
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {jobAssets.map((a) => (
+                    <div
+                      key={a.id}
+                      draggable
+                      onDragStart={(e) => {
+                        // Wire-up for phase 2 drag-and-drop. Encode the asset so a
+                        // timeline drop target can read it without DB roundtrips.
+                        e.dataTransfer.setData("application/x-mg-asset", JSON.stringify(a));
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: 6,
+                        borderRadius: 10,
+                        background: "rgba(0,0,0,0.25)",
+                        border: "1px solid var(--line)",
+                        cursor: "grab",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 44, height: 44,
+                          flexShrink: 0,
+                          borderRadius: 8,
+                          background:
+                            a.kind === "image"
+                              ? `url(${a.url}) center/cover, rgba(255,255,255,0.04)`
+                              : a.kind === "video"
+                                ? "linear-gradient(135deg, #1F2937, #5468FF)"
+                                : a.kind === "audio"
+                                  ? "linear-gradient(135deg, #5b3aa8, #a78bfa)"
+                                  : "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--line)",
+                          display: "grid", placeItems: "center",
+                          color: "rgba(255,255,255,0.85)",
+                        }}
+                      >
+                        {a.kind === "video" ? <IconImage size={14}/> :
+                         a.kind === "audio" ? <IconMusic size={14}/> :
+                         a.kind === "image" ? null : <IconFolder size={14}/>}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontSize: 12, color: "var(--ink-1)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}
+                        >
+                          {a.name}
+                        </div>
+                        <div
+                          className="mf-mono"
+                          style={{
+                            fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em",
+                            marginTop: 2,
+                          }}
+                        >
+                          {a.kind.toUpperCase()} · {Math.max(1, Math.round(a.size_bytes / 1024))} KB
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeAsset(a.id)}
+                        aria-label={`Remove ${a.name}`}
+                        title="Remove"
+                        style={{
+                          width: 26, height: 26, borderRadius: 6,
+                          display: "grid", placeItems: "center",
+                          background: "transparent",
+                          border: "1px solid var(--line)",
+                          color: "var(--ink-3)", cursor: "pointer", padding: 0,
+                        }}
+                      >
+                        <IconClose size={12}/>
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={() => assetsInputRef.current?.click()}
+                    disabled={assetsUploading}
+                    style={{
+                      marginTop: 4,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background: "rgba(255,255,255,0.015)",
+                      border: "1px dashed var(--line-2)",
+                      color: "var(--ink-2)",
+                      cursor: assetsUploading ? "wait" : "pointer",
+                      fontFamily: "inherit", fontSize: 12,
+                      opacity: assetsUploading ? 0.65 : 1,
+                    }}
+                  >
+                    <IconUpload size={12}/>
+                    {assetsUploading ? "Uploading…" : "Add more"}
+                  </button>
+                </div>
+              )}
+
+              {assetsError && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "#FCA5A5", lineHeight: 1.45 }}>
+                  {assetsError}
+                </div>
+              )}
             </AccordionSection>
 
             <AccordionSection
@@ -1793,6 +2954,65 @@ export const EditorScreen = ({
               onToggle={() => toggleSection("brand")}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* From URL — auto-populate logo + palette from any public site */}
+                <div>
+                  <div
+                    className="mf-mono"
+                    style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.12em", marginBottom: 8 }}
+                  >
+                    FROM URL
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="url"
+                      value={brandSourceUrl}
+                      onChange={(e) => setBrandSourceUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !brandScraping) {
+                          e.preventDefault();
+                          void handleScrapeFromUrl();
+                        }
+                      }}
+                      placeholder="https://artlist.io"
+                      disabled={brandScraping}
+                      style={{
+                        flex: 1, padding: "8px 10px",
+                        borderRadius: 8,
+                        background: "rgba(0,0,0,0.30)",
+                        border: "1px solid var(--line)",
+                        color: "var(--ink-1)",
+                        fontFamily: "inherit", fontSize: 12,
+                      }}
+                    />
+                    <button
+                      onClick={() => void handleScrapeFromUrl()}
+                      disabled={brandScraping || !brandSourceUrl.trim()}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        background: "rgba(122,162,255,0.16)",
+                        border: "1px solid rgba(122,162,255,0.45)",
+                        color: "var(--ink-1)",
+                        fontFamily: "inherit", fontSize: 12,
+                        cursor: brandScraping ? "wait" : "pointer",
+                        opacity: brandScraping || !brandSourceUrl.trim() ? 0.6 : 1,
+                      }}
+                    >
+                      {brandScraping ? "Fetching…" : "Fetch"}
+                    </button>
+                  </div>
+                  {brandScrapeError && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11, color: "var(--ink-3)",
+                      }}
+                    >
+                      {brandScrapeError}
+                    </div>
+                  )}
+                </div>
+
                 {/* Logo */}
                 <div>
                   <div
@@ -2136,204 +3356,211 @@ export const EditorScreen = ({
           )}
         </aside>
 
-        {/* Right: storyboard / inspector */}
-        <section style={{ display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
+        {/* Center: preview + transport */}
+        <section style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, position: "relative" }}>
           <div className="mf-bg-bloom"/>
           {!showStoryboard ? (
             <EmptyState f={f} />
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: selectedShot ? "1fr 340px" : "1fr", flex: 1, minHeight: 0 }}>
-              <div style={{ overflow: "auto", padding: "24px 28px 40px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18 }}>
-                  <div>
-                    <div className="mf-eyebrow" style={{ marginBottom: 6 }}>STORYBOARD</div>
-                    <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.015em" }}>
-                      {job?.title ?? "Directing…"}
-                    </div>
-                  </div>
-                  <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.08em" }}>
-                    {shots.length}/{job?.shot_count ?? "—"} SHOTS · {totalDuration.toFixed(1)}s
-                  </div>
+          ) : shots.length === 0 ? (
+            <div style={{ flex: 1, display: "grid", placeItems: "center", padding: "40px 28px" }}>
+              <div
+                style={{
+                  padding: "60px 32px", borderRadius: 14,
+                  border: "1px dashed var(--line-2)",
+                  background: "rgba(255,255,255,0.015)",
+                  textAlign: "center", maxWidth: 460,
+                }}
+              >
+                <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.18em", marginBottom: 8 }}>
+                  {status === "directing" ? "DIRECTING SHOTS…" : "WAITING FOR DIRECTOR…"}
                 </div>
+                <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                  The director is splitting your script into cinematic beats and writing image prompts.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: "28px 36px", display: "flex", flexDirection: "column", gap: 20, position: "relative", minHeight: 0, flex: 1 }}>
+              <div
+                onDragOver={(e) => {
+                  if (!previewShotInline) return;
+                  if (
+                    Array.from(e.dataTransfer.types).includes(
+                      "application/x-mg-asset",
+                    )
+                  ) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                    setPreviewDragOver(true);
+                  }
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                  setPreviewDragOver(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setPreviewDragOver(false);
+                  if (!previewShotInline) return;
+                  const asset = readDraggedAsset(e);
+                  if (!asset) return;
+                  void handleAssetDrop(previewShotInline.id, "video", asset);
+                }}
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  position: "relative",
+                  borderRadius: 14,
+                  outline: previewDragOver
+                    ? "2px dashed rgba(122,162,255,0.7)"
+                    : "none",
+                  outlineOffset: 4,
+                  transition: "outline-color 120ms",
+                }}
+              >
+              <CinemaPreview
+                aspect="16 / 9"
+                frame={f}
+                label={
+                  previewShotInline
+                    ? `SCENE ${String(previewShotInline.shot_index + 1).padStart(2, "0")} · ${(previewShotInline.shot_goal ?? "UNTITLED").toUpperCase()}`
+                    : undefined
+                }
+                style={{ flex: 1, minHeight: 0 }}
+              >
+                {/* Underlay: rendered video > html scene (plays iframe / shows
+                    thumbnail) > legacy clip > image > standalone thumbnail. */}
+                {previewShotInline?.rendered_video_url ? (
+                  <video
+                    key={previewShotInline.rendered_video_url}
+                    src={previewShotInline.rendered_video_url}
+                    poster={previewShotInline.scene_thumbnail_path ?? undefined}
+                    autoPlay={playing}
+                    muted
+                    loop
+                    playsInline
+                    style={{
+                      position: "absolute", inset: 0, width: "100%", height: "100%",
+                      objectFit: "contain",
+                      background: "#050505",
+                    }}
+                  />
+                ) : previewShotInline?.scene_html_path ? (
+                  <HtmlScenePane
+                    shot={previewShotInline}
+                    playing={playing}
+                    startSeconds={
+                      sceneTimings.get(previewShotInline.id)?.startSeconds ?? 0
+                    }
+                  />
+                ) : previewShotInline?.scene_thumbnail_path ? (
+                  <img
+                    src={previewShotInline.scene_thumbnail_path}
+                    alt=""
+                    style={{
+                      position: "absolute", inset: 0, width: "100%", height: "100%",
+                      objectFit: "contain",
+                      background: "#050505",
+                    }}
+                  />
+                ) : previewShotInline?.clip_status === "ready" && previewShotInline.clip_url ? (
+                  <video
+                    key={previewShotInline.clip_url}
+                    src={previewShotInline.clip_url}
+                    poster={previewShotInline.image_url ?? undefined}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    style={{
+                      position: "absolute", inset: 0, width: "100%", height: "100%",
+                      objectFit: "contain",
+                      background: "#050505",
+                    }}
+                  />
+                ) : previewShotInline?.image_url ? (
+                  <img
+                    src={previewShotInline.image_url}
+                    alt=""
+                    style={{
+                      position: "absolute", inset: 0, width: "100%", height: "100%",
+                      objectFit: "contain",
+                      background: "#050505",
+                    }}
+                  />
+                ) : null}
 
-                {shots.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "60px 32px", borderRadius: 14,
-                      border: "1px dashed var(--line-2)",
-                      background: "rgba(255,255,255,0.015)",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.18em", marginBottom: 8 }}>
-                      {status === "directing" ? "DIRECTING SHOTS…" : "WAITING FOR DIRECTOR…"}
+                {/* Caption overlay from current shot's text */}
+                {previewShotInline?.text_overlay && (
+                  <div style={{ position: "absolute", left: "50%", bottom: 64, transform: "translateX(-50%)", textAlign: "center", maxWidth: "70%" }}>
+                    <div style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.02em", textShadow: "0 4px 30px rgba(0,0,0,0.6)" }}>
+                      {previewShotInline.text_overlay}
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 360, margin: "0 auto" }}>
-                      The director is splitting your script into cinematic beats and writing image prompts.
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-                      gap: 16,
-                    }}
-                  >
-                    {shots.map((shot) => {
-                      const timing = sceneTimings.get(shot.id);
-                      return (
-                        <ShotCard
-                          key={shot.id}
-                          shot={shot}
-                          f={f}
-                          selected={selected === shot.id}
-                          retrying={retrying.has(shot.id) || shot.status === "generating"}
-                          clipBusy={
-                            generatingClips.has(shot.id) || shot.clip_status === "generating"
-                          }
-                          sceneStartSeconds={timing?.startSeconds ?? 0}
-                          sceneDurationSeconds={timing?.durationSeconds ?? (Number(shot.duration) || 0)}
-                          onSelect={() => setSelected(selected === shot.id ? null : shot.id)}
-                          onPreview={() => setPreviewShotId(shot.id)}
-                          onRetry={() => void handleRetry(shot.id)}
-                          onGenerateClip={() => void handleGenerateClip(shot.id)}
-                        />
-                      );
-                    })}
                   </div>
                 )}
+
+              </CinemaPreview>
               </div>
 
-              {selectedShot && (
-                <aside
-                  style={{
-                    borderLeft: "1px solid var(--line)", background: "rgba(8,9,13,0.5)",
-                    padding: "22px 20px", overflow: "auto",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 6 }}>
-                    <div className="mf-eyebrow">
-                      SHOT {String(selectedShot.shot_index + 1).padStart(2, "0")} · INSPECTOR
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {selectedShot.status === "failed" && (
-                        <ActionButton
-                          size="sm"
-                          busy={retrying.has(selectedShot.id)}
-                          label="Retry shot"
-                          busyLabel="Retrying…"
-                          tone="image"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleRetry(selectedShot.id);
-                          }}
-                        />
-                      )}
-                      {selectedShot.status === "ready" && selectedShot.image_url && (
-                        <ActionButton
-                          size="sm"
-                          busy={generatingClips.has(selectedShot.id) || selectedShot.clip_status === "generating"}
-                          label={
-                            selectedShot.clip_status === "ready"
-                              ? "Regenerate clip"
-                              : selectedShot.clip_status === "failed"
-                                ? "Retry clip"
-                                : "Generate clip"
-                          }
-                          busyLabel="Rendering…"
-                          tone="clip"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleGenerateClip(selectedShot.id);
-                          }}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {selectedShot.clip_status === "ready" && selectedShot.clip_url ? (
-                    <div style={{ marginBottom: 18, borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)" }}>
-                      <video
-                        key={selectedShot.clip_url}
-                        src={selectedShot.clip_url}
-                        poster={selectedShot.image_url ?? undefined}
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        controls
-                        style={{ width: "100%", display: "block" }}
-                      />
-                    </div>
-                  ) : selectedShot.image_url ? (
-                    <div style={{ marginBottom: 18, borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)" }}>
-                      <img
-                        src={selectedShot.image_url}
-                        alt={selectedShot.shot_goal ?? ""}
-                        style={{ width: "100%", display: "block" }}
-                      />
-                    </div>
-                  ) : null}
-
-                  <InspectorSection label="NARRATIVE" />
-                  <InspectorRow label="GOAL" value={selectedShot.shot_goal} />
-                  <InspectorRow label="NARRATION" value={selectedShot.narration_part} />
-                  <InspectorRow label="TEXT OVERLAY" value={selectedShot.text_overlay} />
-                  <InspectorRow label="DURATION" value={`${Number(selectedShot.duration).toFixed(2)}s`} mono />
-
-                  <InspectorSection label="INTENT · DOMAIN" />
-                  <InspectorRow label="INTENT" value={selectedShot.intent} mono />
-                  <InspectorRow label="DOMAIN" value={selectedShot.domain} mono />
-
-                  <InspectorSection label="GROUNDING" />
-                  <GroundingRows grounding={selectedShot.grounding} />
-
-                  <InspectorSection label="ANCHORS" />
-                  <AnchorList label="VISUAL" anchors={selectedShot.visual_anchors} />
-                  <MotionAnchorList anchors={selectedShot.motion_anchors} />
-
-                  {selectedShot.validation_passed === false && (
-                    <>
-                      <InspectorSection label="VALIDATION" />
-                      <div
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          background: "rgba(255,107,107,0.08)",
-                          border: "1px solid rgba(255,107,107,0.35)",
-                          marginBottom: 14,
-                        }}
-                      >
-                        <div className="mf-mono" style={{ fontSize: 9.5, color: "#FCA5A5", letterSpacing: "0.14em", marginBottom: 4 }}>
-                          REJECTED BY VISION CHECK ({selectedShot.validation_attempts ?? 0} attempt{(selectedShot.validation_attempts ?? 0) === 1 ? "" : "s"})
-                        </div>
-                        <div style={{ fontSize: 11.5, color: "rgba(252,165,165,0.85)", lineHeight: 1.5 }}>
-                          {selectedShot.validation_warnings ?? "Unknown reason"}
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  <InspectorSection label="STYLE · ATMOSPHERE" />
-                  <InspectorRow label="ATMOSPHERE" value={selectedShot.atmosphere} />
-                  <InspectorRow label="UI MOTION" value={selectedShot.ui_motion} />
-                  <InspectorRow label="LIGHTING MOTION" value={selectedShot.lighting_motion} />
-                  <InspectorRow label="PACING" value={selectedShot.pacing} mono />
-                  <InspectorRow label="PALETTE" value={selectedShot.color_palette} mono />
-                  <InspectorRow label="STYLE NOTES" value={selectedShot.style_notes} />
-                  <InspectorRow label="TRANSITION" value={selectedShot.transition_out} mono />
-
-                  <InspectorSection label="ASSEMBLED PROMPTS" />
-                  <InspectorRow label="IMAGE PROMPT" value={selectedShot.image_prompt} mono multiline />
-                  <InspectorRow label="VIDEO PROMPT" value={selectedShot.video_prompt} mono multiline />
-                  <InspectorRow label="NEGATIVE" value={selectedShot.negative_prompt} mono multiline />
-                </aside>
-              )}
+              {/* Transport */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="mf-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: "var(--ink-1)" }}>
+                  {fmtTime(time)} <span style={{ color: "var(--ink-4)" }}>/ {fmtTime(totalDuration)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <TransportBtn onClick={goPrevScene}><IconChevron size={16} style={{ transform: "rotate(90deg)" }}/></TransportBtn>
+                  <TransportBtn primary onClick={() => setPlaying((p) => !p)}>
+                    {playing ? <IconPause size={14}/> : <IconPlay size={14}/>}
+                  </TransportBtn>
+                  <TransportBtn onClick={goNextScene}><IconChevron size={16} style={{ transform: "rotate(-90deg)" }}/></TransportBtn>
+                </div>
+                <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.06em" }}>
+                  {shots.length} SCENES · {totalDuration.toFixed(1)}s
+                </div>
+              </div>
             </div>
           )}
         </section>
+
+        {/* Right: scene panel (assets + comments tabs) — only when generated */}
+        {showStoryboard && (
+          <ScenesPanel
+            shot={selectedShot ?? previewShot ?? currentShot ?? null}
+            onShotPatched={(updated) => {
+              setShots((prev) =>
+                prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)),
+              );
+            }}
+            onAssetDrop={handleAssetDrop}
+            onAssetsChanged={(shotId, assets) => {
+              setShots((prev) =>
+                prev.map((s) => (s.id === shotId ? { ...s, assets } : s)),
+              );
+            }}
+          />
+        )}
+
+       </div>
+
+       {/* Full-width timeline row */}
+       {showStoryboard && (
+         <TimelineRow
+           shots={shots}
+           totalDuration={totalDuration}
+           time={time}
+           setTime={setTime}
+           setPlaying={setPlaying}
+           selectedId={selected}
+           onSelect={(id) => setSelected(id)}
+           onPreview={(id) => setPreviewShotId(id)}
+           sceneTimings={sceneTimings}
+           onAssetDrop={handleAssetDrop}
+         />
+       )}
       </div>
+      {/* Hidden audio element driving the editor's background-music playback.
+          Synced with `playing` + `activeMusicUrl` via useEffect above. */}
+      <audio ref={audioRef} preload="auto" loop style={{ display: "none" }} />
     </AppChrome>
     {previewShot && (
       <ScenePreviewModal
@@ -2553,6 +3780,635 @@ const MotionAnchorList = ({ anchors }: { anchors: unknown }) => {
     </div>
   );
 };
+
+// Right-side comments panel — per-scene threads persisted via
+// PATCH /api/shots/:id/comments (jsonb column on shots, see migration
+// 20260518_shot_comments.sql).
+
+type SceneComment = {
+  id: string;
+  text: string;
+  created_at: string;
+  author?: string | null;
+};
+
+function isSceneCommentArray(v: unknown): v is SceneComment[] {
+  return (
+    Array.isArray(v) &&
+    v.every(
+      (c) =>
+        c !== null &&
+        typeof c === "object" &&
+        typeof (c as { id?: unknown }).id === "string" &&
+        typeof (c as { text?: unknown }).text === "string" &&
+        typeof (c as { created_at?: unknown }).created_at === "string",
+    )
+  );
+}
+
+function relativeTimeShort(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (diff < 60) return "now";
+  const min = Math.floor(diff / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  return new Date(iso).toLocaleDateString();
+}
+
+type ScenesPanelTab = "assets" | "comments";
+
+type JobAssetKind = "video" | "image" | "audio" | "other";
+
+type JobAsset = {
+  id: string;
+  kind: JobAssetKind;
+  url: string;
+  storage_path: string;
+  name: string;
+  mime: string;
+  size_bytes: number;
+  created_at: string;
+};
+
+function isJobAssetArray(v: unknown): v is JobAsset[] {
+  return (
+    Array.isArray(v) &&
+    v.every(
+      (a) =>
+        a !== null &&
+        typeof a === "object" &&
+        typeof (a as { id?: unknown }).id === "string" &&
+        typeof (a as { url?: unknown }).url === "string" &&
+        typeof (a as { kind?: unknown }).kind === "string",
+    )
+  );
+}
+
+// Shared DataTransfer parser — the left-side asset cards set
+// "application/x-mg-asset" to JSON.stringify(JobAsset) and three drop targets
+// read it back (scene tiles, right Assets tab, cinema preview).
+function readDraggedAsset(e: React.DragEvent): JobAsset | null {
+  try {
+    const raw = e.dataTransfer.getData("application/x-mg-asset");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as JobAsset).id === "string" &&
+      typeof (parsed as JobAsset).url === "string" &&
+      typeof (parsed as JobAsset).kind === "string"
+    ) {
+      return parsed as JobAsset;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+type SceneAssetKind = "video" | "image" | "screenshot" | "voiceover" | "sfx" | "music";
+
+type SceneAsset = {
+  id: string;
+  kind: SceneAssetKind;
+  url: string;
+  name: string;
+  created_at: string;
+};
+
+function isSceneAssetArray(v: unknown): v is SceneAsset[] {
+  return (
+    Array.isArray(v) &&
+    v.every(
+      (a) =>
+        a !== null &&
+        typeof a === "object" &&
+        typeof (a as { id?: unknown }).id === "string" &&
+        typeof (a as { kind?: unknown }).kind === "string" &&
+        typeof (a as { url?: unknown }).url === "string",
+    )
+  );
+}
+
+const ASSET_KINDS: { id: SceneAssetKind; label: string }[] = [
+  { id: "video", label: "VIDEO" },
+  { id: "image", label: "IMAGES" },
+  { id: "screenshot", label: "SCREENSHOTS" },
+  { id: "voiceover", label: "VOICE OVER" },
+  { id: "sfx", label: "SOUND EFFECTS" },
+  { id: "music", label: "MUSIC" },
+];
+
+const ScenesAssetsTab = ({
+  shot,
+  onAssetsChanged,
+}: {
+  shot: ShotRow;
+  onAssetsChanged?: (shotId: string, assets: SceneAsset[]) => void;
+}) => {
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const assets = useMemo<SceneAsset[]>(
+    () => (isSceneAssetArray(shot.assets) ? shot.assets : []),
+    [shot],
+  );
+
+  const removeAsset = async (assetId: string) => {
+    if (!onAssetsChanged) return;
+    setRemovingId(assetId);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/shots/${shot.id}/assets?assetId=${encodeURIComponent(assetId)}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        assets?: unknown;
+        error?: string;
+      };
+      if (!res.ok || !isSceneAssetArray(data.assets)) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      onAssetsChanged(shot.id, data.assets);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRemovingId(null);
+    }
+  };
+  const byKind = useMemo(() => {
+    const m = new Map<SceneAssetKind, SceneAsset[]>();
+    for (const a of assets) {
+      const arr = m.get(a.kind) ?? [];
+      arr.push(a);
+      m.set(a.kind, arr);
+    }
+    return m;
+  }, [assets]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {ASSET_KINDS.map(({ id, label }) => {
+        const items = byKind.get(id) ?? [];
+        return (
+          <div key={id}>
+            <div
+              className="mf-mono"
+              style={{
+                fontSize: 10,
+                color: "var(--ink-3)",
+                letterSpacing: "0.12em",
+                marginBottom: 8,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>{label}</span>
+              {items.length > 0 && (
+                <span style={{ color: "var(--ink-4)" }}>
+                  {items.length} {items.length === 1 ? "ITEM" : "ITEMS"}
+                </span>
+              )}
+            </div>
+
+            {items.length === 0 ? (
+              <div
+                style={{
+                  padding: "14px 12px",
+                  borderRadius: 10,
+                  border: "1px dashed var(--line-2)",
+                  background: "rgba(255,255,255,0.015)",
+                  color: "var(--ink-4)",
+                  fontSize: 11.5,
+                  lineHeight: 1.5,
+                  textAlign: "center",
+                }}
+              >
+                Drop {label.toLowerCase()} here, or pick from the library on the left.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {items.map((a) => {
+                  const isRemoving = removingId === a.id;
+                  return (
+                    <div
+                      key={a.id}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background: "rgba(0,0,0,0.25)",
+                        border: "1px solid var(--line)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        opacity: isRemoving ? 0.55 : 1,
+                      }}
+                    >
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 12,
+                          color: "var(--ink-1)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {a.name || a.url.split("/").pop() || "asset"}
+                      </span>
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mf-mono"
+                        style={{
+                          fontSize: 10,
+                          color: "var(--ink-3)",
+                          letterSpacing: "0.1em",
+                          textDecoration: "none",
+                        }}
+                      >
+                        OPEN
+                      </a>
+                      <button
+                        onClick={() => void removeAsset(a.id)}
+                        disabled={isRemoving}
+                        aria-label={`Remove ${a.name}`}
+                        title="Remove from scene"
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 5,
+                          display: "grid",
+                          placeItems: "center",
+                          background: "transparent",
+                          border: "1px solid var(--line)",
+                          color: "var(--ink-3)",
+                          cursor: isRemoving ? "wait" : "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        <IconClose size={10} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {error && (
+        <div style={{ fontSize: 11, color: "#FCA5A5", lineHeight: 1.45 }}>
+          Failed to remove: {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ScenesPanel = ({
+  shot,
+  onShotPatched,
+  onAssetDrop,
+  onAssetsChanged,
+}: {
+  shot: ShotRow | null;
+  onShotPatched: (patch: { id: string; comments: SceneComment[] }) => void;
+  onAssetDrop?: (
+    shotId: string,
+    trackKind: "video" | "motion" | "text" | "audio",
+    asset: JobAsset,
+  ) => void;
+  onAssetsChanged?: (shotId: string, assets: SceneAsset[]) => void;
+}) => {
+  const [tab, setTab] = useState<ScenesPanelTab>("comments");
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const comments = useMemo<SceneComment[]>(() => {
+    if (!shot) return [];
+    return isSceneCommentArray(shot.comments) ? shot.comments : [];
+  }, [shot]);
+
+  const submit = async () => {
+    if (!shot) return;
+    const text = draft.trim();
+    if (!text) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/shots/${shot.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        comments?: SceneComment[];
+        error?: string;
+      };
+      if (!res.ok || !data.comments) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      onShotPatched({ id: shot.id, comments: data.comments });
+      setDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const removeComment = async (commentId: string) => {
+    if (!shot) return;
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/shots/${shot.id}/comments?commentId=${encodeURIComponent(commentId)}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        comments?: SceneComment[];
+        error?: string;
+      };
+      if (!res.ok || !data.comments) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      onShotPatched({ id: shot.id, comments: data.comments });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <aside
+      onDragOver={(e) => {
+        if (!shot || !onAssetDrop) return;
+        if (
+          Array.from(e.dataTransfer.types).includes("application/x-mg-asset")
+        ) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        // Fire only when leaving the aside itself, not crossing into a child.
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        if (!shot || !onAssetDrop) return;
+        const asset = readDraggedAsset(e);
+        if (!asset) return;
+        onAssetDrop(shot.id, "video", asset);
+        setTab("assets");
+      }}
+      style={{
+        borderLeft: "1px solid var(--line)",
+        padding: "20px 18px",
+        overflow: "auto",
+        background: dragOver
+          ? "rgba(122,162,255,0.06)"
+          : "rgba(8,9,13,0.4)",
+        outline: dragOver ? "1px dashed rgba(122,162,255,0.55)" : "none",
+        outlineOffset: -1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        transition: "background 120ms",
+      }}
+    >
+      <div
+        className="mf-mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.16em",
+          color: "var(--ink-3)",
+        }}
+      >
+        {shot
+          ? `SCENE ${String(shot.shot_index + 1).padStart(2, "0")}`
+          : "SCENE"}
+      </div>
+
+      {/* Tab switcher */}
+      <div
+        role="tablist"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 4,
+          padding: 4,
+          borderRadius: 10,
+          background: "rgba(0,0,0,0.25)",
+          border: "1px solid var(--line)",
+        }}
+      >
+        {(["assets", "comments"] as const).map((id) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(id)}
+              style={{
+                padding: "7px 10px",
+                borderRadius: 7,
+                background: active ? "rgba(122,162,255,0.16)" : "transparent",
+                border: `1px solid ${active ? "rgba(122,162,255,0.45)" : "transparent"}`,
+                color: active ? "var(--ink-1)" : "var(--ink-3)",
+                fontFamily: "inherit",
+                fontSize: 11.5,
+                fontWeight: 500,
+                cursor: "pointer",
+                letterSpacing: "0.04em",
+                textTransform: "capitalize",
+              }}
+            >
+              {id}
+            </button>
+          );
+        })}
+      </div>
+
+      {!shot ? (
+        <div
+          style={{
+            padding: "20px 16px",
+            borderRadius: 12,
+            border: "1px dashed var(--line-2)",
+            background: "rgba(255,255,255,0.015)",
+            textAlign: "center",
+            color: "var(--ink-3)",
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}
+        >
+          Click a scene in the timeline to see its assets and leave notes.
+        </div>
+      ) : tab === "assets" ? (
+        <ScenesAssetsTab shot={shot} onAssetsChanged={onAssetsChanged} />
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+            {comments.length === 0 ? (
+              <div
+                style={{
+                  padding: "16px 14px",
+                  borderRadius: 10,
+                  border: "1px dashed var(--line-2)",
+                  background: "rgba(255,255,255,0.015)",
+                  color: "var(--ink-3)",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                }}
+              >
+                No comments yet. Add the first one below.
+              </div>
+            ) : (
+              comments.map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "rgba(0,0,0,0.25)",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                      gap: 8,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span
+                      className="mf-mono"
+                      style={{
+                        fontSize: 9.5,
+                        letterSpacing: "0.12em",
+                        color: "var(--ink-3)",
+                        textTransform: "uppercase",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.author ?? "ANON"} · {relativeTimeShort(c.created_at)}
+                    </span>
+                    <button
+                      onClick={() => removeComment(c.id)}
+                      aria-label="Delete comment"
+                      title="Delete"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--ink-4)",
+                        cursor: "pointer",
+                        padding: 0,
+                        fontSize: 10,
+                      }}
+                    >
+                      <IconClose size={10} />
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      color: "var(--ink-1)",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {c.text}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !submitting) {
+                  e.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder="Leave a comment on this scene…"
+              rows={3}
+              disabled={submitting}
+              style={{
+                resize: "vertical",
+                minHeight: 64,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "rgba(0,0,0,0.25)",
+                border: "1px solid var(--line)",
+                color: "var(--ink-1)",
+                fontFamily: "inherit",
+                fontSize: 13,
+                lineHeight: 1.5,
+                outline: "none",
+              }}
+            />
+            {error && (
+              <div style={{ fontSize: 11, color: "#FCA5A5", lineHeight: 1.45 }}>{error}</div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span
+                className="mf-mono"
+                style={{ fontSize: 9.5, color: "var(--ink-4)", letterSpacing: "0.1em" }}
+              >
+                ⌘+ENTER
+              </span>
+              <button
+                onClick={() => void submit()}
+                disabled={submitting || !draft.trim()}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  background: "rgba(122,162,255,0.16)",
+                  border: "1px solid rgba(122,162,255,0.45)",
+                  color: "var(--ink-1)",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  cursor: submitting ? "wait" : "pointer",
+                  opacity: submitting || !draft.trim() ? 0.6 : 1,
+                }}
+              >
+                {submitting ? "Posting…" : "Add comment"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </aside>
+  );
+};
+
 
 const InspectorSection = ({ label }: { label: string }) => (
   <div

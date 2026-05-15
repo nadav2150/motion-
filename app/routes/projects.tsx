@@ -1,8 +1,8 @@
-import { useLoaderData, useNavigate, useRevalidator } from "react-router";
+import { data, useLoaderData, useNavigate, useRevalidator } from "react-router";
 import type { Route } from "./+types/projects";
 import { ProjectsScreen, type ProjectCard } from "../motionflow/screens/projects";
 import type { NavKey } from "../motionflow/primitives";
-import { getUserFromRequest } from "../lib/auth";
+import { requireUserOrRedirect } from "../lib/auth";
 import { listProjectsForUser, type ProjectSummary } from "../lib/jobs";
 
 export function meta(_: Route.MetaArgs) {
@@ -94,43 +94,41 @@ function relativeTime(iso: string): string {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const user = await getUserFromRequest(request);
-  if (!user) {
-    console.log("[projects loader] no user — cookie missing or expired");
-    return {
-      authed: false,
-      projects: [],
-      debug: { userId: null, email: null, queryCount: 0, error: null },
-    } satisfies LoaderData;
-  }
+  const { user, headers } = await requireUserOrRedirect(request);
   try {
     const summaries = await listProjectsForUser(user.id);
     console.log(
       `[projects loader] user=${user.id} (${user.email}) → ${summaries.length} project(s)`,
     );
-    return {
-      authed: true,
-      projects: summaries.map(toCard),
-      debug: {
-        userId: user.id,
-        email: user.email,
-        queryCount: summaries.length,
-        error: null,
-      },
-    } satisfies LoaderData;
+    return data(
+      {
+        authed: true,
+        projects: summaries.map(toCard),
+        debug: {
+          userId: user.id,
+          email: user.email,
+          queryCount: summaries.length,
+          error: null,
+        },
+      } satisfies LoaderData,
+      { headers },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[projects loader] listProjectsForUser failed for ${user.id}:`, message);
-    return {
-      authed: true,
-      projects: [],
-      debug: {
-        userId: user.id,
-        email: user.email,
-        queryCount: 0,
-        error: message,
-      },
-    } satisfies LoaderData;
+    return data(
+      {
+        authed: true,
+        projects: [],
+        debug: {
+          userId: user.id,
+          email: user.email,
+          queryCount: 0,
+          error: message,
+        },
+      } satisfies LoaderData,
+      { headers },
+    );
   }
 }
 

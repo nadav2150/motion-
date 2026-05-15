@@ -90,7 +90,19 @@
       "Bash(awk *)",
       "Bash(where supabase *)",
       "Bash(git check-ignore *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\" -Force)",
+      "WebFetch(domain:pixabay.com)",
+      "WebSearch",
+      "Bash(curl -s \"https://api.jamendo.com/v3.0/tracks/?client_id=83efa359&format=json&search=lofi&limit=1\")",
+      "Bash(curl -s -H \"Authorization: Token JoqwJHjbqhB6FjQqLamkIGDtrhUWh14uUOqh6F5e\" 'https://freesound.org/apiv2/search/text/?query=whoosh&page_size=1&filter=license:\\(%22Creative+Commons+0%22+OR+%22Attribution%22\\)&fields=id,name,username,license,previews')",
+      "PowerShell(Test-Path *)",
+      "PowerShell(New-Item *)",
+      "mcp__ide__getDiagnostics",
+      "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 40)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 30)",
+      "PowerShell(Get-Content *)"
     ]
   },
   "enabledPlugins": {

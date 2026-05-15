@@ -373,6 +373,22 @@ export type VisualIdentity = {
   language: string;
   /** Text direction. "rtl" for Hebrew/Arabic/Persian/Urdu, "ltr" for everything else. */
   textDirection: "ltr" | "rtl";
+  /**
+   * Optional brand logo URL. Set when the user provided a logo via the editor's
+   * BRAND panel; the LLM is told to embed it in the CTA / final lockup scene.
+   * Not emitted by the LLM — populated post-parse from job row.
+   */
+  logoUrl?: string | null;
+};
+
+/** Optional brand-hint inputs to anchor the LLM's identity choices. */
+export type BrandHints = {
+  /** User-supplied brand colors as hex (e.g. ["#ffda2a", "#0d0d0d"]). Override accents. */
+  colors?: string[] | null;
+  /** Public URL to the brand logo (PNG/JPG/SVG). Embedded in the final scene. */
+  logoUrl?: string | null;
+  /** Free-text brand style direction the user typed (optional). */
+  brandStyle?: string | null;
 };
 
 export type Storyboard = {
@@ -853,9 +869,21 @@ function normalizeVisualIdentity(
   };
 }
 
-export async function generateStoryboard(script: string): Promise<Storyboard> {
+export async function generateStoryboard(
+  script: string,
+  brand?: BrandHints,
+): Promise<Storyboard> {
   const trimmed = script.trim();
   if (!trimmed) throw new Error("generateStoryboard: script is empty");
+
+  const cleanColors = (brand?.colors ?? [])
+    .map((c) => c.trim().toLowerCase())
+    .filter((c) => /^#[0-9a-f]{6}$/.test(c));
+  const userText = renderStoryboardUserPrompt(trimmed, {
+    colors: cleanColors,
+    logoUrl: brand?.logoUrl ?? null,
+    brandStyle: brand?.brandStyle ?? null,
+  });
 
   const response = await getClient().messages.create({
     model: MODEL,
@@ -869,7 +897,7 @@ export async function generateStoryboard(script: string): Promise<Storyboard> {
         cache_control: { type: "ephemeral" },
       },
     ],
-    messages: [{ role: "user", content: trimmed }],
+    messages: [{ role: "user", content: userText }],
     max_tokens: 8000,
     // Opus 4.7: temperature/top_p/top_k removed. Adaptive thinking +
     // explicit effort give the model room to deliberate over palette and
@@ -903,11 +931,54 @@ export async function generateStoryboard(script: string): Promise<Storyboard> {
   }));
 
   const detected = detectScriptDirection(trimmed);
+  const identity = normalizeVisualIdentity(parsed.visualIdentity, detected);
+
+  // Brand override: if the user supplied brand colors, they take precedence
+  // over the LLM's accent picks (the LLM had them in its prompt as a hint;
+  // this hard-pins them in case the model drifted). The first user color
+  // becomes the dominant accent; remaining accents pad from the LLM's picks.
+  if (cleanColors.length > 0) {
+    const userColors = cleanColors.slice(0, 3);
+    const padded = [...userColors, ...identity.accents].slice(0, 3);
+    identity.accents = padded;
+  }
+  if (brand?.logoUrl) {
+    identity.logoUrl = brand.logoUrl;
+  }
+
   return {
     title: parsed.title || "Untitled",
-    visualIdentity: normalizeVisualIdentity(parsed.visualIdentity, detected),
+    visualIdentity: identity,
     scenes,
   };
+}
+
+/** Render the script + brand hints into the storyboard-call user message. */
+function renderStoryboardUserPrompt(
+  script: string,
+  brand: { colors: string[]; logoUrl: string | null; brandStyle: string | null },
+): string {
+  const lines: string[] = [];
+  if (brand.colors.length > 0 || brand.logoUrl || brand.brandStyle) {
+    lines.push("BRAND ANCHOR (the user provided these — honor them):");
+    if (brand.colors.length > 0) {
+      lines.push(
+        `  colors:    ${brand.colors.join(", ")}  (first = dominant accent; bake these into visualIdentity.accents and pick a complementary background)`,
+      );
+    }
+    if (brand.logoUrl) {
+      lines.push(
+        `  logoUrl:   ${brand.logoUrl}  (available as <img src="${brand.logoUrl}">; reference it in the final lockup/CTA scene's contentHtml)`,
+      );
+    }
+    if (brand.brandStyle) {
+      lines.push(`  brandStyle: ${brand.brandStyle.trim()}`);
+    }
+    lines.push("");
+    lines.push("SCRIPT:");
+  }
+  lines.push(script);
+  return lines.join("\n");
 }
 
 // ─── Film fills: JSON shape + schema + merger + generator ─────────────────
@@ -1285,6 +1356,10 @@ function renderFilmIdentityPrompt(
     ? `imageKeyword: "${identity.imageKeyword}" → https://source.unsplash.com/1920x1080/?${encodeURIComponent(identity.imageKeyword)}`
     : `imageKeyword: (none — type-only film)`;
 
+  const logoHint = identity.logoUrl
+    ? `\nbrandLogo:      ${identity.logoUrl}\n  · A real brand logo is provided. Embed it via <img src="${identity.logoUrl}" alt="logo" class="brand-logo"> in the FINAL scene's lockup/CTA. Style it (width ~280–420px) and animate it via standard entrance recipes. Optionally echo it small (~60px, top corner) in the OPENING scene as a quiet attribution; otherwise reserve it for the lockup so the reveal pays off.`
+    : "";
+
   const dirBlock =
     identity.textDirection === "rtl"
       ? `\n═══ RTL FILM — language="${identity.language}", dir="rtl" ═══\nAll text right-anchored. Asymmetric layouts flip: focal side on the RIGHT, negative space LEFT. Accent bars on the right edge. Stagger reveals read right-to-left (use stagger.from: "end"). Mockups on the LEFT, type on the RIGHT. Do NOT translate the copy.\n`
@@ -1312,7 +1387,7 @@ monoFont:       "${identity.monoFont}" (--mono-font)
 motionLanguage: ${identity.motionLanguage}
 signatureMove:  ${identity.signatureMove}
 assetPolicy:    ${identity.assetPolicy}
-${imageHint}
+${imageHint}${logoHint}
 
 ══════════════════════════════════════════════════════════════════════════════
 FILM PLAN — ${storyboard.scenes.length} scenes · ${totalSeconds}s total

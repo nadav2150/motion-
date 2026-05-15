@@ -143,6 +143,91 @@ export async function updateJobBrand(
   }
 }
 
+export type JobSfx = {
+  sfxId: string;
+  name: string;
+  author: string;
+  previewUrl: string;
+  license: string;
+};
+
+export async function updateJobSfx(
+  jobId: string,
+  userId: string,
+  sfx: JobSfx | null,
+): Promise<void> {
+  const patch = sfx
+    ? {
+        sfx_id: sfx.sfxId,
+        sfx_name: sfx.name,
+        sfx_author: sfx.author,
+        sfx_url: sfx.previewUrl,
+        sfx_license: sfx.license,
+      }
+    : {
+        sfx_id: null,
+        sfx_name: null,
+        sfx_author: null,
+        sfx_url: null,
+        sfx_license: null,
+      };
+
+  const db = getSupabase();
+  const { data, error } = await db
+    .from("jobs")
+    .update(patch)
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .select("id");
+  if (error) {
+    throw new Error(`updateJobSfx(${jobId}) failed: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error("Project not found");
+  }
+}
+
+export type JobMusic = {
+  trackId: string;
+  title: string;
+  artist: string;
+  streamUrl: string;
+};
+
+export async function updateJobMusic(
+  jobId: string,
+  userId: string,
+  music: JobMusic | null,
+): Promise<void> {
+  const patch = music
+    ? {
+        music_track_id: music.trackId,
+        music_title: music.title,
+        music_artist: music.artist,
+        music_url: music.streamUrl,
+      }
+    : {
+        music_track_id: null,
+        music_title: null,
+        music_artist: null,
+        music_url: null,
+      };
+
+  const db = getSupabase();
+  const { data, error } = await db
+    .from("jobs")
+    .update(patch)
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .select("id");
+  if (error) {
+    throw new Error(`updateJobMusic(${jobId}) failed: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error("Project not found");
+  }
+}
+
 async function setJobStatus(
   jobId: string,
   patch: Partial<
@@ -515,10 +600,20 @@ export async function runJob(jobId: string): Promise<void> {
 
 async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   // Stage 1 — directing: LLM splits script into scenes + locks identity.
+  // Brand hints from the job row anchor the LLM's identity choices and
+  // post-parse override the accent palette / inject the logo URL.
   await setJobStatus(jobId, { status: "directing" });
-  const storyboard = await generateStoryboard(job.script);
+  const storyboard = await generateStoryboard(job.script, {
+    colors: job.brand_colors ?? null,
+    logoUrl: job.brand_logo_url ?? null,
+    brandStyle: job.brand_style ?? null,
+  });
   console.log(
-    `[hyperframes ${jobId}] storyboard: "${storyboard.title}" — ${storyboard.scenes.length} scenes`,
+    `[hyperframes ${jobId}] storyboard: "${storyboard.title}" — ${storyboard.scenes.length} scenes` +
+      (job.brand_colors?.length
+        ? ` · brand colors=${job.brand_colors.join(",")}`
+        : "") +
+      (job.brand_logo_url ? ` · brand logo` : ""),
   );
 
   await setJobStatus(jobId, {
@@ -948,16 +1043,20 @@ export async function listProjectsForUser(userId: string): Promise<ProjectSummar
   const jobIds = jobs.map((j) => j.id as string);
   const { data: thumbs, error: shotErr } = await db
     .from("shots")
-    .select("job_id, shot_index, image_url, clip_status")
+    .select("job_id, shot_index, image_url, scene_thumbnail_path, clip_status")
     .in("job_id", jobIds);
   if (shotErr) throw new Error(`listProjectsForUser thumb fetch failed: ${shotErr.message}`);
 
+  // Prefer the hyperframes scene thumbnail (default pipeline) and fall back to
+  // the legacy AI-media image_url so older jobs still get a cover.
   const firstByJob = new Map<string, string | null>();
   const readyClipsByJob = new Map<string, number>();
   for (const row of thumbs ?? []) {
     const jid = row.job_id as string;
     if (!firstByJob.has(jid) && row.shot_index === 0) {
-      firstByJob.set(jid, (row.image_url as string | null) ?? null);
+      const sceneThumb = row.scene_thumbnail_path as string | null;
+      const legacyImg = row.image_url as string | null;
+      firstByJob.set(jid, sceneThumb ?? legacyImg ?? null);
     }
     if (row.clip_status === "ready") {
       readyClipsByJob.set(jid, (readyClipsByJob.get(jid) ?? 0) + 1);

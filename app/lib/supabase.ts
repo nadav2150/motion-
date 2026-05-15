@@ -99,6 +99,9 @@ export type JobRow = {
   brand_logo_url: string | null;
   brand_logo_storage_path: string | null;
   brand_colors: string[] | null;
+  // Project-level asset library (see supabase/migrations/20260520_job_assets.sql).
+  // Each entry: { id, kind, url, storage_path, name, mime, size_bytes, created_at }.
+  assets: unknown;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -194,4 +197,13 @@ export type ShotRow = {
   rule_break_kind: string | null;
   is_hold_scene: boolean | null;
   frame_density_mean: number | null;
+
+  // Per-scene user comments (see supabase/migrations/20260518_shot_comments.sql).
+  // Each entry: { id: string; text: string; created_at: string; author?: string | null }.
+  comments: unknown;
+
+  // Per-scene attached assets (see supabase/migrations/20260519_shot_assets.sql).
+  // Each entry: { id, kind: 'video'|'image'|'screenshot'|'voiceover'|'sfx'|'music',
+  //               url, name, created_at }.
+  assets: unknown;
 };

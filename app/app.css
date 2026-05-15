@@ -41,6 +41,7 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 html, body { margin: 0; padding: 0; }
+html { overflow-x: hidden; }
 body {
   font-family: 'Geist', 'Inter', -apple-system, system-ui, sans-serif;
   font-feature-settings: "ss01", "cv11";

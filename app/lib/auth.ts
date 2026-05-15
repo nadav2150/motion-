@@ -197,3 +197,88 @@ export async function getUserFromRequest(
     return null;
   }
 }
+
+/**
+ * Resolve the user for a request, transparently refreshing the session when
+ * the short-lived access token has expired but the long-lived refresh token
+ * is still valid. Callers should set new cookies via {@link setSessionCookies}
+ * when `refreshed` is non-null so the browser keeps the refreshed session.
+ */
+export async function getUserWithRefresh(
+  request: Request,
+): Promise<{ user: AuthUser | null; refreshed: Session | null }> {
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const accessToken = cookies[ACCESS_COOKIE];
+  const refreshToken = cookies[REFRESH_COOKIE];
+  const supabase = getSupabase();
+
+  if (accessToken) {
+    try {
+      const { data, error } = await supabase.auth.getUser(accessToken);
+      if (!error && data.user) {
+        const meta = (data.user.user_metadata ?? {}) as { name?: string };
+        return {
+          user: {
+            id: data.user.id,
+            email: data.user.email ?? null,
+            name: meta.name ?? null,
+          },
+          refreshed: null,
+        };
+      }
+    } catch {
+      // fall through to refresh
+    }
+  }
+
+  if (!refreshToken) return { user: null, refreshed: null };
+
+  try {
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+    if (error || !data.session || !data.user) {
+      return { user: null, refreshed: null };
+    }
+    const meta = (data.user.user_metadata ?? {}) as { name?: string };
+    return {
+      user: {
+        id: data.user.id,
+        email: data.user.email ?? null,
+        name: meta.name ?? null,
+      },
+      refreshed: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_in: data.session.expires_in ?? ONE_HOUR,
+      },
+    };
+  } catch {
+    return { user: null, refreshed: null };
+  }
+}
+
+/**
+ * Guard for protected page loaders. Returns the user plus a Headers object
+ * the loader should attach to its response (so Set-Cookie from a silent
+ * refresh actually reaches the browser). Throws a 302 to /signin?next=... on
+ * any unauthenticated request, clearing stale cookies so the next request
+ * isn't stuck in a refresh loop.
+ */
+export async function requireUserOrRedirect(
+  request: Request,
+): Promise<{ user: AuthUser; headers: Headers }> {
+  const { user, refreshed } = await getUserWithRefresh(request);
+  const headers = new Headers();
+  if (refreshed) setSessionCookies(headers, refreshed);
+
+  if (!user) {
+    clearSessionCookies(headers);
+    const url = new URL(request.url);
+    const next = encodeURIComponent(url.pathname + url.search);
+    headers.set("Location", `/signin?next=${next}`);
+    throw new Response(null, { status: 302, headers });
+  }
+
+  return { user, headers };
+}
