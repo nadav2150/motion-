@@ -27,8 +27,9 @@ export type RenderSceneArgs = {
 export type RenderSceneResult = {
   mp4: MirroredAsset;
   htmlPath: string;
-  cssPath: string;
-  jsPath: string;
+  // Null when the caller passed an empty css/js (HTML-only composition).
+  cssPath: string | null;
+  jsPath: string | null;
   durationMs: number;
 };
 
@@ -41,10 +42,16 @@ export async function renderScene(args: RenderSceneArgs): Promise<RenderSceneRes
   const cssFile = path.join(dir, "style.css");
   const jsFile = path.join(dir, "animation.js");
 
+  // Perf A6: callers (runHyperframesExport) pass empty strings for css/js
+  // because the master composition is HTML-only. Skip writing + uploading
+  // those when empty.
+  const hasCss = args.files.css.length > 0;
+  const hasJs = args.files.js.length > 0;
+
   await Promise.all([
     writeFile(htmlFile, args.files.html, "utf8"),
-    writeFile(cssFile, args.files.css, "utf8"),
-    writeFile(jsFile, args.files.js, "utf8"),
+    hasCss ? writeFile(cssFile, args.files.css, "utf8") : Promise.resolve(),
+    hasJs ? writeFile(jsFile, args.files.js, "utf8") : Promise.resolve(),
   ]);
 
   // Upload the source files so they're inspectable without re-emit.
@@ -56,20 +63,24 @@ export async function renderScene(args: RenderSceneArgs): Promise<RenderSceneRes
       body: Buffer.from(args.files.html, "utf8"),
       contentType: "text/html; charset=utf-8",
     }),
-    uploadSceneAsset({
-      jobId: args.jobId,
-      sceneId: args.sceneId,
-      filename: "style.css",
-      body: Buffer.from(args.files.css, "utf8"),
-      contentType: "text/css; charset=utf-8",
-    }),
-    uploadSceneAsset({
-      jobId: args.jobId,
-      sceneId: args.sceneId,
-      filename: "animation.js",
-      body: Buffer.from(args.files.js, "utf8"),
-      contentType: "application/javascript; charset=utf-8",
-    }),
+    hasCss
+      ? uploadSceneAsset({
+          jobId: args.jobId,
+          sceneId: args.sceneId,
+          filename: "style.css",
+          body: Buffer.from(args.files.css, "utf8"),
+          contentType: "text/css; charset=utf-8",
+        })
+      : Promise.resolve(null),
+    hasJs
+      ? uploadSceneAsset({
+          jobId: args.jobId,
+          sceneId: args.sceneId,
+          filename: "animation.js",
+          body: Buffer.from(args.files.js, "utf8"),
+          contentType: "application/javascript; charset=utf-8",
+        })
+      : Promise.resolve(null),
   ]);
 
   // Run `npx hyperframes render . --output scene.mp4` in the temp dir.
@@ -121,8 +132,8 @@ export async function renderScene(args: RenderSceneArgs): Promise<RenderSceneRes
   return {
     mp4,
     htmlPath: htmlMirror.storagePath,
-    cssPath: cssMirror.storagePath,
-    jsPath: jsMirror.storagePath,
+    cssPath: cssMirror?.storagePath ?? null,
+    jsPath: jsMirror?.storagePath ?? null,
     durationMs: Date.now() - startedAt,
   };
 }

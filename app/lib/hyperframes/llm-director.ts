@@ -2776,6 +2776,36 @@ export async function generateFilmBlueprint(
 }
 
 /**
+ * Patch a previously-generated blueprint with locked assets sourced after the
+ * blueprint LLM call. Lets jobs.ts fire `generateFilmBlueprint` in parallel
+ * with `sourceAssets` (perf A3) and stamp asset URLs onto briefs once both
+ * complete. Idempotent — calling with an empty/undefined catalog returns the
+ * blueprint unchanged.
+ */
+export function applyLockedAssetsToBlueprint(
+  blueprint: FilmBlueprint,
+  assetCatalog: SourcedAssetCatalog | undefined,
+): FilmBlueprint {
+  if (!assetCatalog) return blueprint;
+  return {
+    ...blueprint,
+    sceneOutline: blueprint.sceneOutline.map((brief) => {
+      const slots = assetCatalog.scenes[brief.id];
+      if (!slots || slots.length === 0) return brief;
+      return {
+        ...brief,
+        lockedAssets: slots.map((a) => ({
+          slot: a.slot,
+          role: a.role,
+          url: a.url,
+          cssDirective: a.cssDirective,
+        })),
+      };
+    }),
+  };
+}
+
+/**
  * Clamp / patch the model's filmRhythm so it survives sloppy output without
  * crashing downstream consumers. Drops out-of-range scene indices, fills a
  * default energy curve when missing, defaults the climax to the last scene
@@ -3474,8 +3504,14 @@ export async function generateFilmHTML(
   storyboard: Storyboard,
   identity: VisualIdentity = DEFAULT_VISUAL_IDENTITY,
   assetCatalog?: SourcedAssetCatalog,
+  // Perf A3: callers can pre-build the blueprint (e.g. in parallel with
+  // `sourceAssets`) and pass it in to skip the internal blueprint LLM call.
+  // The caller is responsible for stamping locked assets via
+  // `applyLockedAssetsToBlueprint` before passing the blueprint in.
+  prebuiltBlueprint?: FilmBlueprint,
 ): Promise<GenerateFilmHTMLResult> {
-  const blueprint = await generateFilmBlueprint(storyboard, identity, assetCatalog);
+  const blueprint =
+    prebuiltBlueprint ?? (await generateFilmBlueprint(storyboard, identity, assetCatalog));
 
   const { fills: sceneFills, contexts } = await generateScenesWithContinuity(blueprint);
 

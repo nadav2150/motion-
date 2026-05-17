@@ -43,6 +43,7 @@ export type JobRow = {
   created_at: string;
   completed_at: string | null;
   scenes_ready_at: string | null;
+  polished_at: string | null;
   music_track_id: string | null;
   music_url: string | null;
   music_title: string | null;

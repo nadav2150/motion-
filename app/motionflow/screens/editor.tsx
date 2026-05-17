@@ -233,6 +233,39 @@ export const EditorScreen = ({
             loading={generating || (showStoryboard && !TERMINAL.includes(status))}
             disabled={!script.trim()}
           />
+          {(status === "scenes_ready" || status === "vision_critique" || status === "refining_scenes") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<IconWand size={12}/>}
+              disabled={
+                !jobId ||
+                status === "vision_critique" ||
+                status === "refining_scenes" ||
+                !!job?.polished_at
+              }
+              onClick={async () => {
+                if (!jobId) return;
+                try {
+                  const res = await fetch(`/api/jobs/${jobId}/critique`, { method: "POST" });
+                  const data = (await res.json()) as { error?: string };
+                  if (!res.ok) {
+                    setError(data.error ?? `Critique failed (${res.status})`);
+                    return;
+                  }
+                  setPollNonce((n) => n + 1);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Network error");
+                }
+              }}
+            >
+              {job?.polished_at
+                ? "Polished"
+                : status === "vision_critique" || status === "refining_scenes"
+                  ? "Polishing…"
+                  : "Critique & polish"}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

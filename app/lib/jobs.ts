@@ -43,15 +43,22 @@ import {
 } from "./storage";
 import { getSupabase, type JobRow, type ShotRow } from "./supabase";
 import {
+  applyLockedAssetsToBlueprint,
   buildFilmSkeleton,
   buildRefinementSet,
   generateAssetPlan,
+  generateFilmBlueprint,
   generateFilmCritique,
   generateFilmHTML,
   generateStoryboard,
   generateVisionCritique,
   refineScenes,
+  type FilmBlueprint,
+  type FilmFills,
+  type Motif,
+  type SceneCallContext,
   type SceneCritique,
+  type Storyboard,
   type StoryboardScene,
 } from "./hyperframes/llm-director";
 import { renderScene } from "./hyperframes/render";
@@ -72,6 +79,64 @@ function joinPalette(palette: string[]): string {
 
 const IMAGE_CONCURRENCY = 2;
 export const MAX_SHOTS_PER_JOB = MAX_SHOTS;
+
+// Perf B4: auto-critique + refinement adds ~10 min per run because critique
+// flags most/all scenes in practice and refinement re-fires them through the
+// same effort=high scene-fill path. Default OFF for iteration speed; opt back
+// in with HYPERFRAMES_AUTO_CRITIQUE=true. The "Critique & polish" button on
+// the editor invokes POST /api/jobs/:id/critique → critiqueAndPolishJob to
+// run the same block on demand against an already-shipped scenes_ready job.
+const AUTO_CRITIQUE_ENABLED = process.env.HYPERFRAMES_AUTO_CRITIQUE === "true";
+
+// SceneCallContext serialization: motifRegistry is a Set<Motif>, which JSON
+// drops silently. Convert to/from arrays at the persistence boundary. Used by
+// runHyperframesDirect (write) and critiqueAndPolishJob (read).
+type SerializedSceneCallContext = Omit<SceneCallContext, "continuityState"> & {
+  continuityState: Omit<SceneCallContext["continuityState"], "motifRegistry"> & {
+    motifRegistry: Motif[];
+  };
+};
+
+function serializeSceneContexts(contexts: SceneCallContext[]): SerializedSceneCallContext[] {
+  return contexts.map((ctx) => ({
+    ...ctx,
+    continuityState: {
+      ...ctx.continuityState,
+      motifRegistry: Array.from(ctx.continuityState.motifRegistry),
+    },
+  }));
+}
+
+function deserializeSceneContexts(raw: unknown): SceneCallContext[] {
+  if (!Array.isArray(raw)) {
+    throw new Error("deserializeSceneContexts: expected an array");
+  }
+  return (raw as SerializedSceneCallContext[]).map((ctx) => ({
+    ...ctx,
+    continuityState: {
+      ...ctx.continuityState,
+      motifRegistry: new Set(ctx.continuityState.motifRegistry ?? []),
+    },
+  }));
+}
+
+// Per-stage timing wrapper. Logs start + duration (or failure duration)
+// for each phase of runHyperframesDirect / runHyperframesExport. Lets us
+// see exactly which stage moves when we ship perf changes.
+async function timed<T>(jobId: string, stage: string, fn: () => Promise<T>): Promise<T> {
+  const start = Date.now();
+  console.log(`[hyperframes ${jobId}] [timing] ${stage} start`);
+  try {
+    const result = await fn();
+    const ms = Date.now() - start;
+    console.log(`[hyperframes ${jobId}] [timing] ${stage} done in ${(ms / 1000).toFixed(1)}s`);
+    return result;
+  } catch (err) {
+    const ms = Date.now() - start;
+    console.log(`[hyperframes ${jobId}] [timing] ${stage} FAILED after ${(ms / 1000).toFixed(1)}s`);
+    throw err;
+  }
+}
 
 export type CreateJobInput = {
   script: string;
@@ -250,6 +315,10 @@ async function setJobStatus(
       | "completed_at"
       | "scenes_ready_at"
       | "film_critique"
+      | "blueprint"
+      | "scene_contexts"
+      | "film_fills"
+      | "polished_at"
     >
   >,
 ): Promise<void> {
@@ -612,12 +681,15 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   // Stage 1 — directing: LLM splits script into scenes + locks identity.
   // Brand hints from the job row anchor the LLM's identity choices and
   // post-parse override the accent palette / inject the logo URL.
+  const jobStart = Date.now();
   await setJobStatus(jobId, { status: "directing" });
-  const storyboard = await generateStoryboard(job.script, {
-    colors: job.brand_colors ?? null,
-    logoUrl: job.brand_logo_url ?? null,
-    brandStyle: job.brand_style ?? null,
-  });
+  const storyboard = await timed(jobId, "storyboard", () =>
+    generateStoryboard(job.script, {
+      colors: job.brand_colors ?? null,
+      logoUrl: job.brand_logo_url ?? null,
+      brandStyle: job.brand_style ?? null,
+    }),
+  );
   console.log(
     `[hyperframes ${jobId}] storyboard: "${storyboard.title}" — ${storyboard.scenes.length} scenes` +
       (job.brand_colors?.length
@@ -666,19 +738,40 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     });
   }
 
-  const assetPlan = await generateAssetPlan(storyboard, storyboard.visualIdentity, jobAssets);
-  const assetCatalog = await sourceAssets({ jobId, plan: assetPlan, jobAssets });
+  const assetPlan = await timed(jobId, "asset_plan", () =>
+    generateAssetPlan(storyboard, storyboard.visualIdentity, jobAssets),
+  );
 
-  // Stage 2 — generating_scenes: blueprint + per-scene calls (Layer 2
-  // pipeline). Now receives the locked assets so per-scene briefs reference
-  // real imagery via lockedAssets.
+  // Perf A3: blueprint LLM call and Flux/Unsplash asset sourcing are
+  // independent — fire them in parallel. The blueprint is generated WITHOUT
+  // the asset catalog (it doesn't need URLs to draft briefs), then we stamp
+  // lockedAssets onto each brief once sourcing completes.
+  const [assetCatalog, draftBlueprint] = await timed(jobId, "asset_sourcing+blueprint", () =>
+    Promise.all([
+      sourceAssets({ jobId, plan: assetPlan, jobAssets }),
+      generateFilmBlueprint(storyboard, storyboard.visualIdentity),
+    ]),
+  );
+  const blueprintWithAssets = applyLockedAssetsToBlueprint(draftBlueprint, assetCatalog);
+
+  // Stage 2 — generating_scenes: per-scene fills using the pre-built
+  // (asset-stamped) blueprint. generateFilmHTML skips its internal blueprint
+  // call when one is provided.
   await setJobStatus(jobId, { status: "generating_scenes" });
   console.log(`[hyperframes ${jobId}] generating film fills (blueprint + batched scenes, ${storyboard.scenes.length} scenes)`);
-  let { html, fills, blueprint, sceneContexts } = await generateFilmHTML(
-    storyboard,
-    storyboard.visualIdentity,
-    assetCatalog,
+  let { html, fills, blueprint, sceneContexts } = await timed(jobId, "film_html", () =>
+    generateFilmHTML(storyboard, storyboard.visualIdentity, assetCatalog, blueprintWithAssets),
   );
+
+  // Persist the in-memory state the critique+refinement loop needs so it can
+  // run on demand later via POST /api/jobs/:id/critique. Without this, the
+  // sceneContexts (with original continuity snapshots) and the blueprint go
+  // out of scope when this function returns.
+  await setJobStatus(jobId, {
+    blueprint: blueprint as unknown as object,
+    scene_contexts: serializeSceneContexts(sceneContexts) as unknown as object,
+    film_fills: fills as unknown as object,
+  });
 
   // Upload the single composition.html.
   let compositionAsset = await uploadSceneAsset({
@@ -693,20 +786,103 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   // composite public URLs in scene order so the critique stage can feed them
   // to Sonnet vision without re-fetching from the DB.
   const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
-  const motionTrailUrls = await captureScenes({
-    jobId,
-    html,
-    storyboard,
-    insertedScenes,
-    compositionAssetUrl: compositionAsset.publicUrl,
-    totalFilmSeconds,
-    sceneIndices: storyboard.scenes.map((_, i) => i),
-  });
+  const motionTrailUrls = await timed(jobId, "capture_scenes", () =>
+    captureScenes({
+      jobId,
+      html,
+      storyboard,
+      insertedScenes,
+      compositionAssetUrl: compositionAsset.publicUrl,
+      totalFilmSeconds,
+      sceneIndices: storyboard.scenes.map((_, i) => i),
+    }),
+  );
 
-  // ── Stage 6 + 7 — vision critique (per-scene + film-level) ──────────────
-  // Only run critique on scenes that successfully produced a motion-trail
-  // composite. Scenes without a trail URL (capture failure) are skipped at
-  // the critique level and remain whatever the scene-fill emitted.
+  // Ship to scenes_ready immediately after the first capture pass. The
+  // critique + refinement loop is on-demand via critiqueAndPolishJob (either
+  // forced inline by AUTO_CRITIQUE_ENABLED, or triggered later by the user
+  // through POST /api/jobs/:id/critique).
+  await setJobStatus(jobId, {
+    status: "scenes_ready",
+    scenes_ready_at: new Date().toISOString(),
+  });
+  const totalMs = Date.now() - jobStart;
+  console.log(
+    `[hyperframes ${jobId}] [timing] TOTAL submit→scenes_ready ${(totalMs / 1000).toFixed(1)}s (${(totalMs / 60000).toFixed(1)}min)`,
+  );
+
+  if (AUTO_CRITIQUE_ENABLED) {
+    console.log(`[hyperframes ${jobId}] AUTO_CRITIQUE_ENABLED=true — running critique+polish inline`);
+    await critiqueAndPolishJob(jobId);
+  } else {
+    console.log(`[hyperframes ${jobId}] auto-critique disabled (set HYPERFRAMES_AUTO_CRITIQUE=true to enable) — ship as-is; user can promote via /api/jobs/:id/critique`);
+  }
+}
+
+/**
+ * Run the vision-critique + refinement + recapture pass against an existing
+ * scenes_ready job. Idempotent on idempotent inputs — re-running won't
+ * double-refine because subsequent runs read the patched film_fills.
+ *
+ * Reconstitutes the in-memory state that runHyperframesDirect persisted
+ * (blueprint, scene_contexts, film_fills) plus the HTML + motion-trail URLs
+ * already on the shot rows. On completion patches film_fills, sets
+ * polished_at, and returns the job to scenes_ready.
+ *
+ * Called from:
+ *   • runHyperframesDirect (when AUTO_CRITIQUE_ENABLED=true)
+ *   • POST /api/jobs/:id/critique (the "Critique & polish" button)
+ */
+export async function critiqueAndPolishJob(jobId: string): Promise<void> {
+  const db = getSupabase();
+
+  // 1. Load job + shots.
+  const { data: jobData, error: jobErr } = await db
+    .from("jobs")
+    .select("*")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (jobErr || !jobData) {
+    throw new Error(`critiqueAndPolishJob(${jobId}) load job failed: ${jobErr?.message ?? "not found"}`);
+  }
+  const job = jobData as JobRow;
+
+  if (!job.blueprint || !job.scene_contexts || !job.film_fills || !job.director_raw) {
+    throw new Error(
+      `critiqueAndPolishJob(${jobId}) not eligible: missing persisted state ` +
+        `(blueprint=${!!job.blueprint}, scene_contexts=${!!job.scene_contexts}, ` +
+        `film_fills=${!!job.film_fills}, director_raw=${!!job.director_raw})`,
+    );
+  }
+
+  const { data: shotsData, error: shotsErr } = await db
+    .from("shots")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("shot_index", { ascending: true });
+  if (shotsErr || !shotsData) {
+    throw new Error(`critiqueAndPolishJob(${jobId}) load shots failed: ${shotsErr?.message}`);
+  }
+  const insertedScenes = shotsData as ShotRow[];
+  if (insertedScenes.length === 0) {
+    throw new Error(`critiqueAndPolishJob(${jobId}): no shots on job`);
+  }
+
+  // 2. Reconstitute state.
+  const storyboard = job.director_raw as unknown as Storyboard;
+  const blueprint = job.blueprint as unknown as FilmBlueprint;
+  const sceneContexts = deserializeSceneContexts(job.scene_contexts);
+  let fills = job.film_fills as unknown as FilmFills;
+
+  const compositionAssetUrl = insertedScenes[0].scene_html_path;
+  if (!compositionAssetUrl) {
+    throw new Error(`critiqueAndPolishJob(${jobId}): shots[0].scene_html_path is null`);
+  }
+  let html = await fetchSceneHTML(compositionAssetUrl);
+  const motionTrailUrls: (string | null)[] = insertedScenes.map((s) => s.motion_trail_path);
+  const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
+
+  // 3. Vision critique (per-scene parallel + film-level).
   await setJobStatus(jobId, { status: "vision_critique" });
 
   const critiquableIndices = motionTrailUrls
@@ -715,9 +891,11 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
 
   const perSceneCritiques: SceneCritique[] = [];
   if (critiquableIndices.length > 0) {
-    const settled = await Promise.allSettled(
-      critiquableIndices.map((x) =>
-        generateVisionCritique(blueprint, x.i, x.url),
+    const settled = await timed(jobId, "vision_critique_per_scene", () =>
+      Promise.allSettled(
+        critiquableIndices.map((x) =>
+          generateVisionCritique(blueprint, x.i, x.url),
+        ),
       ),
     );
     for (let k = 0; k < settled.length; k++) {
@@ -744,11 +922,13 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     motionTrailUrls.every((u): u is string => u !== null);
   if (allTrailsPresent && perSceneCritiques.length > 0) {
     try {
-      filmCritique = await generateFilmCritique(
-        blueprint,
-        storyboard,
-        perSceneCritiques,
-        motionTrailUrls as string[],
+      filmCritique = await timed(jobId, "film_critique", () =>
+        generateFilmCritique(
+          blueprint,
+          storyboard,
+          perSceneCritiques,
+          motionTrailUrls as string[],
+        ),
       );
       await setJobStatus(jobId, { film_critique: filmCritique as unknown as object });
     } catch (filmErr) {
@@ -763,19 +943,20 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     );
   }
 
-  // ── Stage 8 — refinement: re-fire flagged scenes, rebuild composition,
-  //              re-capture composites for the refined scenes only ────────
+  // 4. Refinement: re-fire flagged scenes, rebuild composition, recapture.
   const refinements = buildRefinementSet(perSceneCritiques, filmCritique);
   if (refinements.length > 0) {
     await setJobStatus(jobId, { status: "refining_scenes" });
     console.log(
       `[hyperframes ${jobId}] refining ${refinements.length} scene${refinements.length === 1 ? "" : "s"}: ${refinements.map((r) => r.sceneId).join(", ")}`,
     );
-    const refinedScenes = await refineScenes(blueprint, sceneContexts, fills.scenes, refinements);
+    const refinedScenes = await timed(jobId, "refine_scenes", () =>
+      refineScenes(blueprint, sceneContexts, fills.scenes, refinements),
+    );
     fills = { ...fills, scenes: refinedScenes };
     html = buildFilmSkeleton(storyboard, storyboard.visualIdentity, fills);
 
-    compositionAsset = await uploadSceneAsset({
+    const compositionAsset = await uploadSceneAsset({
       jobId,
       sceneId: "main",
       filename: "composition.html",
@@ -787,22 +968,26 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     const refinedIndices = refinements
       .map((r) => blueprint.sceneOutline.findIndex((b) => b.id === r.sceneId))
       .filter((i) => i >= 0);
-    await captureScenes({
-      jobId,
-      html,
-      storyboard,
-      insertedScenes,
-      compositionAssetUrl: compositionAsset.publicUrl,
-      totalFilmSeconds,
-      sceneIndices: refinedIndices,
-    });
+    await timed(jobId, "recapture_refined_scenes", () =>
+      captureScenes({
+        jobId,
+        html,
+        storyboard,
+        insertedScenes,
+        compositionAssetUrl: compositionAsset.publicUrl,
+        totalFilmSeconds,
+        sceneIndices: refinedIndices,
+      }),
+    );
   } else {
     console.log(`[hyperframes ${jobId}] no refinements requested by critiques — shipping as-is`);
   }
 
+  // 5. Finalize: patched fills + polished_at + back to scenes_ready.
   await setJobStatus(jobId, {
     status: "scenes_ready",
-    scenes_ready_at: new Date().toISOString(),
+    film_fills: fills as unknown as object,
+    polished_at: new Date().toISOString(),
   });
 }
 
@@ -840,9 +1025,17 @@ async function captureScenes(args: {
   }
 
   const indexSet = new Set(args.sceneIndices);
+  const targetIndices = storyboard.scenes
+    .map((_, i) => i)
+    .filter((i) => indexSet.has(i));
 
-  for (let i = 0; i < storyboard.scenes.length; i++) {
-    if (!indexSet.has(i)) continue;
+  // Per-scene capture is independent across scenes (different sceneId, different
+  // DB row, different upload paths). Playwright shares one cached browser across
+  // contexts (`thumbnail.ts:cachedBrowser`) so concurrency here = parallel
+  // Playwright contexts on the shared browser. Limit kept low (3) to avoid GPU
+  // contention from sharp + Playwright's compositor.
+  const SCENE_CAPTURE_CONCURRENCY = 3;
+  const tasks = targetIndices.map((i) => async () => {
     const scene = storyboard.scenes[i];
     const shot = insertedScenes[i];
     const sceneStart = sceneStarts[i];
@@ -895,7 +1088,9 @@ async function captureScenes(args: {
         trailErr instanceof Error ? trailErr.message : trailErr,
       );
     }
-  }
+  });
+
+  await runWithConcurrency(tasks, SCENE_CAPTURE_CONCURRENCY);
 
   return motionTrailUrls;
 }
@@ -923,6 +1118,7 @@ async function runHyperframesExport(jobId: string): Promise<void> {
   }
 
   // Stage 3 — rendering_scenes (single render of the master composition).
+  const exportStart = Date.now();
   await setJobStatus(jobId, { status: "rendering_scenes" });
   for (const shot of shots) {
     await patchShot(shot.id, { render_status: "generating", error: null });
@@ -930,12 +1126,14 @@ async function runHyperframesExport(jobId: string): Promise<void> {
 
   let result;
   try {
-    const html = await fetchSceneHTML(compositionUrl);
-    result = await renderScene({
-      jobId,
-      sceneId: "main",
-      files: { html, css: "", js: "" },
-    });
+    const html = await timed(jobId, "export_fetch_html", () => fetchSceneHTML(compositionUrl));
+    result = await timed(jobId, "export_render_scene", () =>
+      renderScene({
+        jobId,
+        sceneId: "main",
+        files: { html, css: "", js: "" },
+      }),
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     for (const shot of shots) {
@@ -959,6 +1157,10 @@ async function runHyperframesExport(jobId: string): Promise<void> {
     status: "completed",
     completed_at: new Date().toISOString(),
   });
+  const totalMs = Date.now() - exportStart;
+  console.log(
+    `[hyperframes ${jobId}] [timing] TOTAL export ${(totalMs / 1000).toFixed(1)}s (${(totalMs / 60000).toFixed(1)}min)`,
+  );
 }
 
 async function fetchSceneHTML(sceneHtmlUrl: string | null): Promise<string> {

@@ -121,6 +121,16 @@ export type JobRow = {
   // FilmCritique JSON: scores across the directed-whole rubric, verdict,
   // film-level issues with affectedSceneIds.
   film_critique: unknown;
+
+  // Polish-endpoint state (see supabase/migrations/20260526_polish_endpoint.sql).
+  // Captured at the end of generateFilmHTML so POST /api/jobs/:id/critique
+  // can re-fire scenes with the same continuity snapshots without re-running
+  // the full directing pipeline. motifRegistry inside scene_contexts is
+  // serialized as an array (Sets don't survive JSON) and re-hydrated on read.
+  blueprint: unknown;
+  scene_contexts: unknown;
+  film_fills: unknown;
+  polished_at: string | null;
 };
 
 export type ShotRow = {
