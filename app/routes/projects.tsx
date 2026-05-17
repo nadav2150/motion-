@@ -58,7 +58,18 @@ function toCard(p: ProjectSummary): ProjectCard {
     thumbnailUrl: p.thumbnailUrl,
     accent: gradientFor(p.id),
     openTarget,
+    directDurationLabel: formatDirectDuration(p.directDurationSec),
   };
+}
+
+function formatDirectDuration(sec: number | null): string | null {
+  if (sec === null || sec <= 0) return null;
+  if (sec < 60) return `Directed in ${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s === 0
+    ? `Directed in ${m}m`
+    : `Directed in ${m}m ${s}s`;
 }
 
 function gradientFor(seed: string): string {

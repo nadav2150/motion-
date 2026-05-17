@@ -98,6 +98,7 @@ alter table jobs
   add column if not exists final_video_duration numeric(6,2),
   add column if not exists final_video_error text,
   add column if not exists final_video_built_at timestamptz,
+  add column if not exists scenes_ready_at timestamptz,
   add column if not exists brand_logo_url text,
   add column if not exists brand_logo_storage_path text,
   add column if not exists brand_colors jsonb;

@@ -43,12 +43,20 @@ import {
 } from "./storage";
 import { getSupabase, type JobRow, type ShotRow } from "./supabase";
 import {
+  buildFilmSkeleton,
+  buildRefinementSet,
+  generateAssetPlan,
+  generateFilmCritique,
   generateFilmHTML,
   generateStoryboard,
+  generateVisionCritique,
+  refineScenes,
+  type SceneCritique,
   type StoryboardScene,
 } from "./hyperframes/llm-director";
 import { renderScene } from "./hyperframes/render";
-import { captureSceneThumbnail } from "./hyperframes/thumbnail";
+import { captureMotionTrailComposite, captureSceneThumbnail } from "./hyperframes/thumbnail";
+import { sourceAssets, type JobAssetEntry } from "./assets";
 
 type AssembledShot = ShotRecipe & {
   imagePrompt: string;
@@ -240,6 +248,8 @@ async function setJobStatus(
       | "director_raw"
       | "continuity"
       | "completed_at"
+      | "scenes_ready_at"
+      | "film_critique"
     >
   >,
 ): Promise<void> {
@@ -629,17 +639,49 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   const insertedScenes = await insertHyperframesScenes(jobId, storyboard.scenes);
   insertedScenes.sort((a, b) => a.shot_index - b.shot_index);
 
-  // Stage 2 — generating_scenes: ONE LLM call returns FilmFills JSON; merger
-  // builds a lint-clean composition HTML containing all N scenes on one
-  // GSAP timeline.
-  await setJobStatus(jobId, { status: "generating_scenes" });
-  console.log(`[hyperframes ${jobId}] generating film fills (1 call, all ${storyboard.scenes.length} scenes)`);
-  const { html } = await generateFilmHTML(storyboard, storyboard.visualIdentity);
+  // Stage 1.5 — asset_planning: proactively decide what real imagery each
+  // scene needs (user-uploaded → Flux → Unsplash → synthetic_css), then
+  // resolve every slot to a concrete URL in parallel. Empty catalog when the
+  // film is type-only or the planner declares no needs.
+  await setJobStatus(jobId, { status: "asset_planning" });
 
-  // Upload the single composition.html. Every shot row points at the same
-  // public URL — keeps the schema unchanged and lets /api/shots/:id/scene-html
-  // continue to work for editor previews.
-  const compositionAsset = await uploadSceneAsset({
+  // Build the unified job-asset list the planner sees:
+  //   • everything on jobs.assets (user uploads from the editor),
+  //   • plus a virtual "brand_logo" entry when jobs.brand_logo_url is set.
+  const jobAssetsRaw = Array.isArray(job.assets) ? (job.assets as Array<Record<string, unknown>>) : [];
+  const jobAssets: JobAssetEntry[] = jobAssetsRaw
+    .filter((a) => typeof a.id === "string" && typeof a.url === "string")
+    .map((a) => ({
+      id: a.id as string,
+      kind: typeof a.kind === "string" ? (a.kind as string) : "other",
+      url: a.url as string,
+      name: typeof a.name === "string" ? (a.name as string) : undefined,
+    }));
+  if (job.brand_logo_url) {
+    jobAssets.push({
+      id: "brand_logo",
+      kind: "image",
+      url: job.brand_logo_url,
+      name: "Brand logo",
+    });
+  }
+
+  const assetPlan = await generateAssetPlan(storyboard, storyboard.visualIdentity, jobAssets);
+  const assetCatalog = await sourceAssets({ jobId, plan: assetPlan, jobAssets });
+
+  // Stage 2 — generating_scenes: blueprint + per-scene calls (Layer 2
+  // pipeline). Now receives the locked assets so per-scene briefs reference
+  // real imagery via lockedAssets.
+  await setJobStatus(jobId, { status: "generating_scenes" });
+  console.log(`[hyperframes ${jobId}] generating film fills (blueprint + batched scenes, ${storyboard.scenes.length} scenes)`);
+  let { html, fills, blueprint, sceneContexts } = await generateFilmHTML(
+    storyboard,
+    storyboard.visualIdentity,
+    assetCatalog,
+  );
+
+  // Upload the single composition.html.
+  let compositionAsset = await uploadSceneAsset({
     jobId,
     sceneId: "main",
     filename: "composition.html",
@@ -647,23 +689,172 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     contentType: "text/html; charset=utf-8",
   });
 
-  // Per-scene thumbnails — seek the master timeline at each scene's midpoint
-  // and screenshot. Best-effort: a failed capture leaves the iframe fallback
-  // in place.
-  let cumulativeOffset = 0;
+  // Per-scene captures (thumbnail + motion-trail composite). Returns the
+  // composite public URLs in scene order so the critique stage can feed them
+  // to Sonnet vision without re-fetching from the DB.
+  const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
+  const motionTrailUrls = await captureScenes({
+    jobId,
+    html,
+    storyboard,
+    insertedScenes,
+    compositionAssetUrl: compositionAsset.publicUrl,
+    totalFilmSeconds,
+    sceneIndices: storyboard.scenes.map((_, i) => i),
+  });
+
+  // ── Stage 6 + 7 — vision critique (per-scene + film-level) ──────────────
+  // Only run critique on scenes that successfully produced a motion-trail
+  // composite. Scenes without a trail URL (capture failure) are skipped at
+  // the critique level and remain whatever the scene-fill emitted.
+  await setJobStatus(jobId, { status: "vision_critique" });
+
+  const critiquableIndices = motionTrailUrls
+    .map((url, i) => ({ url, i }))
+    .filter((x): x is { url: string; i: number } => x.url !== null);
+
+  const perSceneCritiques: SceneCritique[] = [];
+  if (critiquableIndices.length > 0) {
+    const settled = await Promise.allSettled(
+      critiquableIndices.map((x) =>
+        generateVisionCritique(blueprint, x.i, x.url),
+      ),
+    );
+    for (let k = 0; k < settled.length; k++) {
+      const result = settled[k];
+      const sceneIdx = critiquableIndices[k].i;
+      const shotId = insertedScenes[sceneIdx].id;
+      if (result.status === "fulfilled") {
+        perSceneCritiques.push(result.value);
+        await patchShot(shotId, { scene_critique: result.value as unknown as object });
+      } else {
+        console.warn(
+          `[hyperframes ${jobId}] vision critique failed for s${sceneIdx + 1}:`,
+          result.reason instanceof Error ? result.reason.message : result.reason,
+        );
+      }
+    }
+  } else {
+    console.warn(`[hyperframes ${jobId}] no motion-trail composites available; skipping vision critique`);
+  }
+
+  let filmCritique: Awaited<ReturnType<typeof generateFilmCritique>> | null = null;
+  const allTrailsPresent =
+    motionTrailUrls.length === storyboard.scenes.length &&
+    motionTrailUrls.every((u): u is string => u !== null);
+  if (allTrailsPresent && perSceneCritiques.length > 0) {
+    try {
+      filmCritique = await generateFilmCritique(
+        blueprint,
+        storyboard,
+        perSceneCritiques,
+        motionTrailUrls as string[],
+      );
+      await setJobStatus(jobId, { film_critique: filmCritique as unknown as object });
+    } catch (filmErr) {
+      console.warn(
+        `[hyperframes ${jobId}] film-level critique failed:`,
+        filmErr instanceof Error ? filmErr.message : filmErr,
+      );
+    }
+  } else {
+    console.warn(
+      `[hyperframes ${jobId}] film critique skipped (${motionTrailUrls.filter((u) => u !== null).length}/${storyboard.scenes.length} trails available, ${perSceneCritiques.length} scene critiques)`,
+    );
+  }
+
+  // ── Stage 8 — refinement: re-fire flagged scenes, rebuild composition,
+  //              re-capture composites for the refined scenes only ────────
+  const refinements = buildRefinementSet(perSceneCritiques, filmCritique);
+  if (refinements.length > 0) {
+    await setJobStatus(jobId, { status: "refining_scenes" });
+    console.log(
+      `[hyperframes ${jobId}] refining ${refinements.length} scene${refinements.length === 1 ? "" : "s"}: ${refinements.map((r) => r.sceneId).join(", ")}`,
+    );
+    const refinedScenes = await refineScenes(blueprint, sceneContexts, fills.scenes, refinements);
+    fills = { ...fills, scenes: refinedScenes };
+    html = buildFilmSkeleton(storyboard, storyboard.visualIdentity, fills);
+
+    compositionAsset = await uploadSceneAsset({
+      jobId,
+      sceneId: "main",
+      filename: "composition.html",
+      body: Buffer.from(html, "utf8"),
+      contentType: "text/html; charset=utf-8",
+    });
+
+    // Re-capture motion-trail composites for the refined scenes only.
+    const refinedIndices = refinements
+      .map((r) => blueprint.sceneOutline.findIndex((b) => b.id === r.sceneId))
+      .filter((i) => i >= 0);
+    await captureScenes({
+      jobId,
+      html,
+      storyboard,
+      insertedScenes,
+      compositionAssetUrl: compositionAsset.publicUrl,
+      totalFilmSeconds,
+      sceneIndices: refinedIndices,
+    });
+  } else {
+    console.log(`[hyperframes ${jobId}] no refinements requested by critiques — shipping as-is`);
+  }
+
+  await setJobStatus(jobId, {
+    status: "scenes_ready",
+    scenes_ready_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Per-scene capture pass — thumbnail (midpoint) + motion-trail composite (4
+ * frames at 5/35/65/95% of the scene's local timeline). Captures only the
+ * scene indices in `sceneIndices`. Returns an array of motion-trail public
+ * URLs aligned to storyboard order (null where capture failed or wasn't run).
+ *
+ * Errors degrade gracefully — a failed thumbnail leaves the iframe fallback,
+ * a failed composite leaves motion_trail_path null on the shot row.
+ */
+async function captureScenes(args: {
+  jobId: string;
+  html: string;
+  storyboard: { scenes: StoryboardScene[] };
+  insertedScenes: ShotRow[];
+  compositionAssetUrl: string;
+  totalFilmSeconds: number;
+  sceneIndices: number[];
+}): Promise<(string | null)[]> {
+  const { jobId, html, storyboard, insertedScenes, compositionAssetUrl, totalFilmSeconds } = args;
+  const trailFractions = [0.05, 0.35, 0.65, 0.95];
+  const motionTrailUrls: (string | null)[] = storyboard.scenes.map(() => null);
+
+  // Compute every scene's start (we need cumulative offsets even for scenes
+  // we won't recapture, so the chosen indices land at the right master seek).
+  const sceneStarts: number[] = [];
+  {
+    let cum = 0;
+    for (let i = 0; i < storyboard.scenes.length; i++) {
+      sceneStarts.push(cum);
+      cum += storyboard.scenes[i].durationSeconds;
+    }
+  }
+
+  const indexSet = new Set(args.sceneIndices);
+
   for (let i = 0; i < storyboard.scenes.length; i++) {
+    if (!indexSet.has(i)) continue;
     const scene = storyboard.scenes[i];
     const shot = insertedScenes[i];
-    const seekSeconds = cumulativeOffset + Math.min(scene.durationSeconds / 2, scene.durationSeconds - 0.1);
-    cumulativeOffset += scene.durationSeconds;
+    const sceneStart = sceneStarts[i];
+    const midpointSeek = sceneStart + Math.min(scene.durationSeconds / 2, scene.durationSeconds - 0.1);
 
-    await patchShot(shot.id, { scene_html_path: compositionAsset.publicUrl });
+    await patchShot(shot.id, { scene_html_path: compositionAssetUrl });
 
     try {
       const png = await captureSceneThumbnail({
         html,
-        durationSeconds: cumulativeOffset, // total film duration
-        seekSeconds,
+        durationSeconds: totalFilmSeconds,
+        seekSeconds: midpointSeek,
       });
       const thumb = await uploadSceneAsset({
         jobId,
@@ -675,13 +866,38 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
       await patchShot(shot.id, { scene_thumbnail_path: thumb.publicUrl });
     } catch (thumbErr) {
       console.warn(
-        `[hyperframes ${jobId}] thumbnail capture failed for ${scene.id} (seek=${seekSeconds.toFixed(2)}s):`,
+        `[hyperframes ${jobId}] thumbnail capture failed for ${scene.id} (seek=${midpointSeek.toFixed(2)}s):`,
         thumbErr instanceof Error ? thumbErr.message : thumbErr,
+      );
+    }
+
+    try {
+      const seekOffsetsSeconds = trailFractions.map(
+        (f) => sceneStart + Math.min(f * scene.durationSeconds, scene.durationSeconds - 0.05),
+      );
+      const composite = await captureMotionTrailComposite({
+        html,
+        durationSeconds: totalFilmSeconds,
+        seekOffsetsSeconds,
+      });
+      const trail = await uploadSceneAsset({
+        jobId,
+        sceneId: scene.id,
+        filename: "motion_trail.png",
+        body: composite,
+        contentType: "image/png",
+      });
+      await patchShot(shot.id, { motion_trail_path: trail.publicUrl });
+      motionTrailUrls[i] = trail.publicUrl;
+    } catch (trailErr) {
+      console.warn(
+        `[hyperframes ${jobId}] motion-trail composite failed for ${scene.id}:`,
+        trailErr instanceof Error ? trailErr.message : trailErr,
       );
     }
   }
 
-  await setJobStatus(jobId, { status: "scenes_ready" });
+  return motionTrailUrls;
 }
 
 async function runHyperframesExport(jobId: string): Promise<void> {
@@ -996,6 +1212,11 @@ export type ProjectSummary = {
   thumbnailUrl: string | null;
   updatedAt: string;
   createdAt: string;
+  // Wall-clock seconds between job creation ("Direct storyboard" click) and
+  // the storyboard LLM call returning + scenes becoming visible. Null until
+  // the job first reaches `scenes_ready`. Used by the projects list + editor
+  // header to show "Directed in 12s".
+  directDurationSec: number | null;
 };
 
 export async function deleteJob(jobId: string, userId: string): Promise<void> {
@@ -1032,7 +1253,7 @@ export async function listProjectsForUser(userId: string): Promise<ProjectSummar
   const { data: jobs, error } = await db
     .from("jobs")
     .select(
-      "id, title, status, film_mode, final_video_status, final_video_url, final_video_duration, shot_count, created_at, updated_at",
+      "id, title, status, film_mode, final_video_status, final_video_url, final_video_duration, shot_count, created_at, updated_at, scenes_ready_at",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -1063,18 +1284,33 @@ export async function listProjectsForUser(userId: string): Promise<ProjectSummar
     }
   }
 
-  return jobs.map((j) => ({
-    id: j.id as string,
-    title: (j.title as string | null) ?? null,
-    status: j.status as string,
-    filmMode: (j.film_mode as string | null) ?? null,
-    shotCount: (j.shot_count as number | null) ?? 0,
-    readyClips: readyClipsByJob.get(j.id as string) ?? 0,
-    finalVideoStatus: (j.final_video_status as string | null) ?? null,
-    finalVideoUrl: (j.final_video_url as string | null) ?? null,
-    finalVideoDuration: (j.final_video_duration as number | null) ?? null,
-    thumbnailUrl: firstByJob.get(j.id as string) ?? null,
-    updatedAt: j.updated_at as string,
-    createdAt: j.created_at as string,
-  }));
+  return jobs.map((j) => {
+    const createdAt = j.created_at as string;
+    const scenesReadyAt = (j.scenes_ready_at as string | null) ?? null;
+    const directDurationSec = scenesReadyAt
+      ? computeDurationSec(createdAt, scenesReadyAt)
+      : null;
+    return {
+      id: j.id as string,
+      title: (j.title as string | null) ?? null,
+      status: j.status as string,
+      filmMode: (j.film_mode as string | null) ?? null,
+      shotCount: (j.shot_count as number | null) ?? 0,
+      readyClips: readyClipsByJob.get(j.id as string) ?? 0,
+      finalVideoStatus: (j.final_video_status as string | null) ?? null,
+      finalVideoUrl: (j.final_video_url as string | null) ?? null,
+      finalVideoDuration: (j.final_video_duration as number | null) ?? null,
+      thumbnailUrl: firstByJob.get(j.id as string) ?? null,
+      updatedAt: j.updated_at as string,
+      createdAt,
+      directDurationSec,
+    };
+  });
+}
+
+function computeDurationSec(startIso: string, endIso: string): number | null {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  return Math.round((end - start) / 1000);
 }

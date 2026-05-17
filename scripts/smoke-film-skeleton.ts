@@ -37,9 +37,9 @@ const storyboard: Storyboard = {
   title: "Smoke Film",
   visualIdentity: identity,
   scenes: [
-    { id: "scene_01", copy: "Hello.", durationSeconds: 4, sceneConcept: "massive_typography_takeover", motionHook: "staggered_word_impact" },
-    { id: "scene_02", copy: "We make things.", durationSeconds: 5, sceneConcept: "kinetic_word_wall", motionHook: "scale_snap" },
-    { id: "scene_03", copy: "Try it.", durationSeconds: 3, sceneConcept: "glowing_ring_or_arc_or_particle_system", motionHook: "final_logo_lockup" },
+    { id: "scene_01", copy: "Hello.", durationSeconds: 4, sceneConcept: "massive_typography_takeover", motionHook: "staggered_word_impact", pacingIntent: "beat" },
+    { id: "scene_02", copy: "We make things.", durationSeconds: 5, sceneConcept: "kinetic_word_wall", motionHook: "scale_snap", pacingIntent: "cinematic" },
+    { id: "scene_03", copy: "Try it.", durationSeconds: 3, sceneConcept: "glowing_ring_or_arc_or_particle_system", motionHook: "final_logo_lockup", pacingIntent: "punch" },
   ],
 };
 

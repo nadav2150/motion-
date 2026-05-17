@@ -35,9 +35,9 @@ const storyboard: Storyboard = {
   title: "Verify",
   visualIdentity: identity,
   scenes: [
-    { id: "scene_01", copy: "one", durationSeconds: 5, sceneConcept: "x", motionHook: "y" },
-    { id: "scene_02", copy: "two", durationSeconds: 7, sceneConcept: "x", motionHook: "y" },
-    { id: "scene_03", copy: "three", durationSeconds: 4, sceneConcept: "x", motionHook: "y" },
+    { id: "scene_01", copy: "one", durationSeconds: 5, sceneConcept: "x", motionHook: "y", pacingIntent: "beat" },
+    { id: "scene_02", copy: "two", durationSeconds: 7, sceneConcept: "x", motionHook: "y", pacingIntent: "cinematic" },
+    { id: "scene_03", copy: "three", durationSeconds: 4, sceneConcept: "x", motionHook: "y", pacingIntent: "beat" },
   ],
 };
 

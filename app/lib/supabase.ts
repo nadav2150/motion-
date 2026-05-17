@@ -61,8 +61,11 @@ export function getSupabase(): SupabaseClient {
 export type JobStatus =
   | "pending"
   | "directing"
+  | "asset_planning"
   | "rendering"
   | "generating_scenes"
+  | "vision_critique"
+  | "refining_scenes"
   | "scenes_ready"
   | "rendering_scenes"
   | "stitching"
@@ -96,6 +99,7 @@ export type JobRow = {
   final_video_duration: number | null;
   final_video_error: string | null;
   final_video_built_at: string | null;
+  scenes_ready_at: string | null;
   brand_logo_url: string | null;
   brand_logo_storage_path: string | null;
   brand_colors: string[] | null;
@@ -112,6 +116,11 @@ export type JobRow = {
   film_rhythm: unknown;
   motif_state: unknown;
   philosophy_version: string | null;
+
+  // v2 film-level vision critique (see supabase/migrations/20260524_critique.sql).
+  // FilmCritique JSON: scores across the directed-whole rubric, verdict,
+  // film-level issues with affectedSceneIds.
+  film_critique: unknown;
 };
 
 export type ShotRow = {
@@ -169,6 +178,13 @@ export type ShotRow = {
   scene_css_path: string | null;
   scene_js_path: string | null;
   scene_thumbnail_path: string | null;
+  // v2 motion-trail composite (see supabase/migrations/20260522_motion_trail.sql).
+  // A 1920x1080 PNG that blends 4 frames from the scene's timeline with
+  // descending alpha — captures motion-feel that single thumbnails miss.
+  motion_trail_path: string | null;
+  // v2 per-scene vision critique (see supabase/migrations/20260524_critique.sql).
+  // SceneCritique JSON: scores per dimension, verdict, structured issues.
+  scene_critique: unknown;
   rendered_video_url: string | null;
   render_status: string | null;
   render_duration_ms: number | null;

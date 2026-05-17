@@ -19,6 +19,9 @@ export type ProjectCard = {
   thumbnailUrl: string | null;
   accent: string;
   openTarget: "editor" | "export";
+  // Pre-formatted ("Directed in 12s" / "Directed in 1m 04s"). Null until the
+  // job first reaches `scenes_ready`.
+  directDurationLabel: string | null;
 };
 
 const STATUS_DOT: Record<ProjectCard["statusLabel"], string> = {
@@ -260,6 +263,12 @@ const ProjectGrid = ({
               }}>{p.title}</div>
               <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em", marginTop: 4 }}>
                 {p.updatedLabel.toUpperCase()}
+                {p.directDurationLabel && (
+                  <>
+                    <span style={{ opacity: 0.45, margin: "0 6px" }}>·</span>
+                    <span>{p.directDurationLabel.toUpperCase()}</span>
+                  </>
+                )}
               </div>
             </div>
             <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em", flexShrink: 0, marginLeft: 8 }}>
@@ -359,6 +368,11 @@ const ProjectList = ({
           </div>
           <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em" }}>
             {p.updatedLabel.toUpperCase()}
+            {p.directDurationLabel && (
+              <div style={{ marginTop: 2, opacity: 0.7 }}>
+                {p.directDurationLabel.toUpperCase()}
+              </div>
+            )}
           </div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot, boxShadow: `0 0 8px ${dot}`, flexShrink: 0 }}/>

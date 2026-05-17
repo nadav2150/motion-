@@ -126,6 +126,25 @@ export async function mirrorImage(
   );
 }
 
+/**
+ * Mirror a single planned asset (Flux/Unsplash/etc) into Supabase Storage so
+ * the LLM-generated film references stable URLs even if the source CDN
+ * expires. Keyed by sceneId + slot — multiple assets per scene are namespaced
+ * by their slot name.
+ */
+export async function mirrorAssetForJob(
+  jobId: string,
+  sceneId: string,
+  slot: string,
+  sourceUrl: string,
+): Promise<MirroredAsset> {
+  return mirrorAsset(
+    `jobs/${jobId}/assets/${sceneId}/${slot}`,
+    sourceUrl,
+    "jpg",
+  );
+}
+
 export async function mirrorVideo(
   jobId: string,
   shotIndex: number,
