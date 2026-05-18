@@ -4391,14 +4391,19 @@ async function generateSceneFill(
     // max_tokens is a clamp, not a budget — the model only spends what it
     // needs and stops. We are not paying for unused headroom.
     max_tokens: 48000,
-    thinking: { type: "adaptive" },
+    // Cap deliberation at a fixed budget — adaptive thinking was spending
+    // 20-30K thinking tokens per scene (see the size comment above) which
+    // is the dominant wall-time cost. 10K is enough headroom for one
+    // strong motion idea per scene without burning minutes on hidden
+    // reasoning. Bump if scenes start arriving structurally broken.
+    thinking: { type: "enabled", budget_tokens: 10000 },
     output_config: {
-      // Per-scene rendering is the visible quality bottleneck — high effort
-      // is worth the extra wall time. The first user feedback against
-      // scene-fill output (assets sized/placed badly) was traced to weaker
-      // composition reasoning, not prompt clarity. Keep blueprint + asset
-      // plan at medium since those are short structured calls.
-      effort: "high",
+      // Lowered from "high" to "medium" alongside the explicit length budget
+      // in buildSceneFillUserPrompt. "high" was producing 15-23K-token
+      // scene outputs (s2 hit 23K in the 2026-05-18 run) — that's 5-8
+      // minutes/scene of streaming. "medium" + length caps brings scenes
+      // back to ~10-12K output, ~70-120s wall time.
+      effort: "medium",
       format: { type: "json_schema", schema: SCENE_FILL_SCHEMA },
     },
   });
