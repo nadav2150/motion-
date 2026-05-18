@@ -21,6 +21,7 @@ import {
   type VoiceoverDelivery,
 } from "./hyperframes/llm-director";
 import { searchTracks } from "./jamendo-search";
+import { runWithConcurrency } from "./replicate";
 import { uploadSceneAsset } from "./storage";
 
 export type ResolvedBgMusic = {
@@ -96,6 +97,15 @@ const SFX_VOLUME: Record<SfxKind, number> = {
   transition: 0.6,
   ambient: 0.45,
 };
+
+// ElevenLabs PAYG caps at 6 concurrent requests per API key — exceeding the
+// cap returns 429 concurrent_limit_exceeded and drops the voiceover. Cap
+// our parallelism at 5 by default (one slot of headroom). Tune via env if
+// you're on a higher tier.
+const ELEVENLABS_VO_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.ELEVENLABS_VO_CONCURRENCY ?? 5),
+);
 
 async function resolveBgMusic(
   query: string,
@@ -236,8 +246,12 @@ export async function resolveAudioPlan(args: ResolveAudioArgs): Promise<Resolved
   const prevVoBySceneId = new Map(
     (previousResolved?.voiceovers ?? []).map((v) => [v.sceneId, v] as const),
   );
-  const voiceoverResults = await Promise.all(
-    plan.voiceovers.map(async (v) => {
+  // Concurrency-capped at ELEVENLABS_VO_CONCURRENCY because ElevenLabs PAYG
+  // allows max 6 concurrent requests. Reuse path (cached prevVo) is
+  // synchronous and doesn't count against the live-API budget, but we run
+  // both branches through the same queue for simplicity.
+  const voiceoverSettled = await runWithConcurrency(
+    plan.voiceovers.map((v) => async () => {
       const prevVo = prevVoBySceneId.get(v.sceneId);
       if (prevVo && prevVo.text === v.text && prevVo.delivery === v.deliveryHint) {
         voReusedCount++;
@@ -246,8 +260,15 @@ export async function resolveAudioPlan(args: ResolveAudioArgs): Promise<Resolved
       voRegenCount++;
       return resolveVoiceover(jobId, v);
     }),
+    ELEVENLABS_VO_CONCURRENCY,
   );
-  const voiceovers = voiceoverResults.filter((v): v is ResolvedVoiceover => v !== null);
+  const voiceovers = voiceoverSettled
+    .filter(
+      (r): r is PromiseFulfilledResult<ResolvedVoiceover | null> =>
+        r.status === "fulfilled",
+    )
+    .map((r) => r.value)
+    .filter((v): v is ResolvedVoiceover => v !== null);
 
   // sfxCues — reuse per (sceneId, freesoundQuery, kind) tuple. The previous
   // resolved bundle doesn't carry freesoundQuery (plan-only field), so we
