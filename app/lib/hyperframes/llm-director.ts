@@ -4338,6 +4338,26 @@ DO NOT:
   • reuse element ids across motifs (each animated element needs a stable, scene-unique id).
   • emit motifs from the banned list — pick fresh ones.
   • drift from the locked motion grammar (use the easings above, not new ones).
+
+══════════════════════════════════════════════════════════════════════════════
+LENGTH BUDGET — TIGHTNESS IS THE BAR
+══════════════════════════════════════════════════════════════════════════════
+
+This scene is one beat of a multi-scene promo film with a strict render budget.
+The strongest motion idea expressed concisely beats a sprawling one. Stay focused:
+
+  • contentHtml ≤ 120 lines.  One focal element + 2-4 supporting elements.
+                              No decorative wrappers that don't animate.
+                              No elements present in the DOM but absent from the timeline.
+  • sceneCss    ≤ 80 lines.   Only styles for elements that appear in contentHtml.
+                              No utility classes you don't use.
+  • timeline    ≤ 150 lines of GSAP calls.
+                              Each call should move the motion idea forward.
+                              No redundant .set() before a tween that overrides it.
+
+If you find yourself elaborating a secondary detail, CUT IT — the dominant
+motion idea is the deliverable. Tight scenes ship; sprawling scenes get
+truncated by max_tokens and arrive broken.
 `;
 }
 
