@@ -4,6 +4,26 @@ Living roadmap of in-flight work. Update after every planning decision or sprint
 
 ---
 
+## Hotfix — Hyperframes Wall-Time (2026-05-18)
+
+**Goal:** A representative 7-scene `runHyperframesDirect` run was taking 16.7 min (1000s); 85% in `film_html`. Target: ~3–4 min total, no model changes, architecture frozen. Plan: `C:\Users\User\.claude\plans\supabase-connected-via-vivid-barto.md`.
+
+**What shipped (4 commits, fb63c09 → 47bb975):**
+
+- **audio-resolver concurrency cap.** `app/lib/audio-resolver.ts` — voiceover loop was `Promise.all` on all N scenes; ElevenLabs PAYG 6-concurrent cap caused 429s. Routed through existing `runWithConcurrency` (`app/lib/replicate.ts:299`) with `ELEVENLABS_VO_CONCURRENCY` default 5 (env-tunable).
+- **Scene-fill: one parallel wave.** `generateScenesWithContinuity` (`app/lib/hyperframes/llm-director.ts`) replaced its scene-1-solo + groups-of-2 loop with a single `Promise.all` over all N scenes. Each scene sees `prevSceneIntentFallback` (blueprint-level intent for predecessor) instead of real structured continuity. For N=7 this collapses 4 sequential Opus waves into 1. **Explicitly overrides the saved `scene-continuity-contract` memory** per user decision today; revert this single commit (`12e8953`) if hand-offs feel broken in practice.
+- **Scene-fill: thinking + effort capped.** `generateSceneFill` Anthropic call: `thinking: { type: "adaptive" }` → `{ type: "enabled", budget_tokens: 10000 }`; `effort: "high"` → `"medium"`. `max_tokens: 48000` unchanged (it's a clamp).
+- **Scene-fill: explicit length budget.** New `LENGTH BUDGET — TIGHTNESS IS THE BAR` block added at the end of `buildSceneFillUserPrompt`: contentHtml ≤ 120 lines, sceneCss ≤ 80, timeline ≤ 150 GSAP calls. Counterweight to CREATIVE TARGET / ANTI-TEMPLATE / MOTION IS THE FILM mandates which were pushing 15–23K-token outputs.
+
+**Expected after:** total wall time ~180–270s (3–4.5 min). Verification is end-to-end via dev server + UI submission (no unit tests for prompt outputs). See plan file for verification checklist + revert escape hatches.
+
+**Out of scope (deferred):**
+- 4 `overlapping_clips_same_track` audio-track lint errors at end of `film_html` (correctness bug, separate plan).
+- Sonnet swap for storyboard/asset_plan/blueprint (lever still available if 3–4 min isn't enough).
+- storyboard/asset_plan/blueprint stage tuning (their combined ~125s is acceptable).
+
+---
+
 ## Current Sprint — Opus Creative Diversity (Sprint 4)
 
 **Goal:** Two different scripts must produce visibly different films. Diagnosis: silent fallbacks (`DEFAULT_VISUAL_IDENTITY`, `sanitizeFilmRhythm` linear ramp) were stamping the same "Editorial Night" identity + linear energy curve onto every partial parse, and Opus 4.7's lack of `temperature` meant identical prompts → identical outputs. The storyboard prompt's own opening line ("Two scripts about two different products MUST produce visibly different films — if your output looks like the previous job, you have failed") was being structurally undermined by the code below it.
