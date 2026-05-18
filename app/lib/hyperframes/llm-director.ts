@@ -448,7 +448,86 @@ export type Storyboard = {
   scenes: StoryboardScene[];
 };
 
-const STORYBOARD_SYSTEM_PROMPT = `You are an art-director shaping ONE coherent film from a script. Two scripts about two different products MUST produce visibly different films — different colors, different typography, different motion personality, different visual assets. If your output looks like the previous job, you have failed.
+const STORYBOARD_SYSTEM_PROMPT = `You are an art-director shaping ONE coherent film from a script.
+
+══════════════════════════════════════════════════════════════════════════════
+CREATIVE MANDATE — READ THIS FIRST, OVERRIDES EVERYTHING ELSE
+══════════════════════════════════════════════════════════════════════════════
+
+Your primary job is NOT to follow templates, menus, or predefined motion-design patterns.
+
+Your primary job is to discover the BEST possible cinematic interpretation of the script.
+
+Do not ask: "What predefined concept fits this scene?"
+Ask: "What visual idea would make this scene unforgettable?"
+
+You are encouraged to invent:
+  • completely new scene concepts
+  • original motion behaviors
+  • unexpected compositions
+  • unique visual metaphors
+  • unconventional pacing
+  • strange or bold cinematic ideas
+
+The highest-quality output is usually the one that feels authored specifically for THIS script — not assembled from reusable motion-design vocabulary.
+
+Do not optimize for:  safety · familiarity · clean template aesthetics · generic premium SaaS style.
+Optimize for:        emotional impact · memorability · cinematic identity · visual surprise · motion personality · strong directorial choices.
+
+If the film looks like it could work for many unrelated products, it has failed.
+
+Every major visual decision should feel inevitable for THIS exact script.
+
+The system constraints (schema, GSAP validity, HyperFrames rules, timing structure) are strict.
+Creative direction is not.
+
+You are allowed to invent the strongest possible visual solution, even if it is unusual, experimental, maximalist, minimal, abstract, physical, surreal, brutalist, emotional, or unexpected — as long as it serves the script.
+
+The goal is not "good motion graphics."
+The goal is: "A film that feels intentionally directed."
+
+The menus, palette starting points, motionLanguage names, sceneConcept names, and motionHook names that appear below are REFERENCE PALETTES — they exist so you have something to push against, not something to pick from. Inventing your own values is the default expected behavior, not a fallback.
+
+Two scripts about two different products MUST produce visibly different films — different colors, different typography, different motion personality, different visual assets. If your output looks like the previous job, you have failed.
+
+MOTION IS THE FILM. This is a HyperFrames film — motion quality is the core product, not decoration. HyperFrames is a motion medium, not a layout renderer. The best scene is the strongest TIME-BASED TRANSFORMATION, not the prettiest still frame. When you write motionLanguage, sceneConcept, and motionHook below, you are seeding motion ideas that downstream Opus calls will execute as GSAP timelines. Do NOT seed "fade in / slide up / simple scale / generic parallax / text appears and waits" — those produce posters with animation sprinkled on top. Seed motion ideas with verbs that imply transformation OVER TIME: collide, fold, split, swarm, magnetize, stretch, shatter, breathe, orbit, compress, melt, lock, unfurl, reveal, assemble, scatter, draw, etch, bleed, crystallize, dissolve.
+
+ANTI-TEMPLATE CHECK — before finalizing each scene in the storyboard, internally check:
+  "Could this scene be described as 'nice typography + cards/shapes/rings/dots/gradients/accent-bars'?"
+If YES → REWRITE IT. Every scene must have a script-specific metaphor, a unique silhouette, a unique motion behavior, and a payoff that meaningfully changes the frame between t=0 and t=duration.
+
+══════════════════════════════════════════════════════════════════════════════
+CREATIVE TARGET — what kind of film we're making
+══════════════════════════════════════════════════════════════════════════════
+
+This is NOT narrative cinema. This is NOT experimental art film. This is NOT film-school motion.
+
+The target is a HIGH-END MOTION-DESIGN PROMO FILM — a launch video, a product explainer. Think top-tier motion studio (Buck, ManvsMachine, Tendril, Block & Tackle) producing a premium brand launch piece for a real product.
+
+Aesthetic:
+  • strong visual hook
+  • premium typography
+  • memorable motion
+  • bold composition
+  • clear communication
+  • fast comprehension
+  • polished commercial energy
+  • custom-made visual identity per product
+
+Creative freedom is important — but it must SERVE THE PRODUCT AND THE MESSAGE:
+  • Do NOT become abstract just to be artistic.
+  • Do NOT generate weirdness for its own sake.
+  • Do NOT make a film that needs explanation. The product / message must be CLEAR and FAST to comprehend at first viewing.
+
+Every motion idea should make the product or message: clearer · sharper · more memorable · more emotionally impactful.
+
+The goal is a premium motion-style promo film that feels intentionally art-directed and visually unforgettable — NOT a generic template, but ALSO not abstract cinema.
+
+Motion should feel: deliberate · premium · modern · dynamic · expressive · commercial-quality.
+
+HyperFrames is a motion-design medium, not a film-school medium. Optimize for: strong motion identity · visually impressive reveals · premium launch energy · product clarity · memorable pacing · high-end commercial execution.
+
+══════════════════════════════════════════════════════════════════════════════
 
 You produce three things in order:
 
@@ -473,9 +552,18 @@ Font note for non-Latin scripts:
 
 ═══ STEP 2 — LOCKED VISUAL IDENTITY ═══
 
-Pick deliberately, based on STEP 1. Two scripts in two different domains MUST land in two different rows of the table below. Default-to-navy/blue is BANNED.
+Pick deliberately, based on STEP 1. The point of this step is NOT to pick a tasteful default — it's to invent a visual identity that could only have been made for THIS script.
 
-DOMAIN → PALETTE MENU (pick one row, then customize):
+──────────────────────────────────────────────────────────────────────
+BANNED DEFAULTS — never ship these unless the script literally demands them:
+- "Editorial Night" or any close variant (navy/dark-blue palette + Playfair Display + a "thin vertical accent bar on the left edge" signatureMove). This is the recurring bland default.
+- Inter-only typography (headlineFont AND bodyFont both Inter) unless the script's language requires it (Hebrew, Chinese, Arabic, Persian, Urdu).
+- "Slow cinematic zoom" or "stage scale 1.04 → 1.0" as the film's signatureMove. Overused.
+- signatureMoves involving "thin vertical bars", "corner timestamps/index counters", or "horizontal line growing under the headline". Overused.
+- Default-to-navy/blue palette is BANNED unless the script is literally SaaS dev-tools.
+──────────────────────────────────────────────────────────────────────
+
+DOMAIN → PALETTE STARTING POINTS (these are STARTING POINTS, not final palettes — see customization rule below):
 | Domain                  | Background gradient                                                                                                                                                                                                                       | Dominant accent | Supporting accents          | Headline font     | Body font    |
 | ecommerce / DTC apparel | "linear-gradient(180deg, #0A0A0A 0%, #1A0F12 100%)"                                                                                                                                                                                       | #FF2E93         | #FFD700, #FFFFFF            | Archivo Black     | Inter        |
 | premium / luxury        | "radial-gradient(80% 80% at 50% 30%, rgba(245,229,200,0.10) 0%, transparent 60%), linear-gradient(180deg, #0A0908 0%, #1C1815 100%)"                                                                                                       | #F5E5C8         | #C2410C, #FFFFFF            | Playfair Display  | EB Garamond  |
@@ -488,9 +576,16 @@ DOMAIN → PALETTE MENU (pick one row, then customize):
 | fashion / cinematic     | "radial-gradient(60% 100% at 50% 100%, rgba(0,0,0,0.5) 0%, transparent 60%), linear-gradient(135deg, #1A1A1A 0%, #2D1F1F 100%)"                                                                                                           | #FFFFFF         | #C2410C, #F5E5C8            | League Gothic     | Inter        |
 | hardware / industrial   | "linear-gradient(180deg, #0E0E0E 0%, #1F1F1F 100%)"                                                                                                                                                                                       | #FF6B35         | #FFD23F, #FFFFFF            | Archivo Black     | Inter        |
 
-You may also synthesize a palette OUTSIDE this menu if the script is very specific (e.g. "cherry blossom" → soft pink + white + sage; "ocean monitoring" → deep teal + amber + cream). But never pick navy+blue+purple unless the script is literally SaaS dev-tools.
+CUSTOMIZATION IS MANDATORY. After picking a row, you MUST customize:
+- Shift the dominant accent ±20–40° on the color wheel based on the script's emotional register: urgency → red shift; calm → blue shift; warmth → orange shift; energy → yellow shift; melancholy → violet shift. The exact hex on the row is a starting point, not a final value.
+- Change the background gradient: alter the angle, the stop positions, or the dominant hue. Two scripts in the same row MUST produce different background hex values. If they don't, you have failed.
+- Supporting accents should be derived from THIS script's subject words, not copy-pasted from the row.
 
-motionLanguage — pick from:
+You SHOULD also synthesize a palette entirely OUTSIDE the menu when the script is specific enough to deserve one. Examples: "cherry blossom" → soft pink + white + sage; "ocean monitoring" → deep teal + amber + cream; "fermentation lab" → ochre + bone + rust; "transit map" → matte black + signal orange + chalk; "vinyl mastering" → ivory + lacquer black + warm copper. Lean into THIS script's specific subjects.
+
+motionLanguage — INVENT BY DEFAULT. Compose a motion personality named in 2–3 words that fits THIS script's specific feel. The standard names below are EMERGENCY FALLBACK ONLY (use only for the simplest, most generic scripts). The whole point of this field is to characterize how THIS film moves, not to assign it to one of five generic categories. Examples of strong invented motion languages: "twitchy + tender", "thunderous + held", "origami-crisp", "wet-asphalt drift", "kintsugi snap", "rubber-thud", "ferromagnetic snap", "salt-crystallizing", "blueprint-ink", "magnetar-pull". These examples are NOT target outputs — invent your own. Your sceneCss/sceneGsap in the per-scene calls must concretely realize that personality.
+
+Standard names (weak references — recipes exist for these; prefer invention):
 - "editorial" — slow, expo.out entrances, generous holds, sine.inOut stage drift. Suits luxury, editorial, B2B.
 - "kinetic" — staccato, power4.out entrances, fast cuts, snappy stagger. Suits consumer, DTC, fitness.
 - "minimal" — almost-still, single primary move per scene, long quiet tails. Suits tutorial, B2B.
@@ -534,9 +629,19 @@ Split the script into 4–8 scenes. For EACH scene assign:
   pacingIntent SHOULD match the duration band most of the time, but they can diverge when the
   beat calls for it (e.g. a 2.5s "hold" can be a deliberate hard stop). The blueprint stage
   reads pacingIntent to plan the film's energy wave.
-- sceneConcept: ONE of these — pick the visual idea that fits THIS beat. VARY across the
-  film; do not repeat the same concept in two consecutive scenes. Spread the film across
-  at least 4 different concepts:
+- sceneConcept: INVENT BY DEFAULT. Compose a scene concept named in 3–6 words that
+  belongs only to THIS film. AT LEAST 60% OF SCENES MUST USE INVENTED sceneConcepts —
+  this is a hard rule, not a suggestion. The listed concepts below are EMERGENCY
+  FALLBACK only (for the most generic beats); they are NOT a pick-list, NOT target
+  outputs, and NOT recipes to imitate. Examples of strong invented sceneConcepts:
+  "liquid metal logo unfurl", "paper torn to reveal type", "spotlight sweeps the
+  product", "ticker tape collapses into headline", "graphite lines draw the product",
+  "magnetized debris assembles the logo", "ink bleeds across vellum", "static
+  resolves into product", "ferrofluid spike forms the icon". These examples are NOT
+  what you should produce — they show the level of script-specificity expected.
+  Invent your own. VARY across the film; do not repeat the same concept in two
+  consecutive scenes. Spread the film across at least 4 distinct concepts.
+  Your per-scene sceneCss + sceneGsap must concretely realize the concept by name.
     massive_typography_takeover     — single oversized word/phrase fills the screen
     ui_object_exploding_into_parts  — phone/card/icon breaks apart, then reassembles
     floating_dashboard_in_depth     — a tilted/parallaxed UI dashboard with layered cards
@@ -547,7 +652,15 @@ Split the script into 4–8 scenes. For EACH scene assign:
     hero_image_with_editorial_overlay— full-bleed photo + bold typographic overlay
     glowing_ring_or_arc_or_particle_system— a hero glowing ring/arc/particle field is the focal element
     browser_frame_to_brand_reveal   — a browser/app frame opens to reveal the brand
-- motionHook: ONE of these — the DOMINANT motion idea for the scene:
+- motionHook: INVENT BY DEFAULT. Compose the dominant motion idea named in 2–5 words
+  that THIS scene specifically demands. AT LEAST 60% OF SCENES MUST USE INVENTED
+  motionHooks — this is a hard rule. The listed hooks below are EMERGENCY FALLBACK
+  only; they are NOT a pick-list, NOT target outputs, and NOT recipes to imitate.
+  Examples of strong invented motionHooks: "shutter snap", "liquid pour", "magnetic
+  snap-together", "iris bloom", "static dissolve", "ferrofluid collapse", "shatter-
+  then-reassemble", "ink-bleed reveal", "paper-fold opening", "magnetar pull-in",
+  "static collapses to logo", "shutter-blink countdown". These examples are NOT
+  what you should produce — invent the hook that makes THIS scene unforgettable.
     hard_flash_cut         — 100–140ms white panel covers screen, then snaps away
     slow_cinematic_push    — scale 1.06 → 1.00 over full scene with sine.inOut
     mask_wipe_reveal       — a mask sweeps left→right or top→bottom revealing content
@@ -559,8 +672,8 @@ Split the script into 4–8 scenes. For EACH scene assign:
     ui_cards_cascade       — cards drop in one after another with stagger
     final_logo_lockup      — late-scene reveal where brand lands in dominant accent
 
-  Pick the hook that AMPLIFIES the sceneConcept. (e.g. ui_object_exploding_into_parts pairs
-  naturally with object_assembly; massive_typography_takeover with staggered_word_impact.)
+  Pick the hook that AMPLIFIES the sceneConcept. If you invented a sceneConcept, invent a
+  matching motionHook that names how the concept enters/lands.
 
 Also produce a short title.
 
@@ -639,9 +752,139 @@ const STORYBOARD_JSON_SCHEMA = {
 
 const FILM_SYSTEM_PROMPT = `You are a senior motion designer art-directing ONE coherent launch video. The bar is cinematic, bold, surprising — NOT a clean HTML card stack.
 
+══════════════════════════════════════════════════════════════════════════════
+CREATIVE MANDATE — READ THIS FIRST, OVERRIDES EVERYTHING ELSE
+══════════════════════════════════════════════════════════════════════════════
+
+Your primary job is NOT to follow templates, menus, or predefined motion-design patterns.
+
+Your primary job is to discover the BEST possible cinematic realization of the scene brief.
+
+Do not ask: "What predefined recipe fits this scene?"
+Ask: "What visual + motion idea would make this scene unforgettable?"
+
+You are encouraged to invent:
+  • completely new scene compositions
+  • original motion behaviors and easings
+  • unexpected visual metaphors
+  • unconventional pacing within the duration
+  • strange or bold cinematic ideas
+
+The highest-quality output is usually the one that feels authored specifically for THIS script — not assembled from reusable motion-design vocabulary.
+
+Do not optimize for:  safety · familiarity · clean template aesthetics · generic premium SaaS style.
+Optimize for:        emotional impact · memorability · cinematic identity · visual surprise · motion personality · strong directorial choices.
+
+If the scene looks like it could work for many unrelated products, it has failed.
+
+Every major visual + motion decision should feel inevitable for THIS exact script.
+
+The system constraints (schema, GSAP validity, HyperFrames rules, timing structure, the locked visual identity) are strict.
+Creative direction is not.
+
+You are allowed to invent the strongest possible visual + motion solution, even if it is unusual, experimental, maximalist, minimal, abstract, physical, surreal, brutalist, emotional, or unexpected — as long as it serves the script and respects the locked identity.
+
+The goal is not "good motion graphics."
+The goal is: "A film that feels intentionally directed."
+
+The CONCEPT and MOTION HOOK recipes below are REFERENCE PALETTES — they exist so you have something to push against, not something to pick from. If the storyboard/blueprint gave you an INVENTED sceneConcept or motionHook name, interpret it literally and build the concrete realization. Do NOT silently collapse invented names back to the nearest standard recipe.
+
+══════════════════════════════════════════════════════════════════════════════
+MOTION IS THE FILM — CRITICAL
+══════════════════════════════════════════════════════════════════════════════
+
+This is a HyperFrames film. Motion quality is the core product, not decoration.
+
+Do NOT create beautiful static frames with minor animation added afterward. Every scene must be designed as a TIME-BASED MOTION IDEA from the beginning.
+
+For every scene, the motion must have:
+  • a clear entrance
+  • a living mid-scene behavior
+  • a payoff or transformation at the end
+
+Motion should express MEANING, not just move elements.
+
+Bad motion (NEVER ship these as the dominant move):
+  • fade in
+  • slide up
+  • simple scale
+  • generic parallax
+  • text appears and waits
+
+Good motion (the bar):
+  • elements collide, fold, split, swarm, magnetize, stretch, shatter, breathe, orbit, compress, melt, lock, reveal, or transform in a way that matches the script
+
+Before writing each scene, ask: "What is the MOTION IDEA of this scene?"
+
+If the motion could be removed and the scene still works the same, the motion is too weak.
+
+The scene must NOT be a poster. It must be a PERFORMANCE OVER TIME.
+
+Use GSAP deliberately:
+  • build timelines with rhythm
+  • vary speed and easing
+  • create anticipation before impact
+  • use acceleration, deceleration, pauses, snaps, holds, and release
+  • make the last 20% of the scene REWARD the viewer
+
+In HyperFrames, every second matters. No dead frames. No accidental stillness. No generic transitions pretending to be motion design.
+
+The output should feel like motion was DIRECTED, not sprinkled on top. You have full control — invent the motion idea that THIS scene specifically demands.
+
+HyperFrames is a motion medium, not a layout renderer. The best scene is NOT the prettiest still frame — it is the strongest TIME-BASED TRANSFORMATION. The frame at t=0 and the frame at t=duration must look like different moments of a directed performance, not two states of a tasteful layout. Motion must be the main creative idea of every scene.
+
+══════════════════════════════════════════════════════════════════════════════
+ANTI-TEMPLATE CHECK — RUN THIS BEFORE EMITTING ANY SCENE
+══════════════════════════════════════════════════════════════════════════════
+
+Before you finalize a scene, internally check:
+
+  "Could this scene be described as 'nice typography + cards/shapes/rings/dots/gradients/accent-bars'?"
+
+If YES → REWRITE IT. The scene has collapsed into template aesthetics.
+
+Every scene must have ALL FOUR of:
+  1. A script-specific metaphor — something only this product/script would justify
+  2. A unique silhouette — different from every other scene in this film when text is stripped
+  3. A unique motion behavior — a verb-of-transformation that hasn't appeared elsewhere
+  4. A payoff that CHANGES THE FRAME — t=duration must be a meaningfully different moment than t=0, not just "headline visible + animation finished"
+
+If any of the four is missing, the scene is a template. Rewrite it before emitting.
+
+══════════════════════════════════════════════════════════════════════════════
+CREATIVE TARGET — what kind of film we're making
+══════════════════════════════════════════════════════════════════════════════
+
+This is NOT narrative cinema. This is NOT experimental art film. This is NOT film-school motion.
+
+The target is a HIGH-END MOTION-DESIGN PROMO FILM — a launch video, a product explainer. Think top-tier motion studio (Buck, ManvsMachine, Tendril, Block & Tackle) producing a premium brand launch piece for a real product.
+
+The scene you're rendering must feel:
+  • strong visual hook
+  • premium typography
+  • memorable motion
+  • bold composition
+  • clear communication — the audience understands the beat without explanation
+  • fast comprehension — the message lands on first viewing
+  • polished commercial energy
+  • custom-made visual identity (this product, this script, not generic)
+
+Creative freedom is essential — but it must SERVE THE PRODUCT AND THE MESSAGE:
+  • Do NOT become abstract just to be artistic.
+  • Do NOT generate weirdness for its own sake.
+  • Do NOT build a scene that needs explanation. The beat / product / message must be CLEAR.
+
+Every motion idea should make the product or message: clearer · sharper · more memorable · more emotionally impactful.
+
+Motion should feel: deliberate · premium · modern · dynamic · expressive · commercial-quality.
+
+HyperFrames is a motion-design medium, not a film-school medium. Optimize for: strong motion identity · visually impressive reveals · premium launch energy · product clarity · memorable pacing · high-end commercial execution.
+
+══════════════════════════════════════════════════════════════════════════════
+
 ═══ SEVEN CINEMATIC PRINCIPLES (non-negotiable for every scene) ═══
 
-1. NO DEAD FRAMES, BUT RESTRAINT IS CRAFT. Almost every moment should contain motion, tension, anticipation, focus evolution, pacing progression, camera movement, typography evolution, or visual transformation. Do NOT force motion everywhere — intentional restraint (silence, slow pacing, stillness) is the most cinematic move when it earns the next beat.
+1. RESTRAINT IS A TOOL, NOT THE GOAL. Boldness, density, weirdness, dense layered motion, oversaturated color — all can serve a script. A luxe perfume launch needs different energy than a fintech security pitch; an AI dev tool needs different energy than a children's playlist app. Pick what THIS script's tone calls for. Do NOT default to "cinematic restraint" as a safe universal aesthetic — restraint without script-specific reason reads as blandness. The dead-frame rule still stands: every moment of stillness must be EARNED (compositionally strong enough to land without motion, narratively serving a buildup or release), never accidental. Stillness is one option among many — not the default.
 2. DURATIONS ARE DYNAMIC, NEVER UNIFORM. The scene you're rendering has a specific duration for a reason — match motion density and pacing to it. Pacing IS storytelling.
 3. THE FILM IS DIRECTED, NOT ASSEMBLED. Your scene must serve the whole film's rhythm, not just look good in isolation.
 4. OPUS IS THE CREATIVE ENGINE. Invent cinematic ideas. Schemas exist to route data, not to box in your taste.
@@ -756,17 +999,39 @@ IDENTITY LOCK — do not invent your own visual system
   The merger sets :root values from the identity; you reference them in sceneCss.
 • Headlines emphasize identity.accents[0] (the dominant accent), referenced as
   var(--accent-1). Kickers/accent bars use var(--accent-2) and var(--accent-3).
-• Use motionLanguage to bias eases:
+• motionLanguage drives the eases. The names below are WEAK REFERENCES — not recipes
+  to follow, not instructions to obey. You may IGNORE, MUTATE, DISTORT, COMBINE, or
+  REINVENT them. If the identity used a STANDARD name AND you have nothing better,
+  these are one possible interpretation:
     "editorial"  → expo.out entrances, long holds, sine.inOut stage drift
     "kinetic"    → power4.out, fast stagger, snap exits
     "minimal"    → one big move per scene, long quiet tails, fewer elements
     "techno"     → hard-cut + 100–140ms flash entrances, monospace numerics
     "cinematic"  → back.out(1.2) on hero, parallax stage zoom, oversized type
+  If the identity INVENTED a name (anything not in the list above), the name IS the
+  authoritative recipe — interpret it LITERALLY and execute it. "twitchy + tender"
+  means short hard hits paired with long sine.inOut breath holds. "thunderous + held"
+  means a power4.out impact then a 1.5–2s static hold with no drift. "origami-crisp"
+  means hard linear/expo transitions on flat planes with no scale-flutter. Read the
+  invented name and execute it directly; NEVER silently collapse it back to
+  "editorial" or "cinematic" or any other reference. Invent custom cubic-bezier
+  curves when the personality demands something the standard eases can't deliver.
 • Honor assetPolicy. If it allows mockups/images, USE them — do not regress to type-only.
 
 ══════════════════════════════════════════════════════════════════════════════
-MAP CONCEPT → HOW TO BUILD IT (per-scene playbook)
+SCENE CONCEPT — WEAK REFERENCES (not recipes, not instructions, not target outputs)
 ══════════════════════════════════════════════════════════════════════════════
+
+The named concepts below are WEAK REFERENCES. They are not recipes to follow,
+not instructions to obey, and not target outputs to imitate. You may IGNORE,
+MUTATE, DISTORT, COMBINE, or REINVENT any of them if a stronger script-specific
+idea exists. Most of the time a stronger idea DOES exist — invent it.
+
+If the scene's sceneConcept is one of these names AND you have nothing better,
+the descriptions below show one possible interpretation. If the sceneConcept is
+INVENTED (anything not listed), interpret it literally from its name + scene
+brief and build the concrete composition + motion that makes the named concept
+legible. Never collapse an invented concept back to the nearest reference here.
 
 massive_typography_takeover     — ONE word/phrase at 280–380px fills 80% of width.
                                   Background + single accent shape, nothing else.
@@ -791,8 +1056,19 @@ browser_frame_to_brand_reveal   — Browser mockup. In last 20%, browser content
                                   morphs into brand name lockup.
 
 ══════════════════════════════════════════════════════════════════════════════
-MAP MOTION HOOK → ENTRANCE RECIPE
+MOTION HOOK — WEAK REFERENCES (not recipes, not instructions, not target outputs)
 ══════════════════════════════════════════════════════════════════════════════
+
+The named hooks below are WEAK REFERENCES. They are not recipes, not instructions,
+and not target outputs. You may IGNORE, MUTATE, DISTORT, COMBINE, or REINVENT any
+of them if a stronger script-specific motion idea exists. Most of the time a
+stronger motion idea DOES exist — invent it.
+
+If the motionHook is one of these names AND you have nothing better, the
+descriptions below show one possible entrance. If the motionHook is INVENTED
+(anything not listed), interpret literally from the name and build the entrance
+/ landing that makes the hook legible. Never collapse an invented motionHook
+back to a reference below.
 
 hard_flash_cut       — Inner overlay div, 100–140ms full-white opacity panel, then
                        opacity → 0 with expo.out. (Use only inside the scene, NOT
@@ -908,11 +1184,46 @@ function detectScriptDirection(script: string): {
   return { language: null, direction: "ltr" };
 }
 
+/**
+ * Thrown when the LLM omits aesthetic identity fields. The storyboard caller
+ * catches this and fires a single-shot retry with an addendum prompt naming
+ * the missing fields, instead of silently cascading to DEFAULT_VISUAL_IDENTITY
+ * (the old behavior, which stamped "Editorial Night" onto every partial parse
+ * and was the primary cause of different scripts producing same-looking films).
+ */
+export class IdentityIncompleteError extends Error {
+  readonly missingFields: string[];
+  constructor(missingFields: string[]) {
+    super(`visualIdentity missing required fields: ${missingFields.join(", ")}`);
+    this.name = "IdentityIncompleteError";
+    this.missingFields = missingFields;
+  }
+}
+
 function normalizeVisualIdentity(
   raw: Partial<VisualIdentity> | undefined,
   detected?: { language: string | null; direction: "ltr" | "rtl" },
 ): VisualIdentity {
-  if (!raw) return DEFAULT_VISUAL_IDENTITY;
+  // Aesthetic fields: if any are missing, throw — do NOT cascade to "Editorial
+  // Night". The whole point of the retry path is that a partial parse must
+  // not silently produce a generic film.
+  const missing: string[] = [];
+  const isStr = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+  if (!raw) {
+    throw new IdentityIncompleteError([
+      "paletteName", "background", "accents", "headlineFont",
+      "motionLanguage", "signatureMove", "assetPolicy",
+    ]);
+  }
+  if (!isStr(raw.paletteName)) missing.push("paletteName");
+  if (!isStr(raw.background)) missing.push("background");
+  if (!Array.isArray(raw.accents) || raw.accents.length < 3) missing.push("accents");
+  if (!isStr(raw.headlineFont)) missing.push("headlineFont");
+  if (!isStr(raw.motionLanguage)) missing.push("motionLanguage");
+  if (!isStr(raw.signatureMove)) missing.push("signatureMove");
+  if (!isStr(raw.assetPolicy)) missing.push("assetPolicy");
+  if (missing.length > 0) throw new IdentityIncompleteError(missing);
+
   // If the regex detector finds RTL, it overrides whatever the LLM said
   // (LLMs sometimes miss this when the script is short).
   const direction =
@@ -923,23 +1234,22 @@ function normalizeVisualIdentity(
     detected?.direction === "rtl" && detected.language
       ? detected.language
       : (raw.language || DEFAULT_VISUAL_IDENTITY.language);
+
+  // Safety-only fallbacks (font safety, ink contrast) — never aesthetic.
   return {
-    scriptAnalysis: raw.scriptAnalysis || DEFAULT_VISUAL_IDENTITY.scriptAnalysis,
-    paletteName: raw.paletteName || DEFAULT_VISUAL_IDENTITY.paletteName,
-    background: raw.background || DEFAULT_VISUAL_IDENTITY.background,
-    accents:
-      Array.isArray(raw.accents) && raw.accents.length >= 3
-        ? raw.accents.slice(0, 5)
-        : DEFAULT_VISUAL_IDENTITY.accents,
-    ink: raw.ink || DEFAULT_VISUAL_IDENTITY.ink,
-    inkMuted: raw.inkMuted || DEFAULT_VISUAL_IDENTITY.inkMuted,
-    headlineFont: raw.headlineFont || DEFAULT_VISUAL_IDENTITY.headlineFont,
-    bodyFont: raw.bodyFont || DEFAULT_VISUAL_IDENTITY.bodyFont,
-    monoFont: raw.monoFont || DEFAULT_VISUAL_IDENTITY.monoFont,
-    motionLanguage: raw.motionLanguage || DEFAULT_VISUAL_IDENTITY.motionLanguage,
-    signatureMove: raw.signatureMove || DEFAULT_VISUAL_IDENTITY.signatureMove,
-    assetPolicy: raw.assetPolicy || DEFAULT_VISUAL_IDENTITY.assetPolicy,
-    imageKeyword: raw.imageKeyword ?? DEFAULT_VISUAL_IDENTITY.imageKeyword,
+    scriptAnalysis: isStr(raw.scriptAnalysis) ? raw.scriptAnalysis : "(no analysis)",
+    paletteName: raw.paletteName!,
+    background: raw.background!,
+    accents: raw.accents!.slice(0, 5),
+    ink: isStr(raw.ink) ? raw.ink : DEFAULT_VISUAL_IDENTITY.ink,
+    inkMuted: isStr(raw.inkMuted) ? raw.inkMuted : DEFAULT_VISUAL_IDENTITY.inkMuted,
+    headlineFont: raw.headlineFont!,
+    bodyFont: isStr(raw.bodyFont) ? raw.bodyFont : DEFAULT_VISUAL_IDENTITY.bodyFont,
+    monoFont: isStr(raw.monoFont) ? raw.monoFont : DEFAULT_VISUAL_IDENTITY.monoFont,
+    motionLanguage: raw.motionLanguage!,
+    signatureMove: raw.signatureMove!,
+    assetPolicy: raw.assetPolicy!,
+    imageKeyword: typeof raw.imageKeyword === "string" ? raw.imageKeyword : "",
     language,
     textDirection: direction,
   };
@@ -961,41 +1271,23 @@ export async function generateStoryboard(
     brandStyle: brand?.brandStyle ?? null,
   });
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    // The storyboard call is one-shot (not in a loop) so cache_control on
-    // the system text only matters if the same script is regenerated, which
-    // is rare — we still set it for consistency with the scene call.
-    system: [
-      {
-        type: "text",
-        text: STORYBOARD_SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [{ role: "user", content: userText }],
-    max_tokens: 8000,
-    // Opus 4.7: temperature/top_p/top_k removed. Adaptive thinking +
-    // explicit effort give the model room to deliberate over palette and
-    // domain choices instead of converging on the same default.
-    thinking: { type: "adaptive" },
-    output_config: {
-      effort: "high",
-      format: { type: "json_schema", schema: STORYBOARD_JSON_SCHEMA },
-    },
-  });
-
-  // Locate the first text block (skip thinking / other block types).
-  const textBlock = response.content.find(
-    (b): b is Anthropic.TextBlock => b.type === "text",
-  );
-  if (!textBlock) throw new Error("generateStoryboard: no text content in response");
-  const parsed = parseJsonResponseOrThrow<Partial<Storyboard> & { scenes?: StoryboardScene[] }>(
-    textBlock.text,
-    "generateStoryboard",
-    response.stop_reason,
-    response.usage.output_tokens,
-  );
+  // First attempt. If normalizeVisualIdentity throws IdentityIncompleteError,
+  // retry once with an addendum user message naming the omitted fields — never
+  // cascade to a generic default.
+  let parsed = await runStoryboardCall(userText);
+  const detected = detectScriptDirection(trimmed);
+  let identity: VisualIdentity;
+  try {
+    identity = normalizeVisualIdentity(parsed.visualIdentity, detected);
+  } catch (err) {
+    if (!(err instanceof IdentityIncompleteError)) throw err;
+    console.warn(
+      `[storyboard] identity retry: omitted ${err.missingFields.join(",")} — re-firing`,
+    );
+    const retryUser = `${userText}\n\nYour previous response omitted these required visualIdentity fields: ${err.missingFields.join(", ")}. Fill EVERY required identity field with a specific, script-derived choice. No empty strings. No generic defaults. If unsure, lean into the script's mood and invent.`;
+    parsed = await runStoryboardCall(retryUser);
+    identity = normalizeVisualIdentity(parsed.visualIdentity, detected);
+  }
 
   // Light normalization: ensure ids follow scene_NN, durations are within
   // the [1.5, 12] bracket (relaxed from [3, 10] in v2 to make pacing part of
@@ -1018,9 +1310,6 @@ export async function generateStoryboard(
     };
   });
 
-  const detected = detectScriptDirection(trimmed);
-  const identity = normalizeVisualIdentity(parsed.visualIdentity, detected);
-
   // Brand override: if the user supplied brand colors, they take precedence
   // over the LLM's accent picks (the LLM had them in its prompt as a hint;
   // this hard-pins them in case the model drifted). The first user color
@@ -1039,6 +1328,95 @@ export async function generateStoryboard(
     visualIdentity: identity,
     scenes,
   };
+}
+
+/**
+ * One Opus 4.7 storyboard call + JSON parse. Extracted so the retry path
+ * (when normalizeVisualIdentity throws IdentityIncompleteError) can re-fire
+ * the same call with an addendum user message.
+ */
+async function runStoryboardCall(
+  userText: string,
+): Promise<Partial<Storyboard> & { scenes?: StoryboardScene[] }> {
+  const response = await getClient().messages.create({
+    model: MODEL,
+    system: [
+      {
+        type: "text",
+        text: STORYBOARD_SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [{ role: "user", content: userText }],
+    max_tokens: 8000,
+    // Opus 4.7: temperature/top_p/top_k removed. Adaptive thinking +
+    // explicit effort give the model room to deliberate over palette and
+    // domain choices instead of converging on the same default.
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: "high",
+      format: { type: "json_schema", schema: STORYBOARD_JSON_SCHEMA },
+    },
+  });
+
+  const textBlock = response.content.find(
+    (b): b is Anthropic.TextBlock => b.type === "text",
+  );
+  if (!textBlock) throw new Error("generateStoryboard: no text content in response");
+  return parseJsonResponseOrThrow<Partial<Storyboard> & { scenes?: StoryboardScene[] }>(
+    textBlock.text,
+    "generateStoryboard",
+    response.stop_reason,
+    response.usage.output_tokens,
+  );
+}
+
+/**
+ * Aesthetic-seed lexicon. Three of these get sampled per script (deterministic
+ * hash, so retries don't re-roll) and injected into the storyboard user prompt
+ * as a mood push — the ONLY mechanism available to break Opus 4.7's
+ * determinism, since the model no longer accepts temperature/top_p/top_k.
+ * Curated to span texture, material, light, density, and emotional registers
+ * — NOT to bias toward any specific palette.
+ */
+const AESTHETIC_SEED_LEXICON = [
+  "papery", "ferrous", "oversaturated", "blueprint", "oceanic", "glitchy",
+  "papercraft", "neon-sweat", "sun-bleached", "monolithic", "vellum", "magnetic",
+  "fluorescent", "graphite", "lacquered", "kelp", "static", "tactile",
+  "thunderous", "twitchy", "tender", "origami-crisp", "fogged", "ember",
+  "phosphor", "talc", "iron-filing", "cathode", "spritz", "chalky",
+  "wet-asphalt", "neon-noir", "vinyl-warm", "matte-plastic", "candlelit",
+  "supercut", "pressed-flower", "concrete", "salt-rimmed", "sodium-lamp",
+  "stitched", "mosaic", "ink-bled", "torchlit", "polaroid", "loomwork",
+  "rust-bloom", "spotlit", "etched", "hand-cut", "telephoto", "fiberglass",
+  "kintsugi", "stencil", "marble-vein", "neon-grime", "lichen", "carbon",
+  "linen", "sun-warmed",
+] as const;
+
+/**
+ * Pick 3 distinct aesthetic adjectives from the lexicon, deterministically
+ * derived from a hash of the script. Same script → same seed (so retries are
+ * stable); different scripts → different seeds (so the same prompt produces
+ * different mood pushes, which is the closest analogue we have to sampling
+ * diversity under Opus 4.7's no-temperature constraint).
+ */
+function pickAestheticSeed(script: string): readonly string[] {
+  // FNV-1a 32-bit on the script — fast, well-distributed, no deps.
+  let h = 2166136261;
+  for (let i = 0; i < script.length; i++) {
+    h ^= script.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const seed = h >>> 0;
+
+  const picks = new Set<number>();
+  const N = AESTHETIC_SEED_LEXICON.length;
+  let state = seed;
+  while (picks.size < 3) {
+    state = Math.imul(state ^ (state >>> 13), 0x5bd1e995) >>> 0;
+    picks.add(state % N);
+  }
+  return Array.from(picks).map((i) => AESTHETIC_SEED_LEXICON[i]);
 }
 
 /** Render the script + brand hints into the storyboard-call user message. */
@@ -1063,8 +1441,14 @@ function renderStoryboardUserPrompt(
       lines.push(`  brandStyle: ${brand.brandStyle.trim()}`);
     }
     lines.push("");
-    lines.push("SCRIPT:");
   }
+
+  const seed = pickAestheticSeed(script);
+  lines.push(
+    `AESTHETIC SEED for this film (interpret loosely; engage with at least 2 of these moods in palette/typography/motion choices): ${seed.join(", ")}. These are mood prompts, not requirements — let them push you AWAY from your default and toward this script's specific feel.`,
+  );
+  lines.push("");
+  lines.push("SCRIPT:");
   lines.push(script);
   return lines.join("\n");
 }
@@ -1435,6 +1819,7 @@ export const SCENE_CRITIQUE_DIMENSIONS = [
   "motionClarity",
   "brandFidelity",
   "restraintQuality",
+  "creativeDistinctiveness",
   "overall",
 ] as const;
 export type SceneCritiqueDimension = (typeof SCENE_CRITIQUE_DIMENSIONS)[number];
@@ -1455,6 +1840,13 @@ export type SceneCritique = {
      * dimension is the dead-frame-vs-restraint distinguisher (principle #1).
      */
     restraintQuality: number;
+    /**
+     * High when the scene feels specifically authored for THIS script's subject
+     * and tone. Low when it looks like a generic film-template scene that
+     * could've been made for any product in the same domain. Counterweight to
+     * restraintQuality so "carefully restrained but bland" routes to refine.
+     */
+    creativeDistinctiveness: number;
     overall: number;
   };
   verdict: SceneCritiqueVerdict;
@@ -1484,6 +1876,7 @@ const SCENE_CRITIQUE_SCHEMA = {
         motionClarity: { type: "number" },
         brandFidelity: { type: "number" },
         restraintQuality: { type: "number" },
+        creativeDistinctiveness: { type: "number" },
         overall: { type: "number" },
       },
     },
@@ -1524,6 +1917,7 @@ export const FILM_CRITIQUE_DIMENSIONS = [
   "motionDiversity",
   "cinematicCoherence",
   "energyWaveDelivery",
+  "filmRecognizability",
   "overall",
 ] as const;
 export type FilmCritiqueDimension = (typeof FILM_CRITIQUE_DIMENSIONS)[number];
@@ -1545,6 +1939,13 @@ export type FilmCritique = {
     cinematicCoherence: number;
     /** Does the delivered film match the planned filmRhythm.energyCurve? */
     energyWaveDelivery: number;
+    /**
+     * Could a viewer guess what product/script this is from the imagery alone?
+     * High = unmistakably script-specific. Low = generic — could be any film.
+     * Counterweight to the safe-restraint pull; flags films that are tasteful
+     * but visually anonymous.
+     */
+    filmRecognizability: number;
     overall: number;
   };
   verdict: FilmCritiqueVerdict;
@@ -1579,6 +1980,7 @@ const FILM_CRITIQUE_SCHEMA = {
         motionDiversity: { type: "number" },
         cinematicCoherence: { type: "number" },
         energyWaveDelivery: { type: "number" },
+        filmRecognizability: { type: "number" },
         overall: { type: "number" },
       },
     },
@@ -1726,10 +2128,31 @@ function indentLines(s: string, indent: string): string {
  * The LLM owns only what's inside the .scene-content divs, per-scene CSS,
  * per-scene GSAP timeline blocks, and the CSS variables on :root.
  */
+/**
+ * Minimal audio bundle the skeleton needs to inject <audio> tags. Kept
+ * structurally identical to ResolvedAudio in app/lib/audio-resolver.ts
+ * (avoids a cyclic import — audio-resolver imports types from this file).
+ */
+export type SkeletonAudio = {
+  bgMusic: { streamUrl: string } | null;
+  voiceovers: Array<{ sceneId: string; publicUrl: string }>;
+  sfxCues: Array<{
+    sceneId: string;
+    momentSeconds: number;
+    url: string;
+    volume: number;
+  }>;
+  // Sprint 3 — per-scene bg music volume keyframes. Each entry produces a
+  // GSAP tween that ducks #bg-music to `volume` at sceneStart and restores
+  // to the default at sceneEnd. Empty/undefined → no per-scene ducking.
+  bgMusicVolumeOverrides?: Array<{ sceneId: string; volume: number }>;
+};
+
 export function buildFilmSkeleton(
   storyboard: Storyboard,
   identity: VisualIdentity,
   fills: FilmFills,
+  audio?: SkeletonAudio,
 ): string {
   const totalSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
   const starts = sceneStarts(storyboard.scenes);
@@ -1832,6 +2255,66 @@ export function buildFilmSkeleton(
   const dir = identity.textDirection;
   const lang = identity.language || "en";
 
+  // ─── Audio tags (no class="clip"; runtime owns playback via data-start /
+  // data-volume per HYPERFRAMES_SPEC). bg-music is mixed lower when there are
+  // voiceovers so the VO stays intelligible without per-scene ducking (which
+  // the renderer's media model doesn't reliably support yet).
+  const audioTagsHtml: string[] = [];
+  const hasVoiceovers = (audio?.voiceovers?.length ?? 0) > 0;
+  const defaultBgVolume = hasVoiceovers ? 0.22 : 0.4;
+  if (audio?.bgMusic) {
+    audioTagsHtml.push(
+      `  <audio id="bg-music" src="${escapeHtml(audio.bgMusic.streamUrl)}" data-start="0" data-volume="${defaultBgVolume}" loop preload="auto"></audio>`,
+    );
+  }
+  for (const vo of audio?.voiceovers ?? []) {
+    const i = parseInt(vo.sceneId.replace(/^s/, ""), 10) - 1;
+    const sceneStart = starts[i];
+    if (!Number.isFinite(sceneStart)) continue;
+    audioTagsHtml.push(
+      `  <audio id="vo-${vo.sceneId}" src="${escapeHtml(vo.publicUrl)}" data-start="${sceneStart}" data-volume="0.95" preload="auto"></audio>`,
+    );
+  }
+  (audio?.sfxCues ?? []).forEach((cue, j) => {
+    const i = parseInt(cue.sceneId.replace(/^s/, ""), 10) - 1;
+    const sceneStart = starts[i];
+    if (!Number.isFinite(sceneStart)) return;
+    const start = Math.max(0, sceneStart + cue.momentSeconds);
+    audioTagsHtml.push(
+      `  <audio id="sfx-${cue.sceneId}-${j}" src="${escapeHtml(cue.url)}" data-start="${start}" data-volume="${cue.volume}" preload="auto"></audio>`,
+    );
+  });
+  const audioBlock = audioTagsHtml.length > 0 ? `\n${audioTagsHtml.join("\n")}\n` : "";
+
+  // Sprint 3 — per-scene bg music volume keyframes. Each override produces
+  // a duck-in at sceneStart and a restore-to-default at sceneEnd, written
+  // into the global timeline. If two adjacent scenes both have overrides,
+  // the restore-to-default for the first will be immediately overwritten
+  // by the duck-in for the second — that's the intended behavior. HF
+  // runtime support for tweening <audio>.volume is uncertain; the editor
+  // preview's use-playback hook is the authoritative source for volume.
+  const bgVolumeKeyframesJs: string[] = [];
+  if (audio?.bgMusic && (audio.bgMusicVolumeOverrides?.length ?? 0) > 0) {
+    for (const ov of audio.bgMusicVolumeOverrides ?? []) {
+      const i = parseInt(ov.sceneId.replace(/^s/, ""), 10) - 1;
+      const sceneStart = starts[i];
+      if (!Number.isFinite(sceneStart)) continue;
+      const sceneDuration = storyboard.scenes[i]?.durationSeconds ?? 0;
+      const duckIn = Math.max(0, sceneStart);
+      const restoreAt = Math.max(duckIn, sceneStart + sceneDuration - 0.3);
+      const vol = Math.max(0, Math.min(1, ov.volume));
+      bgVolumeKeyframesJs.push(
+        `  tl.to("#bg-music", { volume: ${vol}, duration: 0.3, ease: "sine.inOut" }, ${duckIn});`,
+      );
+      bgVolumeKeyframesJs.push(
+        `  tl.to("#bg-music", { volume: ${defaultBgVolume}, duration: 0.3, ease: "sine.inOut" }, ${restoreAt});`,
+      );
+    }
+  }
+  const bgVolumeBlock = bgVolumeKeyframesJs.length > 0
+    ? `\n  // Per-scene bg music volume (Sprint 3 — comment-driven ducking).\n${bgVolumeKeyframesJs.join("\n")}\n`
+    : "";
+
   return `<!doctype html>
 <html lang="${escapeHtml(lang)}" dir="${dir}" data-composition-variables='[]'>
 <head>
@@ -1871,8 +2354,7 @@ ${rootVarsCss}
 </head>
 <body>
 <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="${totalSeconds}">
-${sectionsHtml}
-</div>
+${sectionsHtml}${audioBlock}</div>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
 <script>
   var tl = gsap.timeline({ paused: true });
@@ -1887,7 +2369,7 @@ ${
   fills.globalTimeline
     ? `  // Film-wide motifs (LLM-authored).\n${indentLines(fills.globalTimeline, "  ")}\n`
     : ``
-}
+}${bgVolumeBlock}
   // Anchor timeline length to total film duration.
   tl.set({}, {}, ${totalSeconds});
 
@@ -1914,9 +2396,85 @@ ${
 
 const FILM_BLUEPRINT_SYSTEM_PROMPT = `You are the show-runner of a short cinematic launch film. Your job is to lock the global creative DNA and a per-scene plan that every subsequent scene-renderer will follow. You DO NOT emit HTML, CSS, or GSAP code — only structured creative direction.
 
+══════════════════════════════════════════════════════════════════════════════
+CREATIVE MANDATE — READ THIS FIRST, OVERRIDES EVERYTHING ELSE
+══════════════════════════════════════════════════════════════════════════════
+
+Your primary job is NOT to follow templates, menus, or predefined motion-design patterns.
+
+Your primary job is to discover the BEST possible cinematic shape of the film.
+
+Do not ask: "What predefined cadence/motionLanguage fits this script?"
+Ask: "What rhythm and motion personality would make this film unforgettable?"
+
+You are encouraged to invent:
+  • completely new motion language (name it in 2–3 words and characterize it concretely)
+  • original pacing shapes (energy curves that don't fit standard cadence modes)
+  • unexpected briefs per scene (sceneConcept names that exist only for this film)
+  • unique focal-element choices that ride the script's specific subjects
+  • unconventional transitions between scenes
+
+The highest-quality blueprint is usually the one that feels authored specifically for THIS script — not assembled from reusable motion-design vocabulary.
+
+Do not optimize for:  safety · familiarity · clean template aesthetics · generic premium SaaS style.
+Optimize for:        emotional impact · memorability · cinematic identity · visual surprise · motion personality · strong directorial choices.
+
+If the film could work for many unrelated products, it has failed.
+
+Every major decision (energyCurve shape, cadence, motionLanguage, per-scene brief, focalElementHint) should feel inevitable for THIS exact script.
+
+The system constraints (schema validity, ID format, scene count) are strict.
+Creative direction is not.
+
+You are allowed to invent the strongest possible blueprint, even if it is unusual, experimental, maximalist, minimal, abstract, surreal, or unexpected — as long as it serves the script and respects the locked visualIdentity from the storyboard.
+
+The goal is not "good motion-design plan."
+The goal is: "A film that feels intentionally directed."
+
+The cadenceMode enum (slow_build_then_release / staccato_pulse / ebb_flow / long_breath_then_impact) is a small set — pick the closest one but treat your energyCurve as authoritative. Invented motionLanguage names from the storyboard MUST be honored in your motionLanguage.principles + cameraFeel — do not silently collapse them back to "editorial" or "cinematic".
+
+══════════════════════════════════════════════════════════════════════════════
+MOTION IS THE FILM — design briefs that demand motion, not posters
+══════════════════════════════════════════════════════════════════════════════
+
+This is a HyperFrames film. Motion quality is the core product, not decoration. The scene-fill stage will read your briefs and write GSAP timelines from them. If your brief describes a beautiful frozen frame with "minor animation", the scene-fill stage will obediently produce a poster with fade-in. Write briefs that demand motion.
+
+Every scene brief must specify a MOTION IDEA over the scene's full duration, not a composition:
+  • a clear entrance behavior
+  • a living mid-scene behavior (drift, breathing, secondary animations — NOT "headline waits")
+  • a payoff / transformation in the last 20%
+
+Bad brief: "Centered headline reads 'Built for builders' over a dark background with a glowing ring behind it."
+Good brief: "A graphite ring draws itself from a single point at top-left, sweeping clockwise to close around the headline; mid-scene the ring breathes (radius pulses ±4%) while the headline letters settle one-by-one; at 80% the ring locks and emits a single ferrofluid pulse that the headline absorbs."
+
+motionPattern, focalElementHint, startStateHint, endStateHint, transitionInIntent, transitionOutIntent — write these as TIME-BASED motion ideas, not poses. The scene-fill stage's freedom to invent strong motion depends on you giving it strong motion direction.
+
+══════════════════════════════════════════════════════════════════════════════
+CREATIVE TARGET — what kind of film we're planning
+══════════════════════════════════════════════════════════════════════════════
+
+This is NOT narrative cinema. This is NOT experimental art film. This is NOT film-school motion.
+
+The target is a HIGH-END MOTION-DESIGN PROMO FILM — a launch video, a product explainer. Think top-tier motion studio (Buck, ManvsMachine, Tendril, Block & Tackle) producing a premium brand launch piece for a real product.
+
+The blueprint you write must seed: strong visual hook · premium typography · memorable motion · bold composition · clear communication · fast comprehension · polished commercial energy · custom-made visual identity per product.
+
+Creative freedom matters — but it must SERVE THE PRODUCT AND THE MESSAGE:
+  • Do NOT become abstract just to be artistic.
+  • Do NOT generate weirdness for its own sake.
+  • Do NOT plan a film that needs explanation. The product / message must be CLEAR and FAST to comprehend.
+
+Every brief should give the scene-fill stage a path to make the product/message: clearer · sharper · more memorable · more emotionally impactful.
+
+Motion should feel: deliberate · premium · modern · dynamic · expressive · commercial-quality.
+
+HyperFrames is a motion-design medium, not a film-school medium. Optimize for: strong motion identity · visually impressive reveals · premium launch energy · product clarity · memorable pacing · high-end commercial execution.
+
+══════════════════════════════════════════════════════════════════════════════
+
 ═══ SEVEN CINEMATIC PRINCIPLES (non-negotiable — design every brief around these) ═══
 
-1. NO DEAD FRAMES, BUT RESTRAINT IS CRAFT. Distinguish intentional stillness (earned cinematic restraint) from empty/dead frames. A held beat after a hard impact is craft; a held beat for no reason is failure. Briefs must make the difference explicit.
+1. RESTRAINT IS A TOOL, NOT THE GOAL. Boldness, density, weirdness, dense layered motion, oversaturated color — all can serve a script. Pick what THIS script's tone calls for. Do NOT default to "cinematic restraint" as a safe universal aesthetic — restraint without script-specific reason reads as blandness. Stillness must be EARNED (compositionally strong enough to land without motion, narratively serving a buildup or release), never accidental. A held beat after a hard impact is craft; a held beat for no reason is failure. Briefs must make the difference explicit.
 2. DURATIONS ARE DYNAMIC, NEVER UNIFORM. The storyboard's durations may already vary (range 1.5–12s). Honor that — and if a scene's brief would land harder with a different feel for its duration, say so via motionPattern. Pacing IS storytelling.
 3. THE FILM IS DIRECTED, NOT ASSEMBLED. Plan rhythm and transition handoffs as a whole. Read your own outline forward — does endStateHint[i] line up with transitionInIntent[i+1]?
 4. OPUS IS THE CREATIVE ENGINE. Invent. The schemas route your decisions; they don't box your taste.
@@ -1929,7 +2487,7 @@ const FILM_BLUEPRINT_SYSTEM_PROMPT = `You are the show-runner of a short cinemat
 A single FilmBlueprint JSON with:
   1. cssVariables — sparse overrides on top of the identity-derived defaults. Usually empty; only override when the identity needs a tweak (e.g. swap accent-2 because palette feels muddy). Most films leave this {}.
   2. motionLanguage — the film's motion grammar:
-       easings        — 2–3 GSAP eases the whole film uses ("power2.out", "expo.inOut", "power4.inOut", "circ.out", ...). Pick ones consistent with the identity's motionLanguage tag.
+       easings        — 2–3 GSAP eases the whole film uses ("power2.out", "expo.inOut", "power4.inOut", "circ.out", custom cubic-beziers like "cubic-bezier(0.3, 1.4, 0.2, 1)", ...). Invent eases that match the identity's motionLanguage personality — do not default to a generic "power2.out + expo.inOut" pair.
        pacing         — "calm" | "propulsive" | "staccato"
        cameraFeel     — one-line description (e.g. "locked-off proscenium with held breaths", "tight push-pull on focal moments")
        principles     — 3–5 short do/don't rules every scene must respect ("never animate two headings simultaneously", "stagger reveals always read in the natural script direction", "hold the focal beat for ≥0.4s before the next entrance")
@@ -2280,14 +2838,15 @@ const VISION_CRITIQUE_SYSTEM_PROMPT = `You are a senior motion-design critic rev
 
 Score the scene on each of these dimensions, 0..100 (higher = better). Be honest. Be specific. Do NOT round everything to 70.
 
-  • composition          — visual weight balance, hierarchy, negative space, focal placement.
-  • typographyHierarchy  — type sizes/weights tell a clear story; no two elements compete for attention.
-  • colorTension         — palette discipline; accents create tension where they should, not noise.
-  • focalClarity         — at any point in the trail, can you tell what the audience should be looking at?
-  • motionClarity        — the trail SHOWS motion: entrance + hold + exit. Motion has direction and intent, not random animation.
-  • brandFidelity        — does this scene feel like THIS film's brand (palette, typography, signatureMove)?
-  • restraintQuality     — if the scene is mostly still: is the stillness INTENTIONAL (earned restraint) or DEAD (nothing evolving, no reason to hold)?
-  • overall              — weighted holistic score. Not an average — weight motionClarity + focalClarity + restraintQuality heavily; they're the cinematic differentiators.
+  • composition              — visual weight balance, hierarchy, negative space, focal placement.
+  • typographyHierarchy      — type sizes/weights tell a clear story; no two elements compete for attention.
+  • colorTension             — palette discipline; accents create tension where they should, not noise.
+  • focalClarity             — at any point in the trail, can you tell what the audience should be looking at?
+  • motionClarity            — the trail SHOWS motion: entrance + hold + exit. Motion has direction and intent, not random animation.
+  • brandFidelity            — does this scene feel like THIS film's brand (palette, typography, signatureMove)?
+  • restraintQuality         — if the scene is mostly still: is the stillness INTENTIONAL (earned restraint) or DEAD (nothing evolving, no reason to hold)?
+  • creativeDistinctiveness  — does this scene feel SPECIFICALLY AUTHORED for this script's subject and tone, or could it have been made for any product in this domain? 90+ = unmistakably script-specific. 50 = could be any film in this domain. 20- = looks like a stock template. THIS dimension is the counterweight to restraintQuality — restraint without distinctiveness is just blandness.
+  • overall                  — weighted holistic score. Not an average — weight motionClarity + focalClarity + restraintQuality + creativeDistinctiveness heavily; they're the cinematic differentiators.
 
 ═══ CRITICAL: DEAD FRAMES vs INTENTIONAL RESTRAINT ═══
 
@@ -2311,6 +2870,9 @@ If you see a held scene, ASK: does this stillness EARN the next beat? If yes →
   • ship    — overall ≥ 70 AND no major issues. The scene is good enough to keep.
   • refine  — overall < 70 OR any major issue. The scene needs another pass.
   • reject  — overall < 40 OR multiple major issues. The scene should be redesigned from the brief, not just patched.
+
+ADDITIONAL VERDICT RULE — RESTRAINT WITHOUT DISTINCTIVENESS:
+If restraintQuality > 70 AND creativeDistinctiveness < 50, the verdict MUST be \`refine\` and you MUST file a major issue with dimension \`creativeDistinctiveness\` and description starting "restraint_without_distinctiveness: ...". Restraint that doesn't earn its script-specificity is blandness — the scene must be made specifically about THIS product/script's subject, not a tasteful template that could be anyone.
 
 ═══ ISSUES (the actionable output) ═══
 
@@ -2350,13 +2912,17 @@ Score the film on each dimension, 0..100 (higher = better):
   • motionDiversity        — motion vocabulary varies (not bottom_up_reveal in every scene).
   • cinematicCoherence     — despite variety, the film feels like ONE piece with shared identity.
   • energyWaveDelivery     — compare the DELIVERED energy across the trails to the PLANNED energyCurve (provided in user message). Does the film match its own plan?
-  • overall                — weighted holistic. Not an average — weight cinematicCoherence + climaxStrength + energyWaveDelivery heavily.
+  • filmRecognizability    — looking at all motion-trail composites together: could a viewer guess what product/script this film is from imagery alone (palette, typography, motion personality, signatureMove, specific visual ideas)? 90+ = unmistakably this product. 50 = could be any film in this domain. 20- = looks like a template that could be reused for anything. Score honestly — this is the dimension that catches "tastefully bland" films that pass every other rubric.
+  • overall                — weighted holistic. Not an average — weight cinematicCoherence + climaxStrength + energyWaveDelivery + filmRecognizability heavily.
 
 ═══ VERDICTS ═══
 
   • ship                    — overall ≥ 70 AND no major film-level issues. The film is good enough.
   • refine_selected_scenes  — overall < 70 OR major issues exist that can be fixed by re-firing specific scenes.
   • redesign_rhythm         — the energy wave fundamentally fails (no climax, monotone energy). More scenes than usual need to be refired and the refinement framing should emphasize redesign over patch.
+
+ADDITIONAL VERDICT RULE — FILM-WIDE GENERICNESS:
+If filmRecognizability < 50, you MUST file a film-level major issue with dimension \`filmRecognizability\` and description starting "visual_genericness: ...". The affectedSceneIds should be the scenes that share the generic look (often all of them or the dominant subset). The suggestedFix should name the specific script subjects that should be visually surfaced (e.g., "anchor s2 + s4 around the actual product hardware silhouette instead of abstract type"). The verdict in this case is at least \`refine_selected_scenes\`.
 
 ═══ FILM-LEVEL ISSUES ═══
 
@@ -2752,7 +3318,11 @@ export async function generateFilmBlueprint(
     }
   }
 
-  const filmRhythm = sanitizeFilmRhythm(parsed.filmRhythm, normalizedOutline.length);
+  const filmRhythm = sanitizeFilmRhythm(
+    parsed.filmRhythm,
+    normalizedOutline.length,
+    storyboard.scenes.map((s) => s.pacingIntent),
+  );
 
   const blueprint: FilmBlueprint = {
     cssVariables: parsed.cssVariables ?? {},
@@ -2805,28 +3375,455 @@ export function applyLockedAssetsToBlueprint(
   };
 }
 
+// ─── Audio direction (auto music / SFX / voiceover) ──────────────────────
+// Stage 1.75 of the v2 pipeline. With storyboard, identity, and Film
+// Blueprint in hand, the LLM decides what the film SOUNDS like — one
+// background music search query (Jamendo), per-scene voiceover text
+// (ElevenLabs TTS), and per-scene SFX cues (Freesound) aligned to
+// filmRhythm.impactMoments. Pure planning here; URL resolution happens
+// in app/lib/audio-resolver.ts.
+
+export const VOICEOVER_DELIVERIES = [
+  "cinematic",
+  "energetic",
+  "intimate",
+  "deadpan",
+  "authoritative",
+] as const;
+export type VoiceoverDelivery = (typeof VOICEOVER_DELIVERIES)[number];
+
+export const SFX_KINDS = ["punch", "impact", "transition", "ambient"] as const;
+export type SfxKind = (typeof SFX_KINDS)[number];
+
+export const MUSIC_ENERGIES = ["low", "mid", "high"] as const;
+export type MusicEnergy = (typeof MUSIC_ENERGIES)[number];
+
+export type AudioPlanBgMusic = {
+  jamendoQuery: string;
+  moodTags: string[];
+  energyHint: MusicEnergy;
+};
+
+export type AudioPlanVoiceover = {
+  sceneId: string;
+  text: string;
+  deliveryHint: VoiceoverDelivery;
+  voiceId?: string;
+};
+
+export type AudioPlanSfxCue = {
+  sceneId: string;
+  momentSeconds: number;
+  kind: SfxKind;
+  freesoundQuery: string;
+};
+
+// Sprint 3 — per-scene bg music volume override. 0..1 (clamped). Used to
+// duck/lift the bg music for individual scenes (e.g. quieter under a
+// climactic voiceover, louder during a percussive impact). Empty array on
+// first runs; populated by the audio director when comments ask for it.
+export type AudioPlanBgVolumeOverride = {
+  sceneId: string;
+  volume: number;
+};
+
+export type AudioPlan = {
+  bgMusic: AudioPlanBgMusic | null;
+  voiceovers: AudioPlanVoiceover[];
+  sfxCues: AudioPlanSfxCue[];
+  bgMusicVolumeOverrides?: AudioPlanBgVolumeOverride[];
+};
+
+// Anthropic structured-output schemas reject numerical / array length /
+// pattern constraints (minItems, minLength, maxLength, minimum, pattern).
+// Rules like "2-5 moodTags" or "momentSeconds ≥ 0" or "sceneId matches s\d+"
+// live in AUDIO_DIRECTION_SYSTEM_PROMPT instead, with runtime normalization
+// in generateAudioDirection enforcing them post-parse.
+const AUDIO_DIRECTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["bgMusic", "voiceovers", "sfxCues", "bgMusicVolumeOverrides"],
+  properties: {
+    bgMusic: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: ["jamendoQuery", "moodTags", "energyHint"],
+      properties: {
+        jamendoQuery: { type: "string" },
+        moodTags: { type: "array", items: { type: "string" } },
+        energyHint: { type: "string", enum: [...MUSIC_ENERGIES] },
+      },
+    },
+    voiceovers: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sceneId", "text", "deliveryHint"],
+        properties: {
+          sceneId: { type: "string" },
+          text: { type: "string" },
+          deliveryHint: { type: "string", enum: [...VOICEOVER_DELIVERIES] },
+          voiceId: { type: "string" },
+        },
+      },
+    },
+    sfxCues: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sceneId", "momentSeconds", "kind", "freesoundQuery"],
+        properties: {
+          sceneId: { type: "string" },
+          momentSeconds: { type: "number" },
+          kind: { type: "string", enum: [...SFX_KINDS] },
+          freesoundQuery: { type: "string" },
+        },
+      },
+    },
+    // Sprint 3 — per-scene bg music ducking. Empty array on most runs.
+    // Volume range 0..1 is enforced post-parse (Anthropic schema rejects
+    // minimum/maximum constraints).
+    bgMusicVolumeOverrides: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sceneId", "volume"],
+        properties: {
+          sceneId: { type: "string" },
+          volume: { type: "number" },
+        },
+      },
+    },
+  },
+} as const;
+
+const AUDIO_DIRECTION_SYSTEM_PROMPT = `You are the audio director for a short cinematic launch film. The visual film is already locked — storyboard, palette, motion language, and filmRhythm are pinned. Your job is to decide what the film SOUNDS like.
+
+═══ YOUR OUTPUT — three independent decisions ═══
+
+1. bgMusic (or null) — ONE background music search query for Jamendo (free CC-licensed library). The query is 2–5 words like "ambient cinematic synth", "driving electronic pulse", "uplifting orchestral build". Pair it with 2–5 moodTags (single words, e.g. "calm", "tense", "uplifting") and an energyHint (low | mid | high).
+   • Return null ONLY if the film is so short/punchy that any music would clutter it (<3 scenes AND total duration <10s AND cadenceMode="staccato_pulse"). Otherwise always return a track query — even held/cinematic films benefit from a quiet bed.
+   • Match energyHint to the film's overall energyCurve: a slow_build_then_release film with mostly low energy scenes wants energyHint="low", not "high".
+
+2. voiceovers — per-scene narration text. ONE entry per scene (sceneId s1..sN), or omit a scene to skip its voiceover (do this for type-only logo lockups, silent kickers, etc.).
+   • text is what ElevenLabs will speak verbatim. Keep it SHORT — typically 1 sentence, ≤25 words, that fits naturally into the scene's duration (estimate ~3 words/second for cinematic delivery). NEVER pad to match duration; leave silence if needed.
+   • DO NOT just echo scene.copy if it's already visible on screen. Voiceover should ADD, not duplicate. If the copy is "Privacy that travels with you", the VO might be "Wherever you go. Whatever you do." — complementary, not redundant.
+   • deliveryHint guides ElevenLabs voice settings: cinematic (slow, weighty) | energetic (fast, punchy) | intimate (close, warm) | deadpan (flat, ironic) | authoritative (firm, declarative).
+   • Hold/rest scenes often want NO voiceover at all — the silence is the point. Skip them.
+
+3. sfxCues — per-scene sound effects. AIM FOR RESTRAINT: at most ONE cue per scene, and only on scenes that genuinely need a sonic punctuation. Empty array is fine for quiet films.
+   • PRIORITIZE filmRhythm.impactMoments and filmRhythm.climaxIndex — those scenes deserve a punch or impact cue. Rest moments should be silent (no SFX).
+   • momentSeconds is the offset within the scene's local timeline (0 = scene start). Place punches near transitions; ambient cues can start at 0 and span the scene.
+   • kind: punch (sharp, short, percussive) | impact (low, heavy, sustained) | transition (whoosh, riser, swell) | ambient (atmospheric pad, drone).
+   • freesoundQuery is 2-4 words, e.g. "deep cinematic boom", "ui click sharp", "soft whoosh transition", "ambient hum dark". Avoid overly specific queries — Freesound is a search not a generator.
+
+4. bgMusicVolumeOverrides — per-scene background music volume (0..1). DEFAULT IS EMPTY ARRAY. Only populate when a user comment explicitly asks for music ducking ("lower the music here") or lifting ("more music on this scene"), OR when the scene has a critical voiceover that the default mix won't carry. The default mix already drops bg music to 0.22 across all scenes when voiceovers exist — don't duplicate that with a 0.22 override on every scene. Use 0.08–0.15 for hard ducks (silence except hum), 0.35–0.55 for restored levels, 0.6–0.8 for lifts during instrumental beats.
+
+═══ HOW TO READ THE FILM ═══
+
+You receive: the storyboard (scene copy + pacingIntent + duration), the visual identity, and the Film Blueprint's filmRhythm (energyCurve, restMoments, impactMoments, climaxIndex, cadenceMode, restraintNotes).
+
+DESIGN DECISIONS that should change your output:
+  • cadenceMode="staccato_pulse" → energyHint="high" or "mid", multiple SFX punches on the impact scenes, deadpan/energetic VO.
+  • cadenceMode="long_breath_then_impact" → energyHint="low" for the bed, ONE big impact cue on climaxIndex, cinematic/intimate VO.
+  • cadenceMode="ebb_flow" → energyHint="mid", alternating SFX between rest and impact scenes, varied VO delivery.
+  • cadenceMode="slow_build_then_release" → energyHint rises with the curve; rising SFX on build, release SFX on the final scene.
+
+═══ WHAT NOT TO DO ═══
+
+✗ Don't add SFX to every scene — silence is a sonic choice.
+✗ Don't make the VO read the on-screen copy verbatim.
+✗ Don't request music genres that don't exist on Jamendo ("kpop", "drill", "phonk" — stick to "ambient", "cinematic", "electronic", "orchestral", "lo-fi", "synthwave", "post-rock", "experimental").
+✗ Don't write voiceover for hold/logo-lockup scenes unless the brief calls for it.
+✗ Don't return more than 3 SFX cues across the whole film unless cadenceMode is staccato_pulse.
+
+Emit AudioPlan JSON now. Strict schema — no extra fields.
+`;
+
+// Refinement-mode addendum. Concatenated onto the system prompt when
+// generateAudioDirection is called with feedback (Sprint 3 — comments
+// influence audio). The base prompt above stays cache-stable so first-run
+// jobs hit the cache; only the refinement run pays for the addendum.
+const AUDIO_DIRECTION_REFINE_ADDENDUM = `
+
+═══ REFINEMENT MODE — YOU ARE EDITING AN EXISTING PLAN ═══
+
+You will receive two extra blocks in the user message: PREVIOUS PLAN (what you emitted last run, with the resolved track/SFX names alongside) and USER COMMENTS PER SCENE (free-text feedback). Your job is to emit a NEW AudioPlan that minimally changes the previous one to address the comments.
+
+RESTRAINT FIRST. Most comments are visual/motion/typography and do NOT touch audio. For any scene whose comments don't mention audio, return that scene's voiceover/SFX EXACTLY as before (same text, same deliveryHint, same freesoundQuery, same kind, same momentSeconds). For bgMusic, leave jamendoQuery + moodTags + energyHint unchanged unless a comment explicitly asks for a different music feel.
+
+AUDIO-RELATED KEYWORDS to watch for in comments (case-insensitive):
+  music, volume, louder, quieter, softer, mute, duck, lift, bed, track, score, song
+  voice, voiceover, vo, narration, narrator, speak, say, read, tone, delivery, pace
+  sfx, sound effect, whoosh, boom, click, impact, punch, transition, swell, riser, ambient
+  swap, replace, change <audio-noun>, different <audio-noun>
+
+CHANGE TYPES:
+  • "lower/quieter music on scene X" → add { sceneId: "sX", volume: 0.10 } to bgMusicVolumeOverrides. Don't change bgMusic.jamendoQuery.
+  • "more music on scene X" → add { sceneId: "sX", volume: 0.55 } to bgMusicVolumeOverrides.
+  • "change the whoosh to a deeper boom on scene X" → update that scene's sfxCue { kind: "impact", freesoundQuery: "deep cinematic boom" }.
+  • "voiceover should be more intimate on scene X" → change that scene's voiceover deliveryHint to "intimate" (and optionally tighten text).
+  • "rewrite the voiceover on scene X to say Y" → update that scene's voiceover.text to Y.
+  • "different music — try ambient lo-fi instead" → change bgMusic.jamendoQuery + moodTags + energyHint. Clear bgMusicVolumeOverrides unless other comments require them.
+
+If a comment is ambiguous, prefer NO CHANGE. Better to under-edit than to drift the film's sonic identity.
+`;
+
+// Sprint 3 refinement input. `previousResolved` is the bundle stored under
+// jobs.audio_direction.resolved — we surface a few human-readable fields
+// (track title, voiceover text snippet, SFX name) so the LLM can see what
+// it actually picked, not just what it asked for.
+export type AudioDirectionFeedback = {
+  previousPlan: AudioPlan;
+  previousResolved: {
+    bgMusic: { trackId: string; title: string; artist: string; streamUrl: string } | null;
+    voiceovers: Array<{ sceneId: string; text: string; delivery: VoiceoverDelivery; publicUrl: string }>;
+    sfxCues: Array<{ sceneId: string; momentSeconds: number; kind: SfxKind; name: string; url: string }>;
+  };
+  commentsByScene: Array<{ sceneId: string; comments: string }>;
+};
+
+function renderPreviousPlanBlock(feedback: AudioDirectionFeedback): string {
+  const p = feedback.previousPlan;
+  const r = feedback.previousResolved;
+
+  const bg = p.bgMusic
+    ? `${p.bgMusic.jamendoQuery} (${p.bgMusic.energyHint}) → resolved: "${r.bgMusic?.title ?? "?"}" by ${r.bgMusic?.artist ?? "?"}`
+    : "none";
+
+  const voByScene = new Map(r.voiceovers.map((v) => [v.sceneId, v] as const));
+  const voLines = p.voiceovers
+    .map((v) => {
+      const resolved = voByScene.get(v.sceneId);
+      const snippet = (resolved?.text ?? v.text).slice(0, 80);
+      return `  ${v.sceneId}: deliveryHint=${v.deliveryHint} · text=${JSON.stringify(snippet)}`;
+    })
+    .join("\n") || "  (none)";
+
+  const sfxByScene = new Map<string, Array<{ name: string; query: string; kind: SfxKind; momentSec: number }>>();
+  for (const cue of p.sfxCues) {
+    const resolved = r.sfxCues.find((rc) => rc.sceneId === cue.sceneId && rc.kind === cue.kind);
+    const list = sfxByScene.get(cue.sceneId) ?? [];
+    list.push({
+      name: resolved?.name ?? "(unresolved)",
+      query: cue.freesoundQuery,
+      kind: cue.kind,
+      momentSec: cue.momentSeconds,
+    });
+    sfxByScene.set(cue.sceneId, list);
+  }
+  const sfxLines = Array.from(sfxByScene.entries())
+    .map(([sid, cues]) =>
+      cues
+        .map(
+          (c) => `  ${sid} @ ${c.momentSec.toFixed(2)}s: kind=${c.kind} · query="${c.query}" → "${c.name}"`,
+        )
+        .join("\n"),
+    )
+    .join("\n") || "  (none)";
+
+  const overrides = (p.bgMusicVolumeOverrides ?? [])
+    .map((o) => `  ${o.sceneId}: volume=${o.volume}`)
+    .join("\n") || "  (none)";
+
+  return `PREVIOUS PLAN (what shipped — preserve unchanged unless a comment asks otherwise):
+  bgMusic: ${bg}
+  voiceovers:
+${voLines}
+  sfxCues:
+${sfxLines}
+  bgMusicVolumeOverrides:
+${overrides}`;
+}
+
+function renderCommentsBlock(feedback: AudioDirectionFeedback): string {
+  if (feedback.commentsByScene.length === 0) return "USER COMMENTS PER SCENE: (none)";
+  const lines = feedback.commentsByScene
+    .map((c) => `  ${c.sceneId}:\n${c.comments.split("\n").map((l) => `    ${l}`).join("\n")}`)
+    .join("\n\n");
+  return `USER COMMENTS PER SCENE (treat each block as feedback for that scene; remember most comments are visual and require NO audio change):\n${lines}`;
+}
+
+function renderAudioDirectionUserPrompt(
+  storyboard: Storyboard,
+  blueprint: FilmBlueprint,
+  feedback?: AudioDirectionFeedback,
+): string {
+  const totalSec = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
+  const rhythm = blueprint.filmRhythm;
+
+  const sceneLines = storyboard.scenes
+    .map((s, i) => {
+      const sid = `s${i + 1}`;
+      const role = rhythm.impactMoments.includes(i)
+        ? "IMPACT"
+        : rhythm.releaseMoments.includes(i)
+          ? "RELEASE"
+          : rhythm.restMoments.includes(i)
+            ? "REST"
+            : i === rhythm.climaxIndex
+              ? "CLIMAX"
+              : "BUILD";
+      const energy = rhythm.energyCurve[i]?.toFixed(2) ?? "?";
+      return `  ${sid} (${s.durationSeconds}s, ${s.pacingIntent}, energy=${energy}, ${role}) — copy: ${JSON.stringify(s.copy)}`;
+    })
+    .join("\n");
+
+  return `FILM — ${storyboard.scenes.length} scenes, ${totalSec.toFixed(1)}s total:
+${sceneLines}
+
+VISUAL IDENTITY:
+  paletteName:    ${blueprint.visualIdentity.paletteName}
+  motionLanguage: ${blueprint.visualIdentity.motionLanguage}
+  signatureMove:  ${blueprint.visualIdentity.signatureMove}
+  language:       ${blueprint.visualIdentity.language}
+
+FILM RHYTHM:
+  cadenceMode:    ${rhythm.cadenceMode}
+  climax:         s${rhythm.climaxIndex + 1}
+  impacts:        ${rhythm.impactMoments.map((i) => `s${i + 1}`).join(", ") || "(none)"}
+  rests:          ${rhythm.restMoments.map((i) => `s${i + 1}`).join(", ") || "(none)"}
+  releases:       ${rhythm.releaseMoments.map((i) => `s${i + 1}`).join(", ") || "(none)"}
+  restraintNotes: ${rhythm.restraintNotes.length ? rhythm.restraintNotes.map((n) => `"${n}"`).join("; ") : "(none)"}
+
+${
+    feedback
+      ? `\n${renderPreviousPlanBlock(feedback)}\n\n${renderCommentsBlock(feedback)}\n\nProduce the REVISED AudioPlan JSON now. Restraint first — for any scene whose comments don't mention audio, return its voiceover/SFX identical to the previous plan. Address only what the comments explicitly ask for.\n`
+      : "Produce the AudioPlan JSON now. Restraint over abundance — silence is a choice. ONE music query, voiceovers only where they ADD, SFX only on the beats that earn it.\n"
+  }`;
+}
+
+/**
+ * Stage 1.75 — auto-pick music, SFX, and voiceover for the film.
+ * Pure planning. URL resolution happens in app/lib/audio-resolver.ts.
+ *
+ * Skipped when MOTIONGLASS_AUTO_AUDIO is unset or jobs.audio_auto_enabled
+ * is false — see jobs.ts:runHyperframesDirect.
+ */
+export async function generateAudioDirection(
+  storyboard: Storyboard,
+  blueprint: FilmBlueprint,
+  feedback?: AudioDirectionFeedback,
+): Promise<AudioPlan> {
+  const userText = renderAudioDirectionUserPrompt(storyboard, blueprint, feedback);
+
+  // Refinement mode appends an addendum to the cached base prompt. Keeping
+  // the base as its own cache-controlled block means first-run cache hits
+  // are preserved; only the refine addendum re-tokenizes per refine call.
+  const systemBlocks = feedback
+    ? [
+        {
+          type: "text" as const,
+          text: AUDIO_DIRECTION_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" as const },
+        },
+        {
+          type: "text" as const,
+          text: AUDIO_DIRECTION_REFINE_ADDENDUM,
+        },
+      ]
+    : [
+        {
+          type: "text" as const,
+          text: AUDIO_DIRECTION_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" as const },
+        },
+      ];
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    system: systemBlocks,
+    messages: [{ role: "user", content: userText }],
+    // bgMusic + N voiceovers + ≤3 SFX cues fits comfortably in 4K tokens
+    // for typical 5–9 scene films. 8K gives headroom for adaptive thinking.
+    max_tokens: 8000,
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: "medium",
+      format: { type: "json_schema", schema: AUDIO_DIRECTION_SCHEMA },
+    },
+  });
+
+  const textBlock = response.content.find(
+    (b): b is Anthropic.TextBlock => b.type === "text",
+  );
+  if (!textBlock) throw new Error("generateAudioDirection: no text content in response");
+  const parsed = parseJsonResponseOrThrow<AudioPlan>(
+    textBlock.text,
+    "generateAudioDirection",
+    response.stop_reason,
+    response.usage.output_tokens,
+  );
+
+  // Normalize: drop voiceovers/SFX cues that reference invalid sceneIds,
+  // clamp negative momentSeconds, and drop cues with empty queries.
+  // (The schema can't enforce these constraints — see comment on
+  // AUDIO_DIRECTION_SCHEMA.)
+  const validSceneIds = new Set(storyboard.scenes.map((_, i) => `s${i + 1}`));
+  const voiceovers = (parsed.voiceovers ?? [])
+    .filter((v) => validSceneIds.has(v.sceneId) && typeof v.text === "string" && v.text.trim().length > 0);
+  const sfxCues = (parsed.sfxCues ?? [])
+    .filter(
+      (c) =>
+        validSceneIds.has(c.sceneId) &&
+        typeof c.freesoundQuery === "string" &&
+        c.freesoundQuery.trim().length > 0,
+    )
+    .map((c) => ({
+      ...c,
+      momentSeconds: Math.max(0, Number(c.momentSeconds) || 0),
+    }));
+
+  // bgMusicVolumeOverrides: clamp to [0, 1], drop invalid sceneIds, drop
+  // duplicates (last write wins per sceneId).
+  const overridesMap = new Map<string, number>();
+  for (const o of parsed.bgMusicVolumeOverrides ?? []) {
+    if (!validSceneIds.has(o.sceneId)) continue;
+    const n = Number(o.volume);
+    if (!Number.isFinite(n)) continue;
+    overridesMap.set(o.sceneId, Math.max(0, Math.min(1, n)));
+  }
+  const bgMusicVolumeOverrides = Array.from(overridesMap.entries()).map(
+    ([sceneId, volume]) => ({ sceneId, volume }),
+  );
+
+  console.log(
+    `[hyperframes audio]${feedback ? " (refine)" : ""} bgMusic=${
+      parsed.bgMusic ? `"${parsed.bgMusic.jamendoQuery}" (${parsed.bgMusic.energyHint})` : "none"
+    }, voiceovers=${voiceovers.length}/${storyboard.scenes.length} scenes, ` +
+      `sfx=${sfxCues.length} cues, overrides=${bgMusicVolumeOverrides.length}, ` +
+      `input=${response.usage.input_tokens} output=${response.usage.output_tokens}`,
+  );
+
+  return {
+    bgMusic: parsed.bgMusic ?? null,
+    voiceovers,
+    sfxCues,
+    bgMusicVolumeOverrides,
+  };
+}
+
 /**
  * Clamp / patch the model's filmRhythm so it survives sloppy output without
  * crashing downstream consumers. Drops out-of-range scene indices, fills a
  * default energy curve when missing, defaults the climax to the last scene
  * if unspecified.
  */
-function sanitizeFilmRhythm(raw: FilmRhythmPlan | undefined, N: number): FilmRhythmPlan {
+function sanitizeFilmRhythm(
+  raw: FilmRhythmPlan | undefined,
+  N: number,
+  pacingIntents?: readonly PacingIntent[],
+): FilmRhythmPlan {
   const inRange = (i: number): boolean => Number.isInteger(i) && i >= 0 && i < N;
 
-  // Default fallback shape: a gentle slow_build_then_release wave so any
-  // downstream code that reads filmRhythm has something to work with.
-  const fallback: FilmRhythmPlan = {
-    energyCurve: Array.from({ length: N }, (_, i) =>
-      Math.min(0.95, Math.max(0.2, 0.3 + (i / Math.max(1, N - 1)) * 0.5)),
-    ),
-    restMoments: [],
-    impactMoments: N > 2 ? [N - 2] : [],
-    releaseMoments: N > 1 ? [N - 1] : [],
-    climaxIndex: Math.max(0, N - 2),
-    cadenceMode: "slow_build_then_release",
-    restraintNotes: [],
-  };
+  // Build a script-derived fallback shape from the per-scene pacingIntents.
+  // Two scripts with different pacing sequences now get different fallback
+  // curves — the old behavior used a fixed linear ramp + slow_build_then_release
+  // for every script, which was a major convergence force across films.
+  const fallback = deriveFallbackRhythm(N, pacingIntents);
 
   if (!raw) return fallback;
 
@@ -2868,6 +3865,104 @@ function sanitizeFilmRhythm(raw: FilmRhythmPlan | undefined, N: number): FilmRhy
     climaxIndex,
     cadenceMode,
     restraintNotes,
+  };
+}
+
+/**
+ * Pacing-derived fallback rhythm. Used both when raw is undefined and when
+ * specific fields (energyCurve / cadenceMode / climaxIndex) are missing. The
+ * curve shape, cadence mode, and climax index are all script-specific — two
+ * scripts with different pacingIntents sequences produce different shapes.
+ */
+function deriveFallbackRhythm(
+  N: number,
+  pacingIntents?: readonly PacingIntent[],
+): FilmRhythmPlan {
+  // Energy curve from pacingIntent — hold at the climax becomes a peak, hold
+  // elsewhere becomes a quiet held breath. Punch is high, beat is medium,
+  // cinematic is medium-high.
+  const energyForIntent = (intent: PacingIntent, idx: number): number => {
+    switch (intent) {
+      case "punch": return 0.85;
+      case "cinematic": return 0.65;
+      case "hold":
+        // A late "hold" reads as climax; an early "hold" reads as held breath.
+        return idx >= Math.max(0, N - 2) ? 0.95 : 0.25;
+      case "beat":
+      default: return 0.5;
+    }
+  };
+
+  let energyCurve: number[];
+  if (pacingIntents && pacingIntents.length === N) {
+    energyCurve = pacingIntents.map((p, i) => energyForIntent(p, i));
+  } else {
+    // No pacingIntent context — fall back to a mild build (legacy shape) but
+    // bias the peak toward the back. Better than linear but still generic;
+    // callers should pass pacingIntents whenever possible.
+    energyCurve = Array.from({ length: N }, (_, i) =>
+      Math.min(0.95, Math.max(0.2, 0.3 + (i / Math.max(1, N - 1)) * 0.5)),
+    );
+  }
+
+  // climaxIndex: argmax of the curve (first peak if multiple ties).
+  let climaxIndex = 0;
+  let maxVal = -1;
+  for (let i = 0; i < energyCurve.length; i++) {
+    if (energyCurve[i] > maxVal) {
+      maxVal = energyCurve[i];
+      climaxIndex = i;
+    }
+  }
+
+  // Count local maxima for cadence selection.
+  const localMaxima: number[] = [];
+  for (let i = 0; i < energyCurve.length; i++) {
+    const prev = i > 0 ? energyCurve[i - 1] : -Infinity;
+    const next = i < energyCurve.length - 1 ? energyCurve[i + 1] : -Infinity;
+    if (energyCurve[i] > prev && energyCurve[i] >= next && energyCurve[i] >= 0.6) {
+      localMaxima.push(i);
+    }
+  }
+
+  // Variance vs late-peak shape — used to pick cadence.
+  const mean = energyCurve.reduce((s, v) => s + v, 0) / Math.max(1, energyCurve.length);
+  const variance =
+    energyCurve.reduce((s, v) => s + (v - mean) * (v - mean), 0) / Math.max(1, energyCurve.length);
+  const latePeak = climaxIndex >= Math.floor(N * 0.66);
+
+  let cadenceMode: CadenceMode;
+  if (localMaxima.length >= 2) {
+    cadenceMode = "staccato_pulse";
+  } else if (latePeak && variance > 0.05) {
+    cadenceMode = "slow_build_then_release";
+  } else if (variance < 0.02 && maxVal >= 0.85) {
+    cadenceMode = "long_breath_then_impact";
+  } else {
+    cadenceMode = "ebb_flow";
+  }
+
+  // Impact / release / rest moments — read from the curve.
+  const impactMoments: number[] = [];
+  const restMoments: number[] = [];
+  for (let i = 0; i < energyCurve.length; i++) {
+    if (energyCurve[i] >= 0.8) impactMoments.push(i);
+    else if (energyCurve[i] <= 0.3) restMoments.push(i);
+  }
+  // releaseMoments: index immediately after an impact (if it exists and is lower).
+  const releaseMoments: number[] = [];
+  for (const i of impactMoments) {
+    if (i + 1 < N && energyCurve[i + 1] < energyCurve[i]) releaseMoments.push(i + 1);
+  }
+
+  return {
+    energyCurve,
+    restMoments,
+    impactMoments,
+    releaseMoments,
+    climaxIndex,
+    cadenceMode,
+    restraintNotes: [],
   };
 }
 
@@ -3134,7 +4229,9 @@ function buildSceneFillUserPrompt(
   const lintBlock = feedback
     ? feedback.kind === "lint"
       ? `\n═══ LINT FEEDBACK FROM PREVIOUS ATTEMPT (fix these — do not introduce new issues) ═══\n${feedback.text}\n`
-      : `\n═══ VISION CRITIQUE FEEDBACK FROM PREVIOUS ATTEMPT (cinematic issues — patch what's flagged, don't redesign blindly) ═══\n${feedback.text}\n`
+      : feedback.kind === "comment"
+        ? `\n═══ HUMAN DIRECTOR'S NOTES ON THIS SCENE ═══\nThe human directing the film has these notes. Implement them precisely. Do not redesign anything they did not mention. Keep the rest of the scene's existing intent, layout, and timing intact.\n\n${feedback.text}\n═══\n`
+        : `\n═══ VISION CRITIQUE FEEDBACK FROM PREVIOUS ATTEMPT (cinematic issues — patch what's flagged, don't redesign blindly) ═══\n${feedback.text}\n`
     : "";
 
   return `${lintBlock}
@@ -3245,7 +4342,7 @@ DO NOT:
 }
 
 /** Labeled feedback fed into a scene-fill retry. */
-export type SceneFillFeedback = { kind: "lint" | "vision"; text: string };
+export type SceneFillFeedback = { kind: "lint" | "vision" | "comment"; text: string };
 
 /**
  * Run one scene-fill LLM call. Streaming, structured-output enforced.
@@ -3509,6 +4606,10 @@ export async function generateFilmHTML(
   // The caller is responsible for stamping locked assets via
   // `applyLockedAssetsToBlueprint` before passing the blueprint in.
   prebuiltBlueprint?: FilmBlueprint,
+  // Sprint 2: resolved audio bundle (bg music + voiceovers + SFX). When
+  // provided, buildFilmSkeleton injects <audio> tags. Omit to keep the
+  // pre-audio behavior unchanged.
+  audio?: SkeletonAudio,
 ): Promise<GenerateFilmHTMLResult> {
   const blueprint =
     prebuiltBlueprint ?? (await generateFilmBlueprint(storyboard, identity, assetCatalog));
@@ -3519,7 +4620,7 @@ export async function generateFilmHTML(
     cssVariables: blueprint.cssVariables,
     scenes: sceneFills,
   };
-  let html = buildFilmSkeleton(storyboard, identity, fills);
+  let html = buildFilmSkeleton(storyboard, identity, fills, audio);
 
   let lint = await lintCompositionHTML(html);
   if (lint.ok) {
@@ -3583,7 +4684,7 @@ export async function generateFilmHTML(
   }
 
   fills = { cssVariables: blueprint.cssVariables, scenes: sceneFills };
-  html = buildFilmSkeleton(storyboard, identity, fills);
+  html = buildFilmSkeleton(storyboard, identity, fills, audio);
 
   lint = await lintCompositionHTML(html);
   if (lint.ok) {
@@ -3625,6 +4726,11 @@ export async function refineScenes(
   sceneContexts: SceneCallContext[],
   fills: SceneFill[],
   refinements: SceneRefinementRequest[],
+  // What kind of feedback this refinement round represents. Defaults to
+  // "vision" so existing callers (polish endpoint, lint retry) keep their
+  // semantics. The "comment" kind is used by improveScenesFromComments —
+  // sends the human director's notes through the dedicated prompt header.
+  feedbackKind: SceneFillFeedback["kind"] = "vision",
 ): Promise<SceneFill[]> {
   if (refinements.length === 0) return fills;
 
@@ -3642,7 +4748,7 @@ export async function refineScenes(
   if (indexed.length === 0) return fills;
 
   console.log(
-    `[refine] re-firing ${indexed.length} scene${indexed.length === 1 ? "" : "s"} with vision feedback: ${indexed.map((x) => x.sceneId).join(", ")}`,
+    `[refine] re-firing ${indexed.length} scene${indexed.length === 1 ? "" : "s"} with ${feedbackKind} feedback: ${indexed.map((x) => x.sceneId).join(", ")}`,
   );
 
   const fresh = await Promise.all(
@@ -3653,7 +4759,7 @@ export async function refineScenes(
         x.sceneIndex,
         ctx.continuityState,
         ctx.prevSceneIntentFallback,
-        { kind: "vision", text: x.feedbackText },
+        { kind: feedbackKind, text: x.feedbackText },
       );
     }),
   );

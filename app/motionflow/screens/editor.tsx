@@ -31,6 +31,7 @@ import { BrandSection } from "../editor/components/sidebar/BrandSection";
 import { AssetsSection } from "../editor/components/sidebar/AssetsSection";
 import { MusicSection } from "../editor/components/sidebar/MusicSection";
 import { SfxSection } from "../editor/components/sidebar/SfxSection";
+import { VoiceoverSection } from "../editor/components/sidebar/VoiceoverSection";
 import { CinemaPreviewPane } from "../editor/components/preview/CinemaPreviewPane";
 import { ClockDebugOverlay } from "../editor/components/ClockDebugOverlay";
 
@@ -175,7 +176,7 @@ export const EditorScreen = ({
     voRef,
     goPrevScene,
     goNextScene,
-  } = usePlayback({ shots });
+  } = usePlayback({ shots, job });
 
   const selectedShot = useMemo(
     () => shots.find((s) => s.id === selected) ?? null,
@@ -264,6 +265,37 @@ export const EditorScreen = ({
                 : status === "vision_critique" || status === "refining_scenes"
                   ? "Polishing…"
                   : "Critique & polish"}
+            </Button>
+          )}
+          {(status === "scenes_ready" || status === "refining_scenes") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<IconWand size={12}/>}
+              disabled={
+                !jobId ||
+                status === "refining_scenes" ||
+                !shots.some((s) => {
+                  const c = (s as { comments?: unknown }).comments;
+                  return Array.isArray(c) && c.length > 0;
+                })
+              }
+              onClick={async () => {
+                if (!jobId) return;
+                try {
+                  const res = await fetch(`/api/jobs/${jobId}/improve`, { method: "POST" });
+                  const data = (await res.json()) as { error?: string };
+                  if (!res.ok) {
+                    setError(data.error ?? `Improve failed (${res.status})`);
+                    return;
+                  }
+                  setPollNonce((n) => n + 1);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Network error");
+                }
+              }}
+            >
+              {status === "refining_scenes" ? "Improving…" : "Improve from comments"}
             </Button>
           )}
           <Button
@@ -391,18 +423,11 @@ export const EditorScreen = ({
               )}
             </AccordionSection>
 
-            <AccordionSection
-              label="VOICEOVER"
-              badge="—"
+            <VoiceoverSection
               open={openSections.has("voiceover")}
               onToggle={() => toggleSection("voiceover")}
-            >
-              <ComingSoonPanel
-                icon={<IconMic size={14}/>}
-                title="Voiceover narration"
-                hint="Record or upload narration per scene. The director will sync timing to your audio."
-              />
-            </AccordionSection>
+              shots={shots}
+            />
 
             <MusicSection
               open={openSections.has("music")}
@@ -419,6 +444,7 @@ export const EditorScreen = ({
               onToggle={() => toggleSection("sfx")}
               jobId={jobId}
               job={job}
+              shots={shots}
               setJob={setJob}
             />
 

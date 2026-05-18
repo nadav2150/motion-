@@ -21,6 +21,7 @@ export default [
   route("api/jobs/:id/stitch", "routes/api.jobs.$id.stitch.tsx"),
   route("api/jobs/:id/export", "routes/api.jobs.$id.export.tsx"),
   route("api/jobs/:id/critique", "routes/api.jobs.$id.critique.tsx"),
+  route("api/jobs/:id/improve", "routes/api.jobs.$id.improve.tsx"),
   route("api/jobs/:id/music", "routes/api.jobs.$id.music.tsx"),
   route("api/jobs/:id/sfx", "routes/api.jobs.$id.sfx.tsx"),
   route("api/jobs/:id/assets", "routes/api.jobs.$id.assets.tsx"),

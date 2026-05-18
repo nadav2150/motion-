@@ -5,7 +5,10 @@ create extension if not exists pgcrypto;
 
 do $$ begin
   create type job_status as enum (
-    'pending', 'directing', 'rendering', 'completed', 'failed', 'canceled'
+    'pending', 'directing', 'asset_planning', 'audio_direction',
+    'rendering', 'generating_scenes', 'vision_critique', 'refining_scenes',
+    'scenes_ready', 'rendering_scenes', 'stitching',
+    'completed', 'failed', 'canceled'
   );
 exception when duplicate_object then null; end $$;
 
@@ -101,7 +104,10 @@ alter table jobs
   add column if not exists scenes_ready_at timestamptz,
   add column if not exists brand_logo_url text,
   add column if not exists brand_logo_storage_path text,
-  add column if not exists brand_colors jsonb;
+  add column if not exists brand_colors jsonb,
+  -- Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql).
+  add column if not exists audio_direction jsonb,
+  add column if not exists audio_auto_enabled boolean not null default true;
 
 alter table shots
   add column if not exists clip_status clip_status not null default 'pending',
@@ -129,7 +135,11 @@ alter table shots
   add column if not exists style_notes text,
   add column if not exists validation_passed boolean,
   add column if not exists validation_warnings text,
-  add column if not exists validation_attempts int default 0;
+  add column if not exists validation_attempts int default 0,
+  -- Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql).
+  add column if not exists voiceover_url text,
+  add column if not exists voiceover_text text,
+  add column if not exists sfx_cues jsonb;
 
 -- Mark already-completed shots as 'skipped' so their UI doesn't show clip:pending forever.
 update shots set clip_status = 'skipped'

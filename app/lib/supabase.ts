@@ -62,6 +62,7 @@ export type JobStatus =
   | "pending"
   | "directing"
   | "asset_planning"
+  | "audio_direction"
   | "rendering"
   | "generating_scenes"
   | "vision_critique"
@@ -131,6 +132,28 @@ export type JobRow = {
   scene_contexts: unknown;
   film_fills: unknown;
   polished_at: string | null;
+
+  // Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql).
+  // AudioPlan JSON: { bgMusic, voiceovers[], sfxCues[] }. Persisted so "Reset
+  // to auto" in the editor can re-resolve the picked tracks without re-calling
+  // the LLM. Null when audio_direction stage was skipped.
+  audio_direction: unknown;
+  // Per-job feature switch. When false, audio_direction stage is skipped even
+  // if MOTIONGLASS_AUTO_AUDIO=true. Defaults to true at the DB level.
+  audio_auto_enabled: boolean;
+
+  // Music + SFX selections (see supabase/migrations/20260515_music.sql and
+  // 20260515_sfx.sql). Either user-picked via MusicPicker/SfxPicker, or
+  // LLM-picked when audio_direction ran.
+  music_track_id: string | null;
+  music_url: string | null;
+  music_title: string | null;
+  music_artist: string | null;
+  sfx_id: string | null;
+  sfx_url: string | null;
+  sfx_name: string | null;
+  sfx_author: string | null;
+  sfx_license: string | null;
 };
 
 export type ShotRow = {
@@ -232,4 +255,12 @@ export type ShotRow = {
   // Each entry: { id, kind: 'video'|'image'|'screenshot'|'voiceover'|'sfx'|'music',
   //               url, name, created_at }.
   assets: unknown;
+
+  // Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql).
+  // voiceover_url: ElevenLabs MP3 mirrored to Supabase Storage. voiceover_text
+  // is the verbatim string synthesised — surfaced in the editor for review.
+  // sfx_cues: array of { id, url, name, license, licenseUrl, momentSec, volume }.
+  voiceover_url: string | null;
+  voiceover_text: string | null;
+  sfx_cues: unknown;
 };

@@ -55,6 +55,13 @@ export type JobRow = {
   sfx_license: string | null;
   // Project-level asset library (see supabase/migrations/20260520_job_assets.sql).
   assets?: unknown;
+  // Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql).
+  // When the auto-audio pipeline ran, this column holds { plan, resolved }
+  // — plan is the AudioPlan emitted by the LLM, resolved is the bundle of
+  // concrete Jamendo / Freesound / ElevenLabs URLs. Used by MusicSection to
+  // detect whether the current music_track_id is still the LLM's pick.
+  audio_direction?: unknown;
+  audio_auto_enabled?: boolean;
 };
 
 export type ShotRow = {
@@ -108,6 +115,13 @@ export type ShotRow = {
   comments?: unknown;
   // Per-scene attached assets (see supabase/migrations/20260519_shot_assets.sql).
   assets?: unknown;
+  // Auto-audio direction per-shot columns (see migration
+  // 20260530_audio_direction.sql). voiceover_url is the mirrored ElevenLabs
+  // MP3; voiceover_text is the verbatim text synthesised. sfx_cues is an
+  // array of { id, url, name, license, licenseUrl, momentSec, kind, volume }.
+  voiceover_url?: string | null;
+  voiceover_text?: string | null;
+  sfx_cues?: unknown;
 };
 
 export type JobResponse = { job: JobRow; shots: ShotRow[] };

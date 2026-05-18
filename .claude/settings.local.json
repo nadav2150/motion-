@@ -105,7 +105,9 @@
       "PowerShell(Get-Content *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\\\\app\\\\motionflow\" -File, Directory)",
       "Bash(findstr /v \"already\")",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(del .scan-bt.cjs)"
     ]
   },
   "enabledPlugins": {

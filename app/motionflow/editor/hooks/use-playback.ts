@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSceneAssetArray } from "../utils";
-import type { ShotRow } from "../types";
+import type { JobRow, ShotRow } from "../types";
 
 export type SceneTiming = {
   startSeconds: number;
@@ -23,7 +23,37 @@ export type SceneTiming = {
  */
 const SYNC_TOLERANCE = 0.1; // seconds — re-seek media if drift exceeds this
 
-export function usePlayback({ shots }: { shots: ShotRow[] }) {
+// Default bg music mix when no per-scene override applies. Mirrors the
+// constants in buildFilmSkeleton: 0.22 when voiceovers exist anywhere on
+// the film, 0.4 otherwise. Per-scene overrides win when present.
+const DEFAULT_BG_VOLUME_WITH_VO = 0.22;
+const DEFAULT_BG_VOLUME_NO_VO = 0.4;
+
+function extractBgVolumeOverrides(
+  job: JobRow | null,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  const ad = job?.audio_direction as
+    | { plan?: { bgMusicVolumeOverrides?: unknown } }
+    | null
+    | undefined;
+  const raw = ad?.plan?.bgMusicVolumeOverrides;
+  if (!Array.isArray(raw)) return map;
+  for (const o of raw as Array<Record<string, unknown>>) {
+    if (typeof o.sceneId === "string" && typeof o.volume === "number") {
+      map.set(o.sceneId, Math.max(0, Math.min(1, o.volume)));
+    }
+  }
+  return map;
+}
+
+export function usePlayback({
+  shots,
+  job,
+}: {
+  shots: ShotRow[];
+  job?: JobRow | null;
+}) {
   const [time, setTimeRaw] = useState(0);
   const [playing, setPlaying] = useState(false);
 
@@ -141,6 +171,26 @@ export function usePlayback({ shots }: { shots: ShotRow[] }) {
   const sfxRef = useRef<HTMLAudioElement | null>(null);
   const voRef = useRef<HTMLAudioElement | null>(null);
 
+  // Sprint 3 — per-scene bg music volume. Look up the override for the
+  // active scene; if none, use the default (lower when voiceovers exist on
+  // the film, higher when not). Memoized so the effect below only fires
+  // when the active scene's override actually changes.
+  const overrides = useMemo(() => extractBgVolumeOverrides(job ?? null), [job]);
+  const filmHasVoiceovers = useMemo(
+    () => shots.some((s) => !!s.voiceover_url),
+    [shots],
+  );
+  const defaultBgVolume = filmHasVoiceovers
+    ? DEFAULT_BG_VOLUME_WITH_VO
+    : DEFAULT_BG_VOLUME_NO_VO;
+  const activeSceneId = currentShot
+    ? `s${currentShot.shot_index + 1}`
+    : null;
+  const activeBgVolume =
+    activeSceneId && overrides.has(activeSceneId)
+      ? overrides.get(activeSceneId)!
+      : defaultBgVolume;
+
   // Helper that runs every render so each audio element stays slaved. For
   // music we treat the URL as a continuous track spanning the whole film, so
   // audio.currentTime === global time. For sfx / vo we treat the asset as
@@ -148,6 +198,16 @@ export function usePlayback({ shots }: { shots: ShotRow[] }) {
   useEffect(() => {
     syncMediaElement(audioRef.current, activeMusicUrl, time, playing, "music");
   }, [activeMusicUrl, time, playing]);
+
+  // Apply per-scene bg volume separately from the sync effect so changing
+  // scene doesn't force a re-seek of the music element.
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (Math.abs(el.volume - activeBgVolume) > 0.01) {
+      el.volume = activeBgVolume;
+    }
+  }, [activeBgVolume]);
 
   useEffect(() => {
     const sceneRelative = activeSceneTiming

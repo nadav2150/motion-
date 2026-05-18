@@ -47,23 +47,28 @@ import {
   buildFilmSkeleton,
   buildRefinementSet,
   generateAssetPlan,
+  generateAudioDirection,
   generateFilmBlueprint,
   generateFilmCritique,
   generateFilmHTML,
   generateStoryboard,
   generateVisionCritique,
   refineScenes,
+  type AudioPlan,
   type FilmBlueprint,
   type FilmFills,
   type Motif,
   type SceneCallContext,
   type SceneCritique,
+  type SceneRefinementRequest,
+  type SkeletonAudio,
   type Storyboard,
   type StoryboardScene,
 } from "./hyperframes/llm-director";
 import { renderScene } from "./hyperframes/render";
 import { captureMotionTrailComposite, captureSceneThumbnail } from "./hyperframes/thumbnail";
 import { sourceAssets, type JobAssetEntry } from "./assets";
+import { resolveAudioPlan, type ResolvedAudio } from "./audio-resolver";
 
 type AssembledShot = ShotRecipe & {
   imagePrompt: string;
@@ -87,6 +92,11 @@ export const MAX_SHOTS_PER_JOB = MAX_SHOTS;
 // the editor invokes POST /api/jobs/:id/critique → critiqueAndPolishJob to
 // run the same block on demand against an already-shipped scenes_ready job.
 const AUTO_CRITIQUE_ENABLED = process.env.HYPERFRAMES_AUTO_CRITIQUE === "true";
+
+// Sprint 2 — auto-audio direction. Off by default until tuned in production
+// (ElevenLabs adds ~5-15s per scene; Jamendo/Freesound add ~1-2s each).
+// Per-job override via jobs.audio_auto_enabled (defaults true at DB level).
+const AUTO_AUDIO_ENABLED = process.env.MOTIONGLASS_AUTO_AUDIO === "true";
 
 // SceneCallContext serialization: motifRegistry is a Set<Motif>, which JSON
 // drops silently. Convert to/from arrays at the persistence boundary. Used by
@@ -301,6 +311,247 @@ export async function updateJobMusic(
   }
 }
 
+/**
+ * Persist a resolved audio bundle into the existing music/sfx job columns +
+ * per-shot voiceover/sfx_cues columns. Used by the auto-audio pipeline so
+ * the existing MusicPicker / SfxPicker UI surfaces the LLM-picked tracks
+ * with no front-end changes beyond the "✨ Auto" badge.
+ *
+ * Direct DB writes (not updateJobMusic/Sfx) so we don't need a userId — the
+ * caller is the pipeline orchestrator, which already trusts the job row.
+ */
+async function persistResolvedAudio(
+  jobId: string,
+  insertedScenes: ShotRow[],
+  resolved: ResolvedAudio,
+): Promise<void> {
+  const db = getSupabase();
+
+  // Job-level: bg music goes into the existing music_* columns so the
+  // MusicPicker shows it. A null bgMusic clears the columns.
+  const musicPatch = resolved.bgMusic
+    ? {
+        music_track_id: resolved.bgMusic.trackId,
+        music_title: resolved.bgMusic.title,
+        music_artist: resolved.bgMusic.artist,
+        music_url: resolved.bgMusic.streamUrl,
+      }
+    : {
+        music_track_id: null,
+        music_title: null,
+        music_artist: null,
+        music_url: null,
+      };
+  const { error: jobErr } = await db
+    .from("jobs")
+    .update(musicPatch)
+    .eq("id", jobId);
+  if (jobErr) {
+    console.warn(`[audio persist] job ${jobId} bg music write failed: ${jobErr.message}`);
+  }
+
+  // Per-shot voiceover + sfx_cues. Group cues by sceneId so each shot row
+  // gets one write. Also append SceneAsset entries to shots.assets so the
+  // editor's VOICE OVER / SOUND EFFECTS / AUDIO lanes light up — they filter
+  // shot.assets by kind, not the dedicated columns.
+  const cuesBySceneId = new Map<string, ResolvedAudio["sfxCues"]>();
+  for (const cue of resolved.sfxCues) {
+    const list = cuesBySceneId.get(cue.sceneId) ?? [];
+    list.push(cue);
+    cuesBySceneId.set(cue.sceneId, list);
+  }
+  const voByScene = new Map(resolved.voiceovers.map((v) => [v.sceneId, v] as const));
+
+  // SceneAsset shape mirrors api.shots.$id.assets.tsx (kind union must match).
+  type SceneAsset = {
+    id: string;
+    kind: "video" | "image" | "screenshot" | "voiceover" | "sfx" | "music";
+    url: string;
+    name: string;
+    created_at: string;
+  };
+  const isSceneAssetArray = (v: unknown): v is SceneAsset[] =>
+    Array.isArray(v) &&
+    v.every(
+      (a) =>
+        a !== null &&
+        typeof a === "object" &&
+        typeof (a as { id?: unknown }).id === "string" &&
+        typeof (a as { kind?: unknown }).kind === "string" &&
+        typeof (a as { url?: unknown }).url === "string",
+    );
+  // Auto-pipeline asset ids are prefixed so a re-run can dedupe + replace
+  // the previous auto entries without touching user-added assets.
+  const AUTO_ID_PREFIX = "auto_";
+  const nowIso = new Date().toISOString();
+
+  await Promise.all(
+    insertedScenes.map(async (shot) => {
+      const sid = `s${shot.shot_index + 1}`;
+      const vo = voByScene.get(sid) ?? null;
+      const cues = cuesBySceneId.get(sid) ?? [];
+      const cueRows = cues.map((c) => ({
+        id: c.id,
+        url: c.url,
+        name: c.name,
+        license: c.license,
+        licenseUrl: c.licenseUrl,
+        momentSec: c.momentSeconds,
+        kind: c.kind,
+        volume: c.volume,
+      }));
+
+      // Rebuild the assets array: drop previous auto-* entries, append fresh.
+      const existing = isSceneAssetArray(shot.assets) ? shot.assets : [];
+      const kept = existing.filter((a) => !a.id.startsWith(AUTO_ID_PREFIX));
+      const autoEntries: SceneAsset[] = [];
+      if (vo) {
+        autoEntries.push({
+          id: `${AUTO_ID_PREFIX}vo_${shot.id.slice(0, 8)}`,
+          kind: "voiceover",
+          url: vo.publicUrl,
+          name: vo.text.length > 60 ? `${vo.text.slice(0, 60)}…` : vo.text,
+          created_at: nowIso,
+        });
+      }
+      for (const c of cues) {
+        autoEntries.push({
+          id: `${AUTO_ID_PREFIX}sfx_${shot.id.slice(0, 8)}_${c.id}`,
+          kind: "sfx",
+          url: c.url,
+          name: c.name,
+          created_at: nowIso,
+        });
+      }
+      if (resolved.bgMusic) {
+        autoEntries.push({
+          id: `${AUTO_ID_PREFIX}music_${shot.id.slice(0, 8)}`,
+          kind: "music",
+          url: resolved.bgMusic.streamUrl,
+          name: `${resolved.bgMusic.title} — ${resolved.bgMusic.artist}`,
+          created_at: nowIso,
+        });
+      }
+      const assetsChanged =
+        autoEntries.length > 0 || kept.length !== existing.length;
+      // Skip the write only when nothing for this scene changed.
+      if (!vo && cues.length === 0 && !assetsChanged) return;
+
+      const updatedAssets = assetsChanged ? [...kept, ...autoEntries] : existing;
+      const { error } = await db
+        .from("shots")
+        .update({
+          voiceover_url: vo?.publicUrl ?? null,
+          voiceover_text: vo?.text ?? null,
+          sfx_cues: cueRows.length > 0 ? cueRows : null,
+          assets: updatedAssets,
+        })
+        .eq("id", shot.id);
+      if (error) {
+        console.warn(
+          `[audio persist] shot ${shot.id.slice(0, 8)} write failed: ${error.message}`,
+        );
+      }
+    }),
+  );
+}
+
+/**
+ * Reconstruct the SkeletonAudio bundle from already-persisted job/shot data.
+ * Used by the critique + improve rebuild paths so refined HTML keeps its
+ * auto-audio. Returns undefined when no audio was attached (no music URL,
+ * no voiceovers, no SFX cues) — keeping the rebuilt HTML audio-free.
+ */
+function buildSkeletonAudioFromPersisted(
+  job: JobRow,
+  shots: ShotRow[],
+): SkeletonAudio | undefined {
+  const voiceovers: SkeletonAudio["voiceovers"] = [];
+  const sfxCues: SkeletonAudio["sfxCues"] = [];
+
+  for (const s of shots) {
+    const sid = `s${s.shot_index + 1}`;
+    if (s.voiceover_url) {
+      voiceovers.push({ sceneId: sid, publicUrl: s.voiceover_url });
+    }
+    const raw = s.sfx_cues;
+    if (Array.isArray(raw)) {
+      for (const cue of raw as Array<Record<string, unknown>>) {
+        if (
+          typeof cue.url === "string" &&
+          typeof cue.momentSec === "number"
+        ) {
+          sfxCues.push({
+            sceneId: sid,
+            momentSeconds: cue.momentSec,
+            url: cue.url,
+            volume: typeof cue.volume === "number" ? cue.volume : 0.6,
+          });
+        }
+      }
+    }
+  }
+
+  const bgMusic = job.music_url ? { streamUrl: job.music_url } : null;
+
+  // Sprint 3 — pull per-scene bg volume overrides off audio_direction.plan
+  // so the rebuilt skeleton keeps the ducking the user asked for.
+  const ad = job.audio_direction as
+    | { plan?: { bgMusicVolumeOverrides?: unknown } }
+    | null;
+  const rawOverrides = ad?.plan?.bgMusicVolumeOverrides;
+  const bgMusicVolumeOverrides: SkeletonAudio["bgMusicVolumeOverrides"] = Array.isArray(
+    rawOverrides,
+  )
+    ? (rawOverrides as Array<Record<string, unknown>>)
+        .filter(
+          (o) =>
+            typeof o.sceneId === "string" && typeof o.volume === "number",
+        )
+        .map((o) => ({
+          sceneId: o.sceneId as string,
+          volume: Math.max(0, Math.min(1, Number(o.volume))),
+        }))
+    : undefined;
+
+  if (
+    !bgMusic &&
+    voiceovers.length === 0 &&
+    sfxCues.length === 0 &&
+    (!bgMusicVolumeOverrides || bgMusicVolumeOverrides.length === 0)
+  ) {
+    return undefined;
+  }
+  return { bgMusic, voiceovers, sfxCues, bgMusicVolumeOverrides };
+}
+
+/**
+ * Convert a freshly-resolved audio bundle (in-memory, just returned by
+ * resolveAudioPlan) into the SkeletonAudio shape that buildFilmSkeleton
+ * accepts. Used during Improve where we have the new bundle in memory and
+ * shouldn't round-trip through the DB. The Sprint 3 bgMusicVolumeOverrides
+ * come from the plan, not the resolved bundle — caller passes them in.
+ */
+function buildSkeletonAudioFromResolved(
+  resolved: ResolvedAudio,
+  bgMusicVolumeOverrides?: SkeletonAudio["bgMusicVolumeOverrides"],
+): SkeletonAudio {
+  return {
+    bgMusic: resolved.bgMusic ? { streamUrl: resolved.bgMusic.streamUrl } : null,
+    voiceovers: resolved.voiceovers.map((v) => ({
+      sceneId: v.sceneId,
+      publicUrl: v.publicUrl,
+    })),
+    sfxCues: resolved.sfxCues.map((c) => ({
+      sceneId: c.sceneId,
+      momentSeconds: c.momentSeconds,
+      url: c.url,
+      volume: c.volume,
+    })),
+    bgMusicVolumeOverrides,
+  };
+}
+
 async function setJobStatus(
   jobId: string,
   patch: Partial<
@@ -319,6 +570,7 @@ async function setJobStatus(
       | "scene_contexts"
       | "film_fills"
       | "polished_at"
+      | "audio_direction"
     >
   >,
 ): Promise<void> {
@@ -754,13 +1006,64 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   );
   const blueprintWithAssets = applyLockedAssetsToBlueprint(draftBlueprint, assetCatalog);
 
+  // Stage 1.75 — audio_direction: auto-pick bg music (Jamendo) + per-scene
+  // voiceover (ElevenLabs TTS) + per-scene SFX (Freesound). Pure planning
+  // here; resolution + mirroring into Supabase happens immediately after.
+  // Skipped unless both MOTIONGLASS_AUTO_AUDIO=true AND the job hasn't opted
+  // out via audio_auto_enabled=false (defaults true at the DB level).
+  // Failures here NEVER block the film — we log and ship without audio so
+  // the visual film still lands.
+  const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
+  let resolvedAudio: ResolvedAudio | undefined;
+  if (AUTO_AUDIO_ENABLED && (job.audio_auto_enabled ?? true)) {
+    await setJobStatus(jobId, { status: "audio_direction" });
+    try {
+      const audioPlan: AudioPlan = await timed(jobId, "audio_direction_plan", () =>
+        generateAudioDirection(storyboard, blueprintWithAssets),
+      );
+      resolvedAudio = await timed(jobId, "audio_direction_resolve", () =>
+        resolveAudioPlan({ jobId, plan: audioPlan, totalFilmSeconds }),
+      );
+      // Persist plan + resolved together so the UI can tell whether the
+      // current music/sfx selection matches the auto-pick (for the ✨ Auto
+      // chip + a future "Reset to auto" without re-calling the LLM).
+      await setJobStatus(jobId, {
+        audio_direction: {
+          plan: audioPlan,
+          resolved: resolvedAudio,
+        } as unknown as object,
+      });
+      await persistResolvedAudio(jobId, insertedScenes, resolvedAudio);
+      console.log(
+        `[hyperframes ${jobId}] audio resolved: bg=${resolvedAudio.bgMusic ? `"${resolvedAudio.bgMusic.title}"` : "none"}, ` +
+          `vo=${resolvedAudio.voiceovers.length}, sfx=${resolvedAudio.sfxCues.length}`,
+      );
+    } catch (err) {
+      console.warn(
+        `[hyperframes ${jobId}] audio_direction failed; shipping film without audio: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+      resolvedAudio = undefined;
+    }
+  } else {
+    console.log(
+      `[hyperframes ${jobId}] audio_direction skipped (auto_enabled=${AUTO_AUDIO_ENABLED}, job.audio_auto_enabled=${job.audio_auto_enabled ?? true})`,
+    );
+  }
+
   // Stage 2 — generating_scenes: per-scene fills using the pre-built
   // (asset-stamped) blueprint. generateFilmHTML skips its internal blueprint
   // call when one is provided.
   await setJobStatus(jobId, { status: "generating_scenes" });
   console.log(`[hyperframes ${jobId}] generating film fills (blueprint + batched scenes, ${storyboard.scenes.length} scenes)`);
   let { html, fills, blueprint, sceneContexts } = await timed(jobId, "film_html", () =>
-    generateFilmHTML(storyboard, storyboard.visualIdentity, assetCatalog, blueprintWithAssets),
+    generateFilmHTML(
+      storyboard,
+      storyboard.visualIdentity,
+      assetCatalog,
+      blueprintWithAssets,
+      resolvedAudio,
+    ),
   );
 
   // Persist the in-memory state the critique+refinement loop needs so it can
@@ -784,8 +1087,8 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
 
   // Per-scene captures (thumbnail + motion-trail composite). Returns the
   // composite public URLs in scene order so the critique stage can feed them
-  // to Sonnet vision without re-fetching from the DB.
-  const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
+  // to Sonnet vision without re-fetching from the DB. totalFilmSeconds was
+  // computed earlier (before audio_direction) so it's reused here.
   const motionTrailUrls = await timed(jobId, "capture_scenes", () =>
     captureScenes({
       jobId,
@@ -954,7 +1257,8 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
       refineScenes(blueprint, sceneContexts, fills.scenes, refinements),
     );
     fills = { ...fills, scenes: refinedScenes };
-    html = buildFilmSkeleton(storyboard, storyboard.visualIdentity, fills);
+    const persistedAudio = buildSkeletonAudioFromPersisted(job, insertedScenes);
+    html = buildFilmSkeleton(storyboard, storyboard.visualIdentity, fills, persistedAudio);
 
     const compositionAsset = await uploadSceneAsset({
       jobId,
@@ -988,6 +1292,245 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
     status: "scenes_ready",
     film_fills: fills as unknown as object,
     polished_at: new Date().toISOString(),
+  });
+}
+
+/** Shape of a user-authored comment as stored on shots.comments (JSONB). */
+type SceneCommentRow = {
+  id: string;
+  text: string;
+  created_at: string;
+  author?: string | null;
+};
+
+function isSceneCommentArray(v: unknown): v is SceneCommentRow[] {
+  return (
+    Array.isArray(v) &&
+    v.every(
+      (c) =>
+        c &&
+        typeof c === "object" &&
+        typeof (c as { id?: unknown }).id === "string" &&
+        typeof (c as { text?: unknown }).text === "string" &&
+        typeof (c as { created_at?: unknown }).created_at === "string",
+    )
+  );
+}
+
+/**
+ * Re-fire each scene that has user comments through generateSceneFill with
+ * the comments as feedback, in parallel. Reuses every piece of the polish
+ * endpoint's machinery — same persisted state (blueprint / scene_contexts /
+ * film_fills), same refineScenes, same captureScenes — but skips the LLM
+ * critique stages because the human has already supplied the direction.
+ *
+ * Called from POST /api/jobs/:id/improve.
+ */
+export async function improveScenesFromComments(jobId: string): Promise<void> {
+  const db = getSupabase();
+
+  // 1. Load job + shots.
+  const { data: jobData, error: jobErr } = await db
+    .from("jobs")
+    .select("*")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (jobErr || !jobData) {
+    throw new Error(`improveScenesFromComments(${jobId}) load job failed: ${jobErr?.message ?? "not found"}`);
+  }
+  const job = jobData as JobRow;
+
+  if (!job.blueprint || !job.scene_contexts || !job.film_fills || !job.director_raw) {
+    throw new Error(
+      `improveScenesFromComments(${jobId}) not eligible: missing persisted state ` +
+        `(blueprint=${!!job.blueprint}, scene_contexts=${!!job.scene_contexts}, ` +
+        `film_fills=${!!job.film_fills}, director_raw=${!!job.director_raw})`,
+    );
+  }
+
+  const { data: shotsData, error: shotsErr } = await db
+    .from("shots")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("shot_index", { ascending: true });
+  if (shotsErr || !shotsData) {
+    throw new Error(`improveScenesFromComments(${jobId}) load shots failed: ${shotsErr?.message}`);
+  }
+  const insertedScenes = shotsData as ShotRow[];
+  if (insertedScenes.length === 0) {
+    throw new Error(`improveScenesFromComments(${jobId}): no shots on job`);
+  }
+
+  // 2. Reconstitute state.
+  const storyboard = job.director_raw as unknown as Storyboard;
+  const blueprint = job.blueprint as unknown as FilmBlueprint;
+  const sceneContexts = deserializeSceneContexts(job.scene_contexts);
+  let fills = job.film_fills as unknown as FilmFills;
+
+  const compositionAssetUrl = insertedScenes[0].scene_html_path;
+  if (!compositionAssetUrl) {
+    throw new Error(`improveScenesFromComments(${jobId}): shots[0].scene_html_path is null`);
+  }
+  let html = await fetchSceneHTML(compositionAssetUrl);
+  const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
+
+  // 3. Build SceneRefinementRequest[] from shots' comments. Scenes with no
+  //    comments are skipped (their fills stay as-is).
+  const refinements: SceneRefinementRequest[] = [];
+  for (let i = 0; i < insertedScenes.length; i++) {
+    const shot = insertedScenes[i];
+    const rawComments = (shot as unknown as { comments?: unknown }).comments;
+    if (!isSceneCommentArray(rawComments) || rawComments.length === 0) continue;
+    // Comments are stored in insertion order; render them chronologically so
+    // the LLM sees the user's full edit history for this scene.
+    const sorted = [...rawComments].sort((a, b) =>
+      a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+    );
+    const feedbackText = sorted
+      .map(
+        (c, k) => `Comment ${k + 1} (${c.created_at}): ${c.text}`,
+      )
+      .join("\n");
+    const sceneId = blueprint.sceneOutline[i]?.id;
+    if (!sceneId) {
+      console.warn(`[improve ${jobId}] shot index ${i} has no matching blueprint scene — skipping its ${rawComments.length} comments`);
+      continue;
+    }
+    refinements.push({ sceneId, feedbackText });
+  }
+
+  if (refinements.length === 0) {
+    throw new Error(
+      `improveScenesFromComments(${jobId}): no shots have comments — nothing to improve`,
+    );
+  }
+
+  // 4. Re-fire commented scenes in parallel with their per-scene feedback.
+  await setJobStatus(jobId, { status: "refining_scenes" });
+  console.log(
+    `[hyperframes ${jobId}] improving ${refinements.length} scene${refinements.length === 1 ? "" : "s"} from comments: ${refinements.map((r) => r.sceneId).join(", ")}`,
+  );
+  const refinedScenes = await timed(jobId, "improve_scenes_from_comments", () =>
+    refineScenes(blueprint, sceneContexts, fills.scenes, refinements, "comment"),
+  );
+  fills = { ...fills, scenes: refinedScenes };
+
+  // Sprint 3 — re-fire audio direction with the same comments. The audio
+  // LLM is told to be restrained (most comments are visual); only audio-
+  // related comments produce changes. resolveAudioPlan's smart-diff skips
+  // the expensive ElevenLabs/Jamendo/Freesound calls for unchanged entries.
+  // Skipped when AUTO_AUDIO_ENABLED is off OR the job never ran auto-audio.
+  let refreshedAudio: ResolvedAudio | undefined;
+  let refreshedAudioPlan: AudioPlan | undefined;
+  const audioDirection = job.audio_direction as
+    | { plan: AudioPlan; resolved: ResolvedAudio }
+    | null;
+  if (
+    AUTO_AUDIO_ENABLED &&
+    (job.audio_auto_enabled ?? true) &&
+    audioDirection &&
+    audioDirection.plan &&
+    audioDirection.resolved
+  ) {
+    try {
+      const commentsByScene = refinements.map((r) => ({
+        sceneId: r.sceneId,
+        comments: r.feedbackText,
+      }));
+      refreshedAudioPlan = await timed(jobId, "audio_redirect_plan", () =>
+        generateAudioDirection(storyboard, blueprint, {
+          previousPlan: audioDirection.plan,
+          previousResolved: {
+            bgMusic: audioDirection.resolved.bgMusic,
+            voiceovers: audioDirection.resolved.voiceovers.map((v) => ({
+              sceneId: v.sceneId,
+              text: v.text,
+              delivery: v.delivery,
+              publicUrl: v.publicUrl,
+            })),
+            sfxCues: audioDirection.resolved.sfxCues.map((c) => ({
+              sceneId: c.sceneId,
+              momentSeconds: c.momentSeconds,
+              kind: c.kind,
+              name: c.name,
+              url: c.url,
+            })),
+          },
+          commentsByScene,
+        }),
+      );
+      refreshedAudio = await timed(jobId, "audio_redirect_resolve", () =>
+        resolveAudioPlan({
+          jobId,
+          plan: refreshedAudioPlan!,
+          totalFilmSeconds,
+          previousPlan: audioDirection.plan,
+          previousResolved: audioDirection.resolved,
+        }),
+      );
+      await setJobStatus(jobId, {
+        audio_direction: {
+          plan: refreshedAudioPlan,
+          resolved: refreshedAudio,
+        } as unknown as object,
+      });
+      await persistResolvedAudio(jobId, insertedScenes, refreshedAudio);
+      console.log(
+        `[improve ${jobId}] audio re-direction done: bg=${refreshedAudio.bgMusic ? `"${refreshedAudio.bgMusic.title}"` : "none"}, ` +
+          `vo=${refreshedAudio.voiceovers.length}, sfx=${refreshedAudio.sfxCues.length}, ` +
+          `overrides=${refreshedAudioPlan.bgMusicVolumeOverrides?.length ?? 0}`,
+      );
+    } catch (err) {
+      console.warn(
+        `[improve ${jobId}] audio re-direction failed; keeping previous audio: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+      refreshedAudio = undefined;
+      refreshedAudioPlan = undefined;
+    }
+  }
+
+  // Choose the audio source for the rebuilt HTML: fresh resolved bundle
+  // (with the plan's overrides) when re-direction succeeded; otherwise
+  // fall back to whatever's currently persisted on the job + shot rows.
+  const skeletonAudio = refreshedAudio
+    ? buildSkeletonAudioFromResolved(
+        refreshedAudio,
+        refreshedAudioPlan?.bgMusicVolumeOverrides,
+      )
+    : buildSkeletonAudioFromPersisted(job, insertedScenes);
+  html = buildFilmSkeleton(storyboard, storyboard.visualIdentity, fills, skeletonAudio);
+
+  const compositionAsset = await uploadSceneAsset({
+    jobId,
+    sceneId: "main",
+    filename: "composition.html",
+    body: Buffer.from(html, "utf8"),
+    contentType: "text/html; charset=utf-8",
+  });
+
+  // 5. Recapture motion-trail composites for the refined scenes only.
+  const refinedIndices = refinements
+    .map((r) => blueprint.sceneOutline.findIndex((b) => b.id === r.sceneId))
+    .filter((i) => i >= 0);
+  await timed(jobId, "recapture_improved_scenes", () =>
+    captureScenes({
+      jobId,
+      html,
+      storyboard,
+      insertedScenes,
+      compositionAssetUrl: compositionAsset.publicUrl,
+      totalFilmSeconds,
+      sceneIndices: refinedIndices,
+    }),
+  );
+
+  // 6. Finalize: patched fills + back to scenes_ready. We deliberately do NOT
+  //    touch polished_at — improvement is iterative and not the same gate as
+  //    a one-shot polish promotion.
+  await setJobStatus(jobId, {
+    status: "scenes_ready",
+    film_fills: fills as unknown as object,
   });
 }
 

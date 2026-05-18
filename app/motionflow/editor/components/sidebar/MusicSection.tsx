@@ -3,6 +3,15 @@ import { MusicPicker, type CurrentMusic } from "../../../MusicPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
 
+// audio_direction column holds { plan, resolved } when the auto-audio
+// pipeline ran on this job. We use resolved.bgMusic.trackId to detect
+// whether the current music_track_id is still the LLM's pick (✨ AUTO).
+function getAutoBgTrackId(job: JobRow | null): string | null {
+  const ad = job?.audio_direction as { resolved?: { bgMusic?: { trackId?: unknown } } } | null;
+  const id = ad?.resolved?.bgMusic?.trackId;
+  return typeof id === "string" ? id : null;
+}
+
 export const MusicSection = ({
   open,
   onToggle,
@@ -19,16 +28,18 @@ export const MusicSection = ({
   shots: ShotRow[];
   setJob: React.Dispatch<React.SetStateAction<JobRow | null>>;
   setShots: React.Dispatch<React.SetStateAction<ShotRow[]>>;
-}) => (
+}) => {
+  const autoTrackId = getAutoBgTrackId(job);
+  const isAuto = !!autoTrackId && job?.music_track_id === autoTrackId;
+  const titleText = job?.music_title
+    ? job.music_title.length > 18
+      ? `${job.music_title.slice(0, 18)}…`
+      : job.music_title
+    : "—";
+  return (
   <AccordionSection
     label="MUSIC"
-    badge={
-      job?.music_title
-        ? job.music_title.length > 18
-          ? `${job.music_title.slice(0, 18)}…`
-          : job.music_title
-        : "—"
-    }
+    badge={isAuto ? `✨ ${titleText}` : titleText}
     open={open}
     onToggle={onToggle}
   >
@@ -99,4 +110,5 @@ export const MusicSection = ({
       />
     )}
   </AccordionSection>
-);
+  );
+};

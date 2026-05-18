@@ -4,9 +4,82 @@ Living roadmap of in-flight work. Update after every planning decision or sprint
 
 ---
 
-## Current Sprint — Film Quality v2 (AI Creative Studio)
+## Current Sprint — Opus Creative Diversity (Sprint 4)
 
-**Goal:** Move from "HTML motion generator" to "AI creative studio directing cinematic launch films." Real visual assets + vision-driven self-critique + film-level pacing intelligence. All Claude. Seven non-negotiable cinematic principles (see [`memory/feedback_cinematic_principles.md`](.claude/projects/C--Users-User-Desktop-motionglass/memory/feedback_cinematic_principles.md)).
+**Goal:** Two different scripts must produce visibly different films. Diagnosis: silent fallbacks (`DEFAULT_VISUAL_IDENTITY`, `sanitizeFilmRhythm` linear ramp) were stamping the same "Editorial Night" identity + linear energy curve onto every partial parse, and Opus 4.7's lack of `temperature` meant identical prompts → identical outputs. The storyboard prompt's own opening line ("Two scripts about two different products MUST produce visibly different films — if your output looks like the previous job, you have failed") was being structurally undermined by the code below it.
+
+**What shipped (2026-05-18):**
+
+- **Silent DEFAULT cascade killed.** `normalizeVisualIdentity` (`app/lib/hyperframes/llm-director.ts`) now throws `IdentityIncompleteError` when `paletteName`, `background`, `accents`, `headlineFont`, `motionLanguage`, `signatureMove`, or `assetPolicy` is missing — no more `||` fallback to Editorial Night. `generateStoryboard` catches and fires ONE retry with an addendum naming the omitted fields; second failure throws upward (job fails loudly instead of shipping a generic film). Safety-only fallbacks (`ink`, `inkMuted`, `bodyFont`, `monoFont`, `imageKeyword`) still cascade.
+- **sanitizeFilmRhythm rewritten** to derive its fallback `energyCurve`, `cadenceMode`, and `climaxIndex` from the storyboard's `pacingIntent` sequence (`punch→0.85`, `cinematic→0.65`, `beat→0.5`, late `hold→0.95`, early `hold→0.25`). Cadence is picked from curve shape (local-maxima count, variance, peak position) instead of a fixed `slow_build_then_release`. Old linear ramp `0.3 + (i/N)*0.5` retained only as a last-resort fallback when no pacingIntents are passed. `generateFilmBlueprint` plumbs `storyboard.scenes.map(s => s.pacingIntent)` in.
+- **Storyboard prompt rewritten** for script-specific invention. New `BANNED DEFAULTS` block explicitly forbids Editorial Night / Inter-only / "thin vertical accent bar" / "slow cinematic zoom" / corner-timestamp signatureMoves. DOMAIN→PALETTE table reframed from a lookup into "starting points" with a mandatory ±20–40° color-wheel shift based on emotional register + mandatory gradient customization. `sceneConcept`, `motionHook`, `motionLanguage` menus reframed as inspiration palettes — Opus may invent new names (`"liquid metal logo unfurl"`, `"twitchy + tender"`, `"shutter snap"`, etc.) and `FILM_SYSTEM_PROMPT` instructs the scene-fill stage to interpret invented names literally instead of collapsing them back to standard recipes.
+- **Aesthetic Seed lexicon + per-script injection.** New `AESTHETIC_SEED_LEXICON` (60 adjectives spanning texture/material/light/density). `pickAestheticSeed(script)` uses FNV-1a 32-bit hashing to deterministically pick 3 adjectives per script. Injected into the storyboard user prompt as a mood-push block. This is the ONLY available mechanism for breaking Opus 4.7's determinism (no temperature/top_p/top_k support) — same script → same seed (so retries are stable); different scripts → different seeds (so the same prompt produces different mood pushes).
+- **Vision critique counterweight.** Added `creativeDistinctiveness` to `SCENE_CRITIQUE_DIMENSIONS` (0..100; high = unmistakably script-specific, low = stock template). Added `filmRecognizability` to `FILM_CRITIQUE_DIMENSIONS` (same scale, film-wide). New verdict rules: scene-level `restraintQuality > 70 AND creativeDistinctiveness < 50` forces `refine` with major issue `restraint_without_distinctiveness`; film-level `filmRecognizability < 50` forces at least `refine_selected_scenes` with major issue `visual_genericness`. `buildRefinementSet` needs no changes — already routes by verdict + major-severity.
+- **Cinematic principle #1 rewritten.** In `FILM_SYSTEM_PROMPT` AND `FILM_BLUEPRINT_SYSTEM_PROMPT`: "NO DEAD FRAMES, BUT RESTRAINT IS CRAFT" → "RESTRAINT IS A TOOL, NOT THE GOAL." Explicitly tells Opus that boldness, density, weirdness, dense layered motion, oversaturated color can all serve a script — don't default to cinematic restraint as a safe universal aesthetic. Dead-frame rule preserved as a clause inside the new principle.
+- **CREATIVE MANDATE block injected** at the top of `STORYBOARD_SYSTEM_PROMPT`, `FILM_BLUEPRINT_SYSTEM_PROMPT`, and `FILM_SYSTEM_PROMPT` — the first thing Opus reads in each call. Frames every subsequent menu/recipe/principle as a "reference palette, not a pick-list" and explicitly directs invention over assembly. See memory [[feedback_invent_dont_assemble]].
+
+**Architecture frozen — taste sprint only.** No new files, no new DB columns, no new pipeline stages. All changes inside `app/lib/hyperframes/llm-director.ts`.
+
+**Out of scope (followups if regression check still shows convergence):**
+- Asset-plan prompt rebalancing to reject "default" choices (currently relies on storyboard variance flowing through).
+- `FILM_BLUEPRINT_SYSTEM_PROMPT` `motionLanguage.pacing` enum (still 3 options: calm/propulsive/staccato) — left alone since it's a blueprint-internal field, not user-facing.
+- Per-scene `creativeDistinctiveness` tracking through the refinement loop telemetry.
+
+---
+
+## Previous Sprint — Comments → Audio Re-Direction (Sprint 3)
+
+**Goal:** Per-scene comments now influence audio in addition to visuals. Comments like *"lower the music here"*, *"change this whoosh to a deeper boom"*, or *"voiceover sounds too aggressive"* re-direct music volume, SFX choice, and voiceover text/delivery during the Improve flow.
+
+**What shipped (2026-05-18):**
+
+- `generateAudioDirection(storyboard, blueprint, feedback?)` accepts an optional `feedback` param with `{previousPlan, previousResolved, commentsByScene}`. The system prompt gets a refinement-mode addendum (audio-keyword guide + restraint rules: leave scenes unchanged when comments don't mention audio). Base prompt stays cache-stable.
+- `AudioPlan` gains `bgMusicVolumeOverrides: { sceneId, volume }[]` (0..1, clamped post-parse). Schema requires the field but defaults to empty.
+- `buildFilmSkeleton(audio?)` injects GSAP volume keyframes (`tl.to("#bg-music", { volume: X, duration: 0.3, ease: "sine.inOut" }, sceneStart)`) per override + restore-to-default at sceneEnd-0.3. HF runtime support for audio property tweens is uncertain — preview is authoritative.
+- `resolveAudioPlan(args)` accepts `previousPlan` + `previousResolved` and skips API calls per-entry when unchanged. ElevenLabs reuse is keyed on `(sceneId, text, deliveryHint)`. Freesound reuse is keyed on `(sceneId, kind, freesoundQuery)`. Jamendo reuse is keyed on `bgMusic.jamendoQuery`.
+- `improveScenesFromComments` (`app/lib/jobs.ts`) now re-fires `generateAudioDirection` with the same comments AFTER the visual refinement, then calls `resolveAudioPlan` with the previous plan/resolved for smart-diff, persists via `persistResolvedAudio`, and uses the fresh bundle (`buildSkeletonAudioFromResolved`) for the rebuilt HTML. Guarded by `AUTO_AUDIO_ENABLED` + non-null `audio_direction` + `audio_auto_enabled`. Audio failure logs and falls back to the previous audio without blocking the visual improve.
+- `buildSkeletonAudioFromPersisted` reads `bgMusicVolumeOverrides` from `audio_direction.plan` for HTML rebuilds.
+- `usePlayback({ shots, job })` now reads per-scene bg volume overrides from `job.audio_direction.plan.bgMusicVolumeOverrides` and applies them to the music `<audio>` element when the active scene matches. Default mix mirrors the skeleton: 0.22 with VOs, 0.4 without.
+- No new DB columns — everything lives inside the existing `jobs.audio_direction` JSONB.
+
+**Out of scope (followups):**
+- Audio re-direction triggered by vision critique (only comments today).
+- Per-scene VO/SFX volume overrides (only bg music).
+- Music gen instead of search (still Jamendo).
+
+---
+
+## Previous Sprint — Auto-Audio Direction (Sprint 2)
+
+**Goal:** Add a third pipeline stage — the LLM picks music, SFX, and voiceover automatically — so the film comes back fully scored without the user touching the existing pickers. Existing manual MusicPicker / SfxPicker flow is unchanged; auto picks just pre-fill the same columns. Behind a feature flag.
+
+**Authorization:** taste-sprint freeze override — user explicitly approved building this as a new pipeline stage (memory `feedback_taste_sprints`).
+
+**What shipped (2026-05-17):**
+
+- `generateAudioDirection(storyboard, blueprint)` (Opus 4.7, effort=medium, 8K tokens) in `app/lib/hyperframes/llm-director.ts` — emits `AudioPlan` { bgMusic | null, voiceovers[], sfxCues[] } scored to filmRhythm. System prompt enforces restraint (silence is a sonic choice; ≤3 SFX cues unless staccato_pulse; VO complements copy, never echoes it).
+- `app/lib/elevenlabs-tts.ts` — `generateVoiceover()` calls ElevenLabs TTS (default `eleven_turbo_v2_5`). Env: `ELEVENLABS_API_KEY`, `ELEVENLABS_DEFAULT_VOICE_ID`.
+- `app/lib/audio-resolver.ts` — `resolveAudioPlan()` resolves the plan in parallel: Jamendo for bg music (picks tracks with ≥80% film duration), ElevenLabs TTS per scene (per-delivery voice_settings tuning, mirrored to Supabase Storage), Freesound for SFX (per-kind duration band filter). Per-item failures degrade gracefully.
+- `buildFilmSkeleton(..., audio?)` extended to inject `<audio id="bg-music">` (looped, ducks via lower mix when voiceovers present), `<audio id="vo-sN">` per voiceover, `<audio id="sfx-sN-M">` per cue — all using the runtime's `data-start` / `data-volume` contract (no `class="clip"`).
+- `runHyperframesDirect` wired: `directing → asset_planning → audio_direction (NEW) → generating_scenes → ...`. Feature flag `MOTIONGLASS_AUTO_AUDIO=true` + per-job `jobs.audio_auto_enabled` (default true). Audio stage failure logs + ships film without audio.
+- `persistResolvedAudio()` writes bg music to existing `jobs.music_*` columns (the MusicPicker auto-surfaces them) and per-shot voiceover/SFX to new `shots.voiceover_url`, `shots.voiceover_text`, `shots.sfx_cues` JSONB. Pipeline writes don't require userId (direct write, bypassing the user-facing `updateJobMusic` helper).
+- Critique + improve rebuild paths use a new `buildSkeletonAudioFromPersisted(job, shots)` helper so refined HTML keeps its audio without re-resolving.
+- New `JobStatus = "audio_direction"`.
+- New `jobs.audio_direction` JSONB (shape: `{ plan, resolved }`) and `jobs.audio_auto_enabled` BOOL. New `shots.voiceover_url`, `shots.voiceover_text`, `shots.sfx_cues` JSONB. Migration `20260530_audio_direction.sql`.
+- `MusicSection.tsx` shows a `✨` prefix on its badge when `music_track_id` still matches `audio_direction.resolved.bgMusic.trackId` — gives the user a quick "this is the auto pick" signal without changing the picker UI.
+
+**Out of scope (followups):**
+- "Reset to auto" button in MusicPicker / SfxPicker (cached plan re-resolution).
+- Multi-cue-per-scene SFX (plan caps at 1).
+- Voice casting / multi-voice (single env-configured voice).
+- Audio re-direction inside the critique loop (vision critique doesn't see audio yet).
+- Per-scene auto SFX badge in `SfxSection` (the existing single-SFX picker is a different model).
+
+---
+
+## Previous Sprint — Film Quality v2 (AI Creative Studio)
+
+**Goal (shipped 2026-05-16):** Move from "HTML motion generator" to "AI creative studio directing cinematic launch films." Real visual assets + vision-driven self-critique + film-level pacing intelligence. All Claude. Seven non-negotiable cinematic principles (see [`memory/feedback_cinematic_principles.md`](.claude/projects/C--Users-User-Desktop-motionglass/memory/feedback_cinematic_principles.md)).
 
 Three sub-PRs, shipped independently.
 
