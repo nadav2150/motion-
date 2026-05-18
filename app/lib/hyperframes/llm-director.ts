@@ -4474,74 +4474,41 @@ async function generateScenesWithContinuity(
   const N = blueprint.sceneOutline.length;
   if (N === 0) return { fills: [], contexts: [] };
 
-  const fills: SceneFill[] = new Array(N);
-  const contexts: SceneCallContext[] = new Array(N);
-  const continuityState: ContinuityState = {
+  // Wall-time mode: all scenes fire in ONE parallel wave. Each scene sees
+  // blueprint-level intent for its immediate predecessor via
+  // prevSceneIntentFallback (the mechanism slot-2 scenes already used in
+  // the pair-threaded version). Real structured continuity from prior
+  // scene outputs is sacrificed in exchange for collapsing 4 sequential
+  // Opus waves into 1. The lint-retry path below still re-uses the
+  // per-scene SceneCallContext, so its plumbing is unchanged.
+  const initialState: ContinuityState = {
     prevSceneSummary: null,
     prevSceneId: null,
     motifRegistry: new Set<Motif>(),
     completedSceneIds: [],
   };
+  const snapshot = snapshotContinuity(initialState);
 
-  const advanceContinuity = (fill: SceneFill): void => {
-    if (fill.continuitySummary) {
-      continuityState.prevSceneSummary = fill.continuitySummary;
-      continuityState.prevSceneId = fill.id;
-      for (const m of fill.continuitySummary.motifsUsed) {
-        continuityState.motifRegistry.add(m);
-      }
-    }
-    continuityState.completedSceneIds.push(fill.id);
-  };
+  const contexts: SceneCallContext[] = Array.from({ length: N }, (_, idx) => ({
+    continuityState: snapshot,
+    prevSceneIntentFallback: idx === 0 ? null : blueprint.sceneOutline[idx - 1],
+  }));
 
-  // Scene 1 — solo. Establishes the first real continuity anchor.
-  console.log(`[hyperframes orchestrator] scene 1/${N} (solo)`);
-  contexts[0] = { continuityState: snapshotContinuity(continuityState), prevSceneIntentFallback: null };
-  fills[0] = await generateSceneFill(blueprint, 0, contexts[0].continuityState, null, null);
-  advanceContinuity(fills[0]);
+  console.log(
+    `[hyperframes orchestrator] all ${N} scenes (parallel ${N}/${N}, blueprint-only continuity)`,
+  );
 
-  // Scenes 2..N in groups of 2 (parallel within, sequential between).
-  let i = 1;
-  while (i < N) {
-    const groupSize = Math.min(2, N - i);
-    const groupIndices = Array.from({ length: groupSize }, (_, k) => i + k);
-    console.log(
-      `[hyperframes orchestrator] group ${groupIndices.map((g) => `s${g + 1}`).join(",")} (parallel ${groupSize}/${groupSize})`,
-    );
-
-    // Snapshot ONCE per group — both scenes in the group see the same
-    // continuity state (the slot-1 scene's real output won't exist until
-    // after Promise.all returns, so the slot-2 scene gets a blueprint-intent
-    // fallback for its immediate predecessor).
-    const groupSnapshot = snapshotContinuity(continuityState);
-
-    for (let k = 0; k < groupSize; k++) {
-      contexts[groupIndices[k]] = {
-        continuityState: groupSnapshot,
-        prevSceneIntentFallback:
-          k === 0 ? null : blueprint.sceneOutline[groupIndices[k - 1]],
-      };
-    }
-
-    const groupResults = await Promise.all(
-      groupIndices.map((idx) =>
-        generateSceneFill(
-          blueprint,
-          idx,
-          contexts[idx].continuityState,
-          contexts[idx].prevSceneIntentFallback,
-          null,
-        ),
+  const fills = await Promise.all(
+    contexts.map((ctx, idx) =>
+      generateSceneFill(
+        blueprint,
+        idx,
+        ctx.continuityState,
+        ctx.prevSceneIntentFallback,
+        null,
       ),
-    );
-
-    for (let k = 0; k < groupResults.length; k++) {
-      fills[groupIndices[k]] = groupResults[k];
-      advanceContinuity(groupResults[k]);
-    }
-
-    i += groupSize;
-  }
+    ),
+  );
 
   return { fills, contexts };
 }
