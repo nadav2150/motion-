@@ -4418,13 +4418,14 @@ async function generateSceneFill(
     // (below) to bound deliberation.
     thinking: { type: "adaptive" },
     output_config: {
-      // Lowered from "high" to "medium" alongside the explicit length budget
-      // in buildSceneFillUserPrompt. "high" was producing 15-23K-token
-      // scene outputs (s2 hit 23K in the 2026-05-18 run) — that's 5-8
-      // minutes/scene of streaming. "medium" + length caps brings scenes
-      // back to ~10-12K output, ~70-120s wall time. With adaptive thinking,
-      // effort also shapes how many thinking tokens the model spends.
-      effort: "medium",
+      // effort: "medium" + length budget over-corrected: scenes dropped to
+      // 2-7K output tokens (median ~3.5K) on 2026-05-19 and the user
+      // reported scenes "look broken" — too sparse to fulfill the motion
+      // mandates. Restored to "high" while keeping the length budget block
+      // in buildSceneFillUserPrompt and the all-parallel wave. Expected
+      // per-scene output ~10-15K (vs. the original 15-23K) and ~5-6 min
+      // total wall-time (vs. 4 min at medium, 16.7 min at the original).
+      effort: "high",
       format: { type: "json_schema", schema: SCENE_FILL_SCHEMA },
     },
   });
