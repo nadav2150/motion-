@@ -4411,18 +4411,19 @@ async function generateSceneFill(
     // max_tokens is a clamp, not a budget — the model only spends what it
     // needs and stops. We are not paying for unused headroom.
     max_tokens: 48000,
-    // Cap deliberation at a fixed budget — adaptive thinking was spending
-    // 20-30K thinking tokens per scene (see the size comment above) which
-    // is the dominant wall-time cost. 10K is enough headroom for one
-    // strong motion idea per scene without burning minutes on hidden
-    // reasoning. Bump if scenes start arriving structurally broken.
-    thinking: { type: "enabled", budget_tokens: 10000 },
+    // Opus 4.7 only supports thinking.type "adaptive" — explicit
+    // { type: "enabled", budget_tokens: N } returns 400 invalid_request.
+    // Per the API error, output_config.effort is the knob that shapes the
+    // adaptive thinking budget. Keeping adaptive and using effort: "medium"
+    // (below) to bound deliberation.
+    thinking: { type: "adaptive" },
     output_config: {
       // Lowered from "high" to "medium" alongside the explicit length budget
       // in buildSceneFillUserPrompt. "high" was producing 15-23K-token
       // scene outputs (s2 hit 23K in the 2026-05-18 run) — that's 5-8
       // minutes/scene of streaming. "medium" + length caps brings scenes
-      // back to ~10-12K output, ~70-120s wall time.
+      // back to ~10-12K output, ~70-120s wall time. With adaptive thinking,
+      // effort also shapes how many thinking tokens the model spends.
       effort: "medium",
       format: { type: "json_schema", schema: SCENE_FILL_SCHEMA },
     },
