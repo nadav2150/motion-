@@ -2259,12 +2259,20 @@ export function buildFilmSkeleton(
   // data-volume per HYPERFRAMES_SPEC). bg-music is mixed lower when there are
   // voiceovers so the VO stays intelligible without per-scene ducking (which
   // the renderer's media model doesn't reliably support yet).
+  //
+  // Track allocation: track 0 is reserved for scene <section>s (visual).
+  // Each audio clip claims its own track starting at 1 — the runtime
+  // supports unbounded audio tracks and per-clip assignment is the
+  // simplest way to make the lint's overlapping_clips_same_track check
+  // pass without having to reason about voiceover bleed across scene
+  // boundaries or simultaneous sfx cues.
   const audioTagsHtml: string[] = [];
   const hasVoiceovers = (audio?.voiceovers?.length ?? 0) > 0;
   const defaultBgVolume = hasVoiceovers ? 0.22 : 0.4;
+  let nextAudioTrack = 1;
   if (audio?.bgMusic) {
     audioTagsHtml.push(
-      `  <audio id="bg-music" src="${escapeHtml(audio.bgMusic.streamUrl)}" data-start="0" data-volume="${defaultBgVolume}" loop preload="auto"></audio>`,
+      `  <audio id="bg-music" src="${escapeHtml(audio.bgMusic.streamUrl)}" data-start="0" data-track-index="${nextAudioTrack++}" data-volume="${defaultBgVolume}" loop preload="auto"></audio>`,
     );
   }
   for (const vo of audio?.voiceovers ?? []) {
@@ -2272,7 +2280,7 @@ export function buildFilmSkeleton(
     const sceneStart = starts[i];
     if (!Number.isFinite(sceneStart)) continue;
     audioTagsHtml.push(
-      `  <audio id="vo-${vo.sceneId}" src="${escapeHtml(vo.publicUrl)}" data-start="${sceneStart}" data-volume="0.95" preload="auto"></audio>`,
+      `  <audio id="vo-${vo.sceneId}" src="${escapeHtml(vo.publicUrl)}" data-start="${sceneStart}" data-track-index="${nextAudioTrack++}" data-volume="0.95" preload="auto"></audio>`,
     );
   }
   (audio?.sfxCues ?? []).forEach((cue, j) => {
@@ -2281,7 +2289,7 @@ export function buildFilmSkeleton(
     if (!Number.isFinite(sceneStart)) return;
     const start = Math.max(0, sceneStart + cue.momentSeconds);
     audioTagsHtml.push(
-      `  <audio id="sfx-${cue.sceneId}-${j}" src="${escapeHtml(cue.url)}" data-start="${start}" data-volume="${cue.volume}" preload="auto"></audio>`,
+      `  <audio id="sfx-${cue.sceneId}-${j}" src="${escapeHtml(cue.url)}" data-start="${start}" data-track-index="${nextAudioTrack++}" data-volume="${cue.volume}" preload="auto"></audio>`,
     );
   });
   const audioBlock = audioTagsHtml.length > 0 ? `\n${audioTagsHtml.join("\n")}\n` : "";
