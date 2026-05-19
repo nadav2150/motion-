@@ -10,6 +10,7 @@ export const STATUS_TONE: Record<JobStatus, { tone: "default" | "glow" | "succes
   pending: { tone: "default", dot: "#7AA2FF", label: "QUEUED" },
   directing: { tone: "glow", dot: "#A78BFA", label: "DIRECTING" },
   asset_planning: { tone: "glow", dot: "#F0B86E", label: "PLANNING ASSETS" },
+  audio_direction: { tone: "glow", dot: "#F0B86E", label: "DIRECTING AUDIO" },
   rendering: { tone: "glow", dot: "#67E8F9", label: "RENDERING" },
   generating_scenes: { tone: "glow", dot: "#A78BFA", label: "GENERATING SCENES" },
   vision_critique: { tone: "glow", dot: "#F0B86E", label: "VISION CRITIQUE" },

@@ -9,6 +9,7 @@ export type JobStatus =
   | "pending"
   | "directing"
   | "asset_planning"
+  | "audio_direction"
   | "rendering"
   | "generating_scenes"
   | "vision_critique"
