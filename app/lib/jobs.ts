@@ -95,7 +95,10 @@ const AUTO_CRITIQUE_ENABLED = process.env.HYPERFRAMES_AUTO_CRITIQUE === "true";
 
 // Sprint 2 — auto-audio direction. Off by default until tuned in production
 // (ElevenLabs adds ~5-15s per scene; Jamendo/Freesound add ~1-2s each).
-// Per-job override via jobs.audio_auto_enabled (defaults true at DB level).
+// Acts as a master kill-switch: when false, no audio is generated regardless
+// of per-job toggles. Per-track opt-in lives on jobs.audio_voiceover_enabled
+// / audio_music_enabled / audio_sfx_enabled (all default false at DB level —
+// see supabase/migrations/20260601_audio_track_toggles.sql).
 const AUTO_AUDIO_ENABLED = process.env.MOTIONGLASS_AUTO_AUDIO === "true";
 
 // SceneCallContext serialization: motifRegistry is a Set<Motif>, which JSON
@@ -156,6 +159,13 @@ export type CreateJobInput = {
   brandLogoStoragePath?: string | null;
   brandColors?: string[] | null;
   userId?: string | null;
+  // Per-track audio toggles captured at Generate time. Default false at the
+  // DB level; the caller (api.jobs route) is responsible for forwarding the
+  // user's editor-side selections. Drives the audio_direction stage gate in
+  // runHyperframesDirect.
+  audioVoiceoverEnabled?: boolean;
+  audioMusicEnabled?: boolean;
+  audioSfxEnabled?: boolean;
 };
 
 export async function createJob(input: CreateJobInput): Promise<{ jobId: string }> {
@@ -179,6 +189,9 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string 
       status: "pending",
       user_id: input.userId ?? null,
       generation_mode: "hyperframes",
+      audio_voiceover_enabled: input.audioVoiceoverEnabled ?? false,
+      audio_music_enabled: input.audioMusicEnabled ?? false,
+      audio_sfx_enabled: input.audioSfxEnabled ?? false,
     })
     .select("id")
     .single();
@@ -1009,20 +1022,28 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   // Stage 1.75 — audio_direction: auto-pick bg music (Jamendo) + per-scene
   // voiceover (ElevenLabs TTS) + per-scene SFX (Freesound). Pure planning
   // here; resolution + mirroring into Supabase happens immediately after.
-  // Skipped unless both MOTIONGLASS_AUTO_AUDIO=true AND the job hasn't opted
-  // out via audio_auto_enabled=false (defaults true at the DB level).
+  // Per-track gating: each of voiceover/music/sfx runs only if the user
+  // toggled it on at Generate time. If all three are off, the whole stage
+  // is skipped. The LLM is told which tracks to plan for so it doesn't
+  // burn tokens on outputs we'd discard.
   // Failures here NEVER block the film — we log and ship without audio so
   // the visual film still lands.
+  const tracks = {
+    voiceover: job.audio_voiceover_enabled ?? false,
+    music: job.audio_music_enabled ?? false,
+    sfx: job.audio_sfx_enabled ?? false,
+  };
+  const anyTrackOn = tracks.voiceover || tracks.music || tracks.sfx;
   const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
   let resolvedAudio: ResolvedAudio | undefined;
-  if (AUTO_AUDIO_ENABLED && (job.audio_auto_enabled ?? true)) {
+  if (AUTO_AUDIO_ENABLED && anyTrackOn) {
     await setJobStatus(jobId, { status: "audio_direction" });
     try {
       const audioPlan: AudioPlan = await timed(jobId, "audio_direction_plan", () =>
-        generateAudioDirection(storyboard, blueprintWithAssets),
+        generateAudioDirection(storyboard, blueprintWithAssets, tracks),
       );
       resolvedAudio = await timed(jobId, "audio_direction_resolve", () =>
-        resolveAudioPlan({ jobId, plan: audioPlan, totalFilmSeconds }),
+        resolveAudioPlan({ jobId, plan: audioPlan, totalFilmSeconds, tracks }),
       );
       // Persist plan + resolved together so the UI can tell whether the
       // current music/sfx selection matches the auto-pick (for the ✨ Auto
@@ -1047,7 +1068,7 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     }
   } else {
     console.log(
-      `[hyperframes ${jobId}] audio_direction skipped (auto_enabled=${AUTO_AUDIO_ENABLED}, job.audio_auto_enabled=${job.audio_auto_enabled ?? true})`,
+      `[hyperframes ${jobId}] audio_direction skipped (auto_enabled=${AUTO_AUDIO_ENABLED}, vo=${tracks.voiceover}, music=${tracks.music}, sfx=${tracks.sfx})`,
     );
   }
 
@@ -1419,7 +1440,15 @@ export async function improveScenesFromComments(jobId: string): Promise<void> {
   // LLM is told to be restrained (most comments are visual); only audio-
   // related comments produce changes. resolveAudioPlan's smart-diff skips
   // the expensive ElevenLabs/Jamendo/Freesound calls for unchanged entries.
-  // Skipped when AUTO_AUDIO_ENABLED is off OR the job never ran auto-audio.
+  // Skipped when AUTO_AUDIO_ENABLED is off, when no per-track toggles are on
+  // for this job, OR when the job never ran auto-audio in the first place.
+  const improveTracks = {
+    voiceover: job.audio_voiceover_enabled ?? false,
+    music: job.audio_music_enabled ?? false,
+    sfx: job.audio_sfx_enabled ?? false,
+  };
+  const anyImproveTrackOn =
+    improveTracks.voiceover || improveTracks.music || improveTracks.sfx;
   let refreshedAudio: ResolvedAudio | undefined;
   let refreshedAudioPlan: AudioPlan | undefined;
   const audioDirection = job.audio_direction as
@@ -1427,7 +1456,7 @@ export async function improveScenesFromComments(jobId: string): Promise<void> {
     | null;
   if (
     AUTO_AUDIO_ENABLED &&
-    (job.audio_auto_enabled ?? true) &&
+    anyImproveTrackOn &&
     audioDirection &&
     audioDirection.plan &&
     audioDirection.resolved
@@ -1438,7 +1467,7 @@ export async function improveScenesFromComments(jobId: string): Promise<void> {
         comments: r.feedbackText,
       }));
       refreshedAudioPlan = await timed(jobId, "audio_redirect_plan", () =>
-        generateAudioDirection(storyboard, blueprint, {
+        generateAudioDirection(storyboard, blueprint, improveTracks, {
           previousPlan: audioDirection.plan,
           previousResolved: {
             bgMusic: audioDirection.resolved.bgMusic,
@@ -1464,6 +1493,7 @@ export async function improveScenesFromComments(jobId: string): Promise<void> {
           jobId,
           plan: refreshedAudioPlan!,
           totalFilmSeconds,
+          tracks: improveTracks,
           previousPlan: audioDirection.plan,
           previousResolved: audioDirection.resolved,
         }),

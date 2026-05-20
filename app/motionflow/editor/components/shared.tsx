@@ -96,6 +96,7 @@ export const AccordionSection = ({
   open,
   onToggle,
   disabled = false,
+  headerControl,
   children,
 }: {
   label: string;
@@ -103,6 +104,11 @@ export const AccordionSection = ({
   open: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  // Optional inline control rendered at the right edge of the header
+  // (after the badge). Pointer events on this node do NOT bubble to the
+  // expand/collapse button — the audio sidebars rely on this so toggling
+  // the per-track switch doesn't also flip the accordion open/closed.
+  headerControl?: ReactNode;
   children: ReactNode;
 }) => (
   <div
@@ -111,46 +117,64 @@ export const AccordionSection = ({
       opacity: disabled ? 0.55 : 1,
     }}
   >
-    <button
-      onClick={onToggle}
+    <div
       style={{
-        width: "100%",
         display: "flex",
         alignItems: "center",
         gap: 8,
         padding: "12px 2px",
-        background: "transparent",
-        border: "none",
-        color: "var(--ink-1)",
-        fontFamily: "inherit",
-        cursor: "pointer",
-        textAlign: "left",
       }}
     >
-      <IconChevron
-        size={11}
+      <button
+        onClick={onToggle}
         style={{
-          transform: open ? "rotate(0deg)" : "rotate(-90deg)",
-          transition: "transform 200ms cubic-bezier(.2,.8,.2,1)",
-          color: "var(--ink-3)",
-          flexShrink: 0,
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: 0,
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-1)",
+          fontFamily: "inherit",
+          cursor: "pointer",
+          textAlign: "left",
         }}
-      />
-      <span
-        className="mf-mono"
-        style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--ink-2)", flex: 1 }}
       >
-        {label}
-      </span>
-      {badge !== undefined && badge !== null && (
+        <IconChevron
+          size={11}
+          style={{
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            transition: "transform 200ms cubic-bezier(.2,.8,.2,1)",
+            color: "var(--ink-3)",
+            flexShrink: 0,
+          }}
+        />
         <span
           className="mf-mono"
-          style={{ fontSize: 9.5, color: "var(--ink-4)", letterSpacing: "0.08em" }}
+          style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--ink-2)", flex: 1 }}
         >
-          {badge}
+          {label}
+        </span>
+        {badge !== undefined && badge !== null && (
+          <span
+            className="mf-mono"
+            style={{ fontSize: 9.5, color: "var(--ink-4)", letterSpacing: "0.08em" }}
+          >
+            {badge}
+          </span>
+        )}
+      </button>
+      {headerControl !== undefined && headerControl !== null && (
+        <span
+          onClick={(e) => e.stopPropagation()}
+          style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}
+        >
+          {headerControl}
         </span>
       )}
-    </button>
+    </div>
     {open && <div style={{ padding: "4px 2px 16px" }}>{children}</div>}
   </div>
 );

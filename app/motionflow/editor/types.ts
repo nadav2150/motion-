@@ -62,7 +62,12 @@ export type JobRow = {
   // concrete Jamendo / Freesound / ElevenLabs URLs. Used by MusicSection to
   // detect whether the current music_track_id is still the LLM's pick.
   audio_direction?: unknown;
-  audio_auto_enabled?: boolean;
+  // Per-track feature switches (see 20260601_audio_track_toggles.sql). Hydrated
+  // into the editor's audioTracks UI state on job load so re-opening a project
+  // shows the toggles in the state they were generated with.
+  audio_voiceover_enabled?: boolean;
+  audio_music_enabled?: boolean;
+  audio_sfx_enabled?: boolean;
 };
 
 export type ShotRow = {

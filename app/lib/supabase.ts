@@ -138,9 +138,14 @@ export type JobRow = {
   // to auto" in the editor can re-resolve the picked tracks without re-calling
   // the LLM. Null when audio_direction stage was skipped.
   audio_direction: unknown;
-  // Per-job feature switch. When false, audio_direction stage is skipped even
-  // if MOTIONGLASS_AUTO_AUDIO=true. Defaults to true at the DB level.
-  audio_auto_enabled: boolean;
+  // Per-track feature switches (see 20260601_audio_track_toggles.sql). All
+  // default false at the DB level — a job only generates audio for tracks
+  // the user explicitly opted into at Generate time. The audio_direction
+  // stage is skipped entirely when all three are false, even if
+  // MOTIONGLASS_AUTO_AUDIO=true.
+  audio_voiceover_enabled: boolean;
+  audio_music_enabled: boolean;
+  audio_sfx_enabled: boolean;
 
   // Music + SFX selections (see supabase/migrations/20260515_music.sql and
   // 20260515_sfx.sql). Either user-picked via MusicPicker/SfxPicker, or

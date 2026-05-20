@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IconPause, IconPlay, IconWave } from "../../../primitives";
+import { IconPause, IconPlay, IconWave, Switch } from "../../../primitives";
 import { SfxPicker, type CurrentSfx } from "../../../SfxPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
@@ -32,6 +32,9 @@ export const SfxSection = ({
   job,
   shots = [],
   setJob,
+  enabled,
+  onEnabledChange,
+  locked,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -39,6 +42,9 @@ export const SfxSection = ({
   job: JobRow | null;
   shots?: ShotRow[];
   setJob: React.Dispatch<React.SetStateAction<JobRow | null>>;
+  enabled: boolean;
+  onEnabledChange: (next: boolean) => void;
+  locked: boolean;
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -97,10 +103,25 @@ export const SfxSection = ({
         ? job.sfx_name.length > 18
           ? `${job.sfx_name.slice(0, 18)}…`
           : job.sfx_name
-        : "—";
+        : enabled
+          ? "ON"
+          : "OFF";
 
   return (
-    <AccordionSection label="SFX" badge={badge} open={open} onToggle={onToggle}>
+    <AccordionSection
+      label="SFX"
+      badge={badge}
+      open={open}
+      onToggle={onToggle}
+      headerControl={
+        <Switch
+          checked={enabled}
+          onChange={onEnabledChange}
+          disabled={locked}
+          label="Enable per-scene SFX for next generation"
+        />
+      }
+    >
       <audio ref={audioRef} onEnded={() => setPlayingKey(null)} preload="none" />
 
       {jobId ? (
@@ -244,8 +265,12 @@ export const SfxSection = ({
       ) : (
         <ComingSoonPanel
           icon={<IconWave size={14} />}
-          title="Sound effects"
-          hint="Generate or open a project to choose a sound effect."
+          title={enabled ? "SFX enabled" : "SFX off"}
+          hint={
+            enabled
+              ? "Generate this project to auto-pick per-scene Freesound cues that punctuate impact moments."
+              : "Toggle on before Generate to add per-scene sound effects."
+          }
         />
       )}
     </AccordionSection>

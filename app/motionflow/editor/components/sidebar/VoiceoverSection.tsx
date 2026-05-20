@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IconMic, IconPause, IconPlay } from "../../../primitives";
+import { IconMic, IconPause, IconPlay, Switch } from "../../../primitives";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { ShotRow } from "../../types";
 
@@ -8,14 +8,25 @@ import type { ShotRow } from "../../types";
 // and lets the user preview each one with a small play button. Owns ONE
 // <audio> element shared across rows — clicking a different row pauses the
 // previous one and seeks the shared element to the new src.
+//
+// The header switch opts the next Generate call into voiceover synthesis;
+// it's read once at Generate time (see use-script.ts → /api/jobs body).
+// Once the job is no longer pending (`locked`), the switch is disabled —
+// toggling after the fact does NOT regenerate.
 export const VoiceoverSection = ({
   open,
   onToggle,
   shots,
+  enabled,
+  onEnabledChange,
+  locked,
 }: {
   open: boolean;
   onToggle: () => void;
   shots: ShotRow[];
+  enabled: boolean;
+  onEnabledChange: (next: boolean) => void;
+  locked: boolean;
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingShotId, setPlayingShotId] = useState<string | null>(null);
@@ -53,17 +64,29 @@ export const VoiceoverSection = ({
   return (
     <AccordionSection
       label="VOICEOVER"
-      badge={count > 0 ? `✨ ${count}/${shots.length}` : "—"}
+      badge={count > 0 ? `✨ ${count}/${shots.length}` : enabled ? "ON" : "OFF"}
       open={open}
       onToggle={onToggle}
+      headerControl={
+        <Switch
+          checked={enabled}
+          onChange={onEnabledChange}
+          disabled={locked}
+          label="Enable voiceover for next generation"
+        />
+      }
     >
       <audio ref={audioRef} onEnded={() => setPlayingShotId(null)} preload="none" />
 
       {count === 0 ? (
         <ComingSoonPanel
           icon={<IconMic size={14} />}
-          title="No voiceovers yet"
-          hint="Auto-voiceovers appear here once a job runs with MOTIONGLASS_AUTO_AUDIO=true. Each scene gets a short ElevenLabs narration."
+          title={enabled ? "Voiceover enabled" : "Voiceover off"}
+          hint={
+            enabled
+              ? "Generate this project to synthesize a short ElevenLabs narration for each scene."
+              : "Toggle on before Generate to add per-scene narration."
+          }
         />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

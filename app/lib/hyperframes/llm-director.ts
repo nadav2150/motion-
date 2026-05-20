@@ -3442,6 +3442,15 @@ export type AudioPlan = {
   bgMusicVolumeOverrides?: AudioPlanBgVolumeOverride[];
 };
 
+// Per-track opt-in flags read from the job row at audio_direction time.
+// When a track is disabled, the LLM is instructed to omit its plan and any
+// straggling output is force-emptied post-parse.
+export type AudioTrackToggles = {
+  voiceover: boolean;
+  music: boolean;
+  sfx: boolean;
+};
+
 // Anthropic structured-output schemas reject numerical / array length /
 // pattern constraints (minItems, minLength, maxLength, minimum, pattern).
 // Rules like "2-5 moodTags" or "momentSeconds ≥ 0" or "sceneId matches s\d+"
@@ -3658,6 +3667,7 @@ function renderCommentsBlock(feedback: AudioDirectionFeedback): string {
 function renderAudioDirectionUserPrompt(
   storyboard: Storyboard,
   blueprint: FilmBlueprint,
+  tracks: AudioTrackToggles,
   feedback?: AudioDirectionFeedback,
 ): string {
   const totalSec = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
@@ -3680,7 +3690,21 @@ function renderAudioDirectionUserPrompt(
     })
     .join("\n");
 
-  return `FILM — ${storyboard.scenes.length} scenes, ${totalSec.toFixed(1)}s total:
+  const trackStatus = (on: boolean) => (on ? "ENABLED" : "DISABLED");
+  const disabledRules: string[] = [];
+  if (!tracks.music) disabledRules.push("music DISABLED → bgMusic MUST be null AND bgMusicVolumeOverrides MUST be []");
+  if (!tracks.voiceover) disabledRules.push("voiceover DISABLED → voiceovers MUST be []");
+  if (!tracks.sfx) disabledRules.push("sfx DISABLED → sfxCues MUST be []");
+  const tracksBlock = `ENABLED TRACKS (only plan for ENABLED tracks; the others are off and MUST be empty/null):
+  music:     ${trackStatus(tracks.music)}
+  voiceover: ${trackStatus(tracks.voiceover)}
+  sfx:       ${trackStatus(tracks.sfx)}${
+    disabledRules.length > 0 ? `\n  ${disabledRules.join("\n  ")}` : ""
+  }
+
+`;
+
+  return `${tracksBlock}FILM — ${storyboard.scenes.length} scenes, ${totalSec.toFixed(1)}s total:
 ${sceneLines}
 
 VISUAL IDENTITY:
@@ -3708,15 +3732,20 @@ ${
  * Stage 1.75 — auto-pick music, SFX, and voiceover for the film.
  * Pure planning. URL resolution happens in app/lib/audio-resolver.ts.
  *
- * Skipped when MOTIONGLASS_AUTO_AUDIO is unset or jobs.audio_auto_enabled
- * is false — see jobs.ts:runHyperframesDirect.
+ * Skipped when MOTIONGLASS_AUTO_AUDIO is unset or every per-track flag
+ * (audio_voiceover_enabled / audio_music_enabled / audio_sfx_enabled) is
+ * false — see jobs.ts:runHyperframesDirect. When some-but-not-all tracks
+ * are enabled the LLM is told which to plan for so it doesn't burn tokens
+ * on outputs we'd discard; the post-parse pass also force-empties any
+ * disabled track as a safety net.
  */
 export async function generateAudioDirection(
   storyboard: Storyboard,
   blueprint: FilmBlueprint,
+  tracks: AudioTrackToggles,
   feedback?: AudioDirectionFeedback,
 ): Promise<AudioPlan> {
-  const userText = renderAudioDirectionUserPrompt(storyboard, blueprint, feedback);
+  const userText = renderAudioDirectionUserPrompt(storyboard, blueprint, tracks, feedback);
 
   // Refinement mode appends an addendum to the cached base prompt. Keeping
   // the base as its own cache-controlled block means first-run cache hits
@@ -3771,9 +3800,9 @@ export async function generateAudioDirection(
   // (The schema can't enforce these constraints — see comment on
   // AUDIO_DIRECTION_SCHEMA.)
   const validSceneIds = new Set(storyboard.scenes.map((_, i) => `s${i + 1}`));
-  const voiceovers = (parsed.voiceovers ?? [])
+  const voiceoversRaw = (parsed.voiceovers ?? [])
     .filter((v) => validSceneIds.has(v.sceneId) && typeof v.text === "string" && v.text.trim().length > 0);
-  const sfxCues = (parsed.sfxCues ?? [])
+  const sfxCuesRaw = (parsed.sfxCues ?? [])
     .filter(
       (c) =>
         validSceneIds.has(c.sceneId) &&
@@ -3794,20 +3823,28 @@ export async function generateAudioDirection(
     if (!Number.isFinite(n)) continue;
     overridesMap.set(o.sceneId, Math.max(0, Math.min(1, n)));
   }
-  const bgMusicVolumeOverrides = Array.from(overridesMap.entries()).map(
+  const bgMusicVolumeOverridesRaw = Array.from(overridesMap.entries()).map(
     ([sceneId, volume]) => ({ sceneId, volume }),
   );
 
+  // Per-track gate: disabled tracks are force-emptied here even if the LLM
+  // ignored the prompt and produced plans. The audio resolver also gates on
+  // these flags, so this is defense-in-depth.
+  const bgMusic = tracks.music ? (parsed.bgMusic ?? null) : null;
+  const voiceovers = tracks.voiceover ? voiceoversRaw : [];
+  const sfxCues = tracks.sfx ? sfxCuesRaw : [];
+  const bgMusicVolumeOverrides = tracks.music ? bgMusicVolumeOverridesRaw : [];
+
   console.log(
-    `[hyperframes audio]${feedback ? " (refine)" : ""} bgMusic=${
-      parsed.bgMusic ? `"${parsed.bgMusic.jamendoQuery}" (${parsed.bgMusic.energyHint})` : "none"
-    }, voiceovers=${voiceovers.length}/${storyboard.scenes.length} scenes, ` +
+    `[hyperframes audio]${feedback ? " (refine)" : ""} tracks=[vo:${tracks.voiceover ? "on" : "off"}, music:${tracks.music ? "on" : "off"}, sfx:${tracks.sfx ? "on" : "off"}] ` +
+      `bgMusic=${bgMusic ? `"${bgMusic.jamendoQuery}" (${bgMusic.energyHint})` : "none"}, ` +
+      `voiceovers=${voiceovers.length}/${storyboard.scenes.length} scenes, ` +
       `sfx=${sfxCues.length} cues, overrides=${bgMusicVolumeOverrides.length}, ` +
       `input=${response.usage.input_tokens} output=${response.usage.output_tokens}`,
   );
 
   return {
-    bgMusic: parsed.bgMusic ?? null,
+    bgMusic,
     voiceovers,
     sfxCues,
     bgMusicVolumeOverrides,

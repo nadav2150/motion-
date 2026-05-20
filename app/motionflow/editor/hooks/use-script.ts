@@ -6,6 +6,20 @@ Built for teams that ship.
 From goals to growth, every conversation lives here.
 Start free. Ship faster.`;
 
+export type AudioTracksState = {
+  voiceover: boolean;
+  music: boolean;
+  sfx: boolean;
+};
+
+export type AudioTrackKey = keyof AudioTracksState;
+
+const DEFAULT_AUDIO_TRACKS: AudioTracksState = {
+  voiceover: false,
+  music: false,
+  sfx: false,
+};
+
 export function useScript({
   empty,
   initialJobId,
@@ -35,12 +49,27 @@ export function useScript({
       return next;
     });
 
-  // Hydrate the script field from the saved job row once per job. Gated so
-  // polling doesn't clobber the user's in-progress edits.
+  // Per-track audio toggles read once at Generate time. Default all OFF
+  // so a fresh session opts into audio explicitly (matches the DB default
+  // on jobs.audio_*_enabled). Hydrated from the job row on load so re-
+  // opening a project shows the toggles in the state they were generated
+  // with — informational only after the job leaves "pending".
+  const [audioTracks, setAudioTracks] =
+    useState<AudioTracksState>(DEFAULT_AUDIO_TRACKS);
+  const setAudioTrack = (key: AudioTrackKey, value: boolean) =>
+    setAudioTracks((prev) => ({ ...prev, [key]: value }));
+
+  // Hydrate the script field + audio toggles from the saved job row once
+  // per job. Gated so polling doesn't clobber the user's in-progress edits.
   useEffect(() => {
     if (!job) return;
     if (scriptHydratedJobIdRef.current === job.id) return;
     if (typeof job.script === "string") setScript(job.script);
+    setAudioTracks({
+      voiceover: job.audio_voiceover_enabled ?? false,
+      music: job.audio_music_enabled ?? false,
+      sfx: job.audio_sfx_enabled ?? false,
+    });
     scriptHydratedJobIdRef.current = job.id;
   }, [job]);
 
@@ -64,5 +93,12 @@ export function useScript({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  return { script, setScript, openSections, toggleSection };
+  return {
+    script,
+    setScript,
+    openSections,
+    toggleSection,
+    audioTracks,
+    setAudioTrack,
+  };
 }

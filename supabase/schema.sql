@@ -105,9 +105,14 @@ alter table jobs
   add column if not exists brand_logo_url text,
   add column if not exists brand_logo_storage_path text,
   add column if not exists brand_colors jsonb,
-  -- Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql).
+  -- Auto-audio direction (see supabase/migrations/20260530_audio_direction.sql
+  -- and 20260601_audio_track_toggles.sql). Three independent per-track flags
+  -- replace the original audio_auto_enabled bundle gate. All default false:
+  -- a job only generates audio for tracks the user opted into at Generate time.
   add column if not exists audio_direction jsonb,
-  add column if not exists audio_auto_enabled boolean not null default true;
+  add column if not exists audio_voiceover_enabled boolean not null default false,
+  add column if not exists audio_music_enabled boolean not null default false,
+  add column if not exists audio_sfx_enabled boolean not null default false;
 
 alter table shots
   add column if not exists clip_status clip_status not null default 'pending',

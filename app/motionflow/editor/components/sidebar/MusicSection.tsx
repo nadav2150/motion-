@@ -1,4 +1,4 @@
-import { IconMusic } from "../../../primitives";
+import { IconMusic, Switch } from "../../../primitives";
 import { MusicPicker, type CurrentMusic } from "../../../MusicPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
@@ -20,6 +20,9 @@ export const MusicSection = ({
   shots,
   setJob,
   setShots,
+  enabled,
+  onEnabledChange,
+  locked,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -28,6 +31,9 @@ export const MusicSection = ({
   shots: ShotRow[];
   setJob: React.Dispatch<React.SetStateAction<JobRow | null>>;
   setShots: React.Dispatch<React.SetStateAction<ShotRow[]>>;
+  enabled: boolean;
+  onEnabledChange: (next: boolean) => void;
+  locked: boolean;
 }) => {
   const autoTrackId = getAutoBgTrackId(job);
   const isAuto = !!autoTrackId && job?.music_track_id === autoTrackId;
@@ -35,13 +41,23 @@ export const MusicSection = ({
     ? job.music_title.length > 18
       ? `${job.music_title.slice(0, 18)}…`
       : job.music_title
-    : "—";
+    : enabled
+      ? "ON"
+      : "OFF";
   return (
   <AccordionSection
     label="MUSIC"
     badge={isAuto ? `✨ ${titleText}` : titleText}
     open={open}
     onToggle={onToggle}
+    headerControl={
+      <Switch
+        checked={enabled}
+        onChange={onEnabledChange}
+        disabled={locked}
+        label="Enable background music for next generation"
+      />
+    }
   >
     {jobId ? (
       <MusicPicker
@@ -105,8 +121,12 @@ export const MusicSection = ({
     ) : (
       <ComingSoonPanel
         icon={<IconMusic size={14}/>}
-        title="Music bed"
-        hint="Generate or open a project to choose a track."
+        title={enabled ? "Music bed enabled" : "Music bed off"}
+        hint={
+          enabled
+            ? "Generate this project to auto-pick a Jamendo track that fits the film."
+            : "Toggle on before Generate to add a background music bed."
+        }
       />
     )}
   </AccordionSection>

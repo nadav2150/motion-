@@ -7,6 +7,13 @@ export type GeneratePayload = {
   brandLogoUrl: string | null;
   brandLogoStoragePath: string | null;
   brandColors: string[] | null;
+  // Per-track audio opt-in flags. Read once at Generate time and persisted
+  // on the job row; drive the audio_direction stage gate server-side.
+  audioTracks: {
+    voiceover: boolean;
+    music: boolean;
+    sfx: boolean;
+  };
 };
 
 export function useJob({
@@ -53,6 +60,7 @@ export function useJob({
           brandLogoUrl: payload.brandLogoUrl,
           brandLogoStoragePath: payload.brandLogoStoragePath,
           brandColors: payload.brandColors,
+          audioTracks: payload.audioTracks,
         }),
       });
       const data = (await res.json()) as { jobId?: string; error?: string };

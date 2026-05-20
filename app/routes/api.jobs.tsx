@@ -21,6 +21,7 @@ export async function action({ request }: Route.ActionArgs) {
     brandLogoUrl,
     brandLogoStoragePath,
     brandColors,
+    audioTracks,
   } = (body ?? {}) as {
     script?: unknown;
     productDescription?: unknown;
@@ -28,6 +29,7 @@ export async function action({ request }: Route.ActionArgs) {
     brandLogoUrl?: unknown;
     brandLogoStoragePath?: unknown;
     brandColors?: unknown;
+    audioTracks?: unknown;
   };
 
   if (typeof script !== "string" || !script.trim()) {
@@ -41,6 +43,18 @@ export async function action({ request }: Route.ActionArgs) {
         .filter((c) => /^#[0-9a-f]{6}$/.test(c))
     : null;
 
+  // Per-track audio toggles. Body shape: { voiceover, music, sfx } booleans.
+  // Missing or malformed → default off, matching the DB default and the
+  // editor's "default off" UX. Read once at Generate time; the job row's
+  // flags drive the audio_direction stage in runHyperframesDirect.
+  const tracksObj =
+    audioTracks && typeof audioTracks === "object"
+      ? (audioTracks as Record<string, unknown>)
+      : {};
+  const audioVoiceoverEnabled = tracksObj.voiceover === true;
+  const audioMusicEnabled = tracksObj.music === true;
+  const audioSfxEnabled = tracksObj.sfx === true;
+
   try {
     const user = await getUserFromRequest(request);
     const { jobId } = await createJob({
@@ -52,6 +66,9 @@ export async function action({ request }: Route.ActionArgs) {
         typeof brandLogoStoragePath === "string" ? brandLogoStoragePath : null,
       brandColors: cleanedColors,
       userId: user?.id ?? null,
+      audioVoiceoverEnabled,
+      audioMusicEnabled,
+      audioSfxEnabled,
     });
 
     // Fire-and-forget: the worker runs in the same process. The dev server

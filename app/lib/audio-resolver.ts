@@ -17,6 +17,7 @@ import {
   type AudioPlan,
   type AudioPlanSfxCue,
   type AudioPlanVoiceover,
+  type AudioTrackToggles,
   type SfxKind,
   type VoiceoverDelivery,
 } from "./hyperframes/llm-director";
@@ -65,6 +66,10 @@ export type ResolveAudioArgs = {
   /** Total film duration in seconds — used to filter bgMusic candidates that
    *  are too short to cover the film without abrupt re-loops. */
   totalFilmSeconds: number;
+  /** Per-track opt-in flags from the job row. A disabled track skips its
+   *  resolution stage entirely (no Jamendo / Freesound / ElevenLabs calls,
+   *  no Storage writes) and resolves as empty/null on the returned bundle. */
+  tracks: AudioTrackToggles;
   /** Sprint 3 — when re-resolving on Improve, pass the previous plan AND
    *  resolved bundle to skip API calls for entries whose plan fields are
    *  unchanged. Both must come from the same prior run. ElevenLabs is the
@@ -218,7 +223,7 @@ async function resolveSfxCue(c: AudioPlanSfxCue): Promise<ResolvedSfxCue | null>
 }
 
 export async function resolveAudioPlan(args: ResolveAudioArgs): Promise<ResolvedAudio> {
-  const { jobId, plan, totalFilmSeconds, previousPlan, previousResolved } = args;
+  const { jobId, plan, totalFilmSeconds, tracks, previousPlan, previousResolved } = args;
 
   // Reuse counters for the [audio resolve] summary log.
   let bgMusicReused = false;
@@ -229,8 +234,9 @@ export async function resolveAudioPlan(args: ResolveAudioArgs): Promise<Resolved
 
   // bgMusic — reuse only when BOTH the previous plan's query AND the
   // previous resolved bundle are present AND the new query matches.
+  // Skipped entirely when tracks.music is false (no Jamendo call).
   let bgMusic: ResolvedBgMusic | null = null;
-  if (plan.bgMusic) {
+  if (tracks.music && plan.bgMusic) {
     const queryUnchanged =
       previousPlan?.bgMusic?.jamendoQuery === plan.bgMusic.jamendoQuery;
     if (queryUnchanged && previousResolved?.bgMusic) {
@@ -243,66 +249,75 @@ export async function resolveAudioPlan(args: ResolveAudioArgs): Promise<Resolved
 
   // voiceovers — reuse per scene when text + deliveryHint match. ElevenLabs
   // is the load-bearing cost so this is the most important reuse path.
-  const prevVoBySceneId = new Map(
-    (previousResolved?.voiceovers ?? []).map((v) => [v.sceneId, v] as const),
-  );
-  // Concurrency-capped at ELEVENLABS_VO_CONCURRENCY because ElevenLabs PAYG
-  // allows max 6 concurrent requests. Reuse path (cached prevVo) is
-  // synchronous and doesn't count against the live-API budget, but we run
-  // both branches through the same queue for simplicity.
-  const voiceoverSettled = await runWithConcurrency(
-    plan.voiceovers.map((v) => async () => {
-      const prevVo = prevVoBySceneId.get(v.sceneId);
-      if (prevVo && prevVo.text === v.text && prevVo.delivery === v.deliveryHint) {
-        voReusedCount++;
-        return prevVo;
-      }
-      voRegenCount++;
-      return resolveVoiceover(jobId, v);
-    }),
-    ELEVENLABS_VO_CONCURRENCY,
-  );
-  const voiceovers = voiceoverSettled
-    .filter(
-      (r): r is PromiseFulfilledResult<ResolvedVoiceover | null> =>
-        r.status === "fulfilled",
-    )
-    .map((r) => r.value)
-    .filter((v): v is ResolvedVoiceover => v !== null);
+  // Skipped entirely when tracks.voiceover is false (no ElevenLabs calls,
+  // no Storage writes).
+  let voiceovers: ResolvedVoiceover[] = [];
+  if (tracks.voiceover) {
+    const prevVoBySceneId = new Map(
+      (previousResolved?.voiceovers ?? []).map((v) => [v.sceneId, v] as const),
+    );
+    // Concurrency-capped at ELEVENLABS_VO_CONCURRENCY because ElevenLabs PAYG
+    // allows max 6 concurrent requests. Reuse path (cached prevVo) is
+    // synchronous and doesn't count against the live-API budget, but we run
+    // both branches through the same queue for simplicity.
+    const voiceoverSettled = await runWithConcurrency(
+      plan.voiceovers.map((v) => async () => {
+        const prevVo = prevVoBySceneId.get(v.sceneId);
+        if (prevVo && prevVo.text === v.text && prevVo.delivery === v.deliveryHint) {
+          voReusedCount++;
+          return prevVo;
+        }
+        voRegenCount++;
+        return resolveVoiceover(jobId, v);
+      }),
+      ELEVENLABS_VO_CONCURRENCY,
+    );
+    voiceovers = voiceoverSettled
+      .filter(
+        (r): r is PromiseFulfilledResult<ResolvedVoiceover | null> =>
+          r.status === "fulfilled",
+      )
+      .map((r) => r.value)
+      .filter((v): v is ResolvedVoiceover => v !== null);
+  }
 
   // sfxCues — reuse per (sceneId, freesoundQuery, kind) tuple. The previous
   // resolved bundle doesn't carry freesoundQuery (plan-only field), so we
   // look it up on previousPlan.sfxCues. If a cue's (sceneId, kind) matched
   // a previous cue with the same freesoundQuery, reuse the Freesound URL.
-  const prevPlanSfxKey = (c: { sceneId: string; kind: SfxKind; freesoundQuery: string }) =>
-    `${c.sceneId}::${c.kind}::${c.freesoundQuery}`;
-  const prevResolvedSfxBySceneKind = new Map(
-    (previousResolved?.sfxCues ?? []).map(
-      (c) => [`${c.sceneId}::${c.kind}`, c] as const,
-    ),
-  );
-  // Map each previous PLAN entry to the resolved cue it produced — only
-  // those pairs are eligible for reuse.
-  const reusableSfx = new Map<string, ResolvedSfxCue>();
-  for (const prevCue of previousPlan?.sfxCues ?? []) {
-    const resolved = prevResolvedSfxBySceneKind.get(`${prevCue.sceneId}::${prevCue.kind}`);
-    if (resolved) {
-      reusableSfx.set(prevPlanSfxKey(prevCue), resolved);
-    }
-  }
-  const sfxResults = await Promise.all(
-    plan.sfxCues.map(async (c) => {
-      const prevCue = reusableSfx.get(prevPlanSfxKey(c));
-      if (prevCue) {
-        sfxReusedCount++;
-        // Pick up the new momentSeconds in case timing alone changed.
-        return { ...prevCue, momentSeconds: c.momentSeconds };
+  // Skipped entirely when tracks.sfx is false (no Freesound calls).
+  let sfxCues: ResolvedSfxCue[] = [];
+  if (tracks.sfx) {
+    const prevPlanSfxKey = (c: { sceneId: string; kind: SfxKind; freesoundQuery: string }) =>
+      `${c.sceneId}::${c.kind}::${c.freesoundQuery}`;
+    const prevResolvedSfxBySceneKind = new Map(
+      (previousResolved?.sfxCues ?? []).map(
+        (c) => [`${c.sceneId}::${c.kind}`, c] as const,
+      ),
+    );
+    // Map each previous PLAN entry to the resolved cue it produced — only
+    // those pairs are eligible for reuse.
+    const reusableSfx = new Map<string, ResolvedSfxCue>();
+    for (const prevCue of previousPlan?.sfxCues ?? []) {
+      const resolved = prevResolvedSfxBySceneKind.get(`${prevCue.sceneId}::${prevCue.kind}`);
+      if (resolved) {
+        reusableSfx.set(prevPlanSfxKey(prevCue), resolved);
       }
-      sfxRegenCount++;
-      return resolveSfxCue(c);
-    }),
-  );
-  const sfxCues = sfxResults.filter((c): c is ResolvedSfxCue => c !== null);
+    }
+    const sfxResults = await Promise.all(
+      plan.sfxCues.map(async (c) => {
+        const prevCue = reusableSfx.get(prevPlanSfxKey(c));
+        if (prevCue) {
+          sfxReusedCount++;
+          // Pick up the new momentSeconds in case timing alone changed.
+          return { ...prevCue, momentSeconds: c.momentSeconds };
+        }
+        sfxRegenCount++;
+        return resolveSfxCue(c);
+      }),
+    );
+    sfxCues = sfxResults.filter((c): c is ResolvedSfxCue => c !== null);
+  }
 
   if (previousPlan || previousResolved) {
     console.log(

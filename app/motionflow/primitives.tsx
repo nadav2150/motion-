@@ -197,6 +197,74 @@ export const Pill = ({
   </span>
 );
 
+// Small inline on/off switch. Used in the audio sidebar accordions
+// (voiceover / music / sfx) to opt in/out per track at Generate time.
+// 32×16 track with a 12px sliding knob; gradient-on, neutral-off.
+export const Switch = ({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  label?: string;
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    disabled={disabled}
+    onClick={(e) => {
+      e.stopPropagation();
+      if (!disabled) onChange(!checked);
+    }}
+    style={{
+      position: "relative",
+      width: 32,
+      height: 16,
+      borderRadius: 999,
+      padding: 0,
+      border: "1px solid",
+      borderColor: checked
+        ? "rgba(167,139,250,0.55)"
+        : "rgba(255,255,255,0.10)",
+      background: checked
+        ? "linear-gradient(135deg, #7AA2FF 0%, #A78BFA 60%, #67E8F9 100%)"
+        : "rgba(255,255,255,0.06)",
+      boxShadow: checked
+        ? "0 0 0 1px rgba(167,139,250,0.20), 0 4px 12px rgba(122,162,255,0.25)"
+        : "inset 0 1px 0 rgba(0,0,0,0.20)",
+      cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.45 : 1,
+      transition: "background 220ms, border-color 220ms, box-shadow 220ms",
+      flexShrink: 0,
+      display: "inline-block",
+      verticalAlign: "middle",
+    }}
+  >
+    <span
+      style={{
+        position: "absolute",
+        top: 1,
+        left: checked ? 17 : 1,
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        background: checked
+          ? "rgba(255,255,255,0.96)"
+          : "rgba(220,228,255,0.85)",
+        boxShadow: checked
+          ? "0 1px 3px rgba(11,12,16,0.45)"
+          : "0 1px 2px rgba(11,12,16,0.35)",
+        transition: "left 220ms cubic-bezier(.2,.8,.2,1), background 220ms",
+      }}
+    />
+  </button>
+);
+
 /* Top nav — landing only */
 export const TopNav = ({
   onCta,

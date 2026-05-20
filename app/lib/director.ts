@@ -1,7 +1,7 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
-export const DIRECTOR_MODEL = "gpt-4o";
+export const DIRECTOR_MODEL = "claude-opus-4-7";
 export const MIN_SHOTS = 5;
 export const MAX_SHOTS = 14;
 
@@ -1043,7 +1043,49 @@ HARD RULES
 8. Banned mood-paint words: "atmospheric", "atmosphere", "dreamy", "epic", "cinematic vista", "concept art", "wallpaper", "scenic", "landscape", "mountain", "horizon", "outdoor", "nature", "sunset".
 9. JSON only.`;
 
-const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API_KEY });
+// Anthropic structured-output rejects numerical / array-length / pattern
+// constraints (minItems, maxItems, minLength, maxLength, minimum, maximum,
+// pattern). Zod above and the system prompt enforce them post-parse —
+// strip them from the JSON schema that goes to the API.
+const ANTHROPIC_UNSUPPORTED_SCHEMA_KEYS = new Set([
+  "minItems",
+  "maxItems",
+  "minLength",
+  "maxLength",
+  "minimum",
+  "maximum",
+  "pattern",
+]);
+
+function stripAnthropicUnsupported(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripAnthropicUnsupported);
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (ANTHROPIC_UNSUPPORTED_SCHEMA_KEYS.has(k)) continue;
+      out[k] = stripAnthropicUnsupported(v);
+    }
+    return out;
+  }
+  return node;
+}
+
+const ANTHROPIC_STORYBOARD_SCHEMA = stripAnthropicUnsupported(
+  STORYBOARD_JSON_SCHEMA,
+) as Record<string, unknown>;
+
+let cachedClient: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (cachedClient) return cachedClient;
+  const apiKey = process.env.ANTROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "ANTROPIC_API_KEY (or ANTHROPIC_API_KEY) must be set for the storyboard director.",
+    );
+  }
+  cachedClient = new Anthropic({ apiKey });
+  return cachedClient;
+}
 
 export type DirectorInput = {
   script: string;
@@ -1078,30 +1120,47 @@ function buildUserPrompt(input: DirectorInput): string {
 }
 
 async function callDirector(
-  messages: { role: "system" | "user" | "assistant"; content: string }[],
+  systemPrompt: string,
+  messages: { role: "user" | "assistant"; content: string }[],
 ): Promise<{ raw: unknown; text: string }> {
-  const completion = await openai.chat.completions.create({
+  const response = await getClient().messages.create({
     model: DIRECTOR_MODEL,
-    temperature: 0.7,
-    max_tokens: 12000,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "storyboard",
-        strict: true,
-        schema: STORYBOARD_JSON_SCHEMA,
+    system: [
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
       },
-    },
+    ],
     messages,
+    max_tokens: 12000,
+    // Opus 4.7 removes temperature/top_p/top_k and explicit budget_tokens.
+    // Adaptive thinking + output_config.effort shape deliberation depth.
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: "high",
+      format: { type: "json_schema", schema: ANTHROPIC_STORYBOARD_SCHEMA },
+    },
   });
 
-  const text = completion.choices[0]?.message?.content ?? "";
-  if (!text) throw new Error("Director returned empty response");
+  const textBlock = response.content.find(
+    (b): b is Anthropic.TextBlock => b.type === "text",
+  );
+  if (!textBlock) throw new Error("Director returned no text content");
+  const text = textBlock.text;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    throw new Error(`Director returned non-JSON: ${(err as Error).message}`);
+    const truncated = response.stop_reason === "max_tokens";
+    const hint = truncated
+      ? " STOP_REASON=max_tokens — bump max_tokens or lower output_config.effort."
+      : ` STOP_REASON=${response.stop_reason ?? "(none)"}`;
+    throw new Error(
+      `Director returned non-JSON: ${(err as Error).message}.${hint} ` +
+        `output_tokens=${response.usage.output_tokens} text_chars=${text.length}. ` +
+        `Last 200 chars: ...${text.slice(-200)}`,
+    );
   }
   return { raw: parsed, text };
 }
@@ -1121,15 +1180,14 @@ export async function generateStoryboard(
   const mode: FilmMode = input.filmMode ?? DEFAULT_FILM_MODE;
   const systemPrompt =
     mode === "motion_design" ? SYSTEM_PROMPT_MOTION_DESIGN : SYSTEM_PROMPT;
-  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt },
+  const messages: { role: "user" | "assistant"; content: string }[] = [
     { role: "user", content: buildUserPrompt(input) },
   ];
 
   let lastRaw: unknown = null;
   let lastErrors = "";
   for (let attempt = 0; attempt <= maxRepairs; attempt++) {
-    const { raw, text } = await callDirector(messages);
+    const { raw, text } = await callDirector(systemPrompt, messages);
     lastRaw = raw;
     const parsed = StoryboardSchema.safeParse(raw);
     if (parsed.success) {

@@ -72,7 +72,14 @@ export const EditorScreen = ({
     handleGenerateClip,
   } = useJob({ initialJobId });
 
-  const { script, setScript, openSections, toggleSection } = useScript({
+  const {
+    script,
+    setScript,
+    openSections,
+    toggleSection,
+    audioTracks,
+    setAudioTrack,
+  } = useScript({
     empty,
     initialJobId,
     job,
@@ -82,6 +89,7 @@ export const EditorScreen = ({
         brandLogoUrl: brandLogoUrl ?? null,
         brandLogoStoragePath: brandLogoStoragePath ?? null,
         brandColors: brandColors.length > 0 ? brandColors : null,
+        audioTracks,
       }),
   });
 
@@ -128,13 +136,16 @@ export const EditorScreen = ({
   const [previewDragOver, setPreviewDragOver] = useState(false);
 
   // Click-handler that wraps the job-creating action with the latest payload
-  // assembled from the script + brand hooks.
+  // assembled from the script + brand hooks. audioTracks is captured here at
+  // the moment the user clicks Generate — server-side it's read once and
+  // persisted on the job row, so post-Generate toggling has no effect.
   const handleGenerate = () =>
     void runGenerate({
       script,
       brandLogoUrl: brandLogoUrl ?? null,
       brandLogoStoragePath: brandLogoStoragePath ?? null,
       brandColors: brandColors.length > 0 ? brandColors : null,
+      audioTracks,
     });
 
   useEffect(() => {
@@ -143,6 +154,10 @@ export const EditorScreen = ({
 
   const status: JobStatus = job?.status ?? (generating ? "pending" : "pending");
   const showStoryboard = jobId !== null;
+  // Audio toggles only affect the next Generate. Once a job exists (whether
+  // running or finished) the toggles freeze — the worker has already read
+  // audio_*_enabled from the row and acting on them later would mislead.
+  const audioLocked = generating || jobId !== null;
 
   // Wall-clock seconds from job creation ("Direct storyboard" click) until
   // status first flipped to scenes_ready. Persisted as `scenes_ready_at`, so
@@ -427,6 +442,9 @@ export const EditorScreen = ({
               open={openSections.has("voiceover")}
               onToggle={() => toggleSection("voiceover")}
               shots={shots}
+              enabled={audioTracks.voiceover}
+              onEnabledChange={(v) => setAudioTrack("voiceover", v)}
+              locked={audioLocked}
             />
 
             <MusicSection
@@ -437,6 +455,9 @@ export const EditorScreen = ({
               shots={shots}
               setJob={setJob}
               setShots={setShots}
+              enabled={audioTracks.music}
+              onEnabledChange={(v) => setAudioTrack("music", v)}
+              locked={audioLocked}
             />
 
             <SfxSection
@@ -446,6 +467,9 @@ export const EditorScreen = ({
               job={job}
               shots={shots}
               setJob={setJob}
+              enabled={audioTracks.sfx}
+              onEnabledChange={(v) => setAudioTrack("sfx", v)}
+              locked={audioLocked}
             />
 
             <AssetsSection
