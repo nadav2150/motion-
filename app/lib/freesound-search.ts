@@ -1,3 +1,6 @@
+import { recordModelCost } from "./billing/track-cost";
+import { usdMicrosForFreeApi } from "./billing/pricing-usd";
+
 export type FreesoundLicense = "cc0" | "cc-by";
 
 export type FreesoundSfx = {
@@ -74,6 +77,7 @@ export async function searchSfx(query: string, limit = 20): Promise<FreesoundSfx
   );
   url.searchParams.set("fields", "id,name,username,duration,license,tags,previews");
 
+  const startedAt = Date.now();
   const res = await fetch(url, {
     method: "GET",
     headers: { Authorization: `Token ${token}` },
@@ -92,6 +96,20 @@ export async function searchSfx(query: string, limit = 20): Promise<FreesoundSfx
 
   const body = (await res.json()) as FreesoundApiResponse;
   const results = Array.isArray(body.results) ? body.results : [];
+
+  // Call-volume telemetry only. Freesound is free at our tier, so cost = 0;
+  // we still emit so PostHog can show how often SFX search runs per project.
+  void recordModelCost({
+    provider: "freesound",
+    model: "freesound_v2_search",
+    reason: "freesound_search",
+    unitKind: "calls",
+    units: 1,
+    costUsdMicros: usdMicrosForFreeApi(),
+    latencyMs: Date.now() - startedAt,
+    extra: { result_count: results.length },
+  });
+
   return results
     .map(normalize)
     .filter((s): s is FreesoundSfx => s !== null);

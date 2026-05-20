@@ -1,4 +1,9 @@
 import Replicate from "replicate";
+import { recordModelCost } from "./billing/track-cost";
+import {
+  usdMicrosForReplicateImage,
+  usdMicrosForReplicateVideo,
+} from "./billing/pricing-usd";
 
 export const FLUX_ULTRA = "black-forest-labs/flux-1.1-pro-ultra";
 export const IMAGEN_3 = "google/imagen-3";
@@ -45,6 +50,33 @@ function getReplicate(): Replicate {
   if (!token) throw new Error("REPLICATE_API_TOKEN must be set in .env");
   cached = new Replicate({ auth: token });
   return cached;
+}
+
+// Emit a model_cost telemetry event for a Replicate run. No-op when called
+// outside a runJob (scripts, smoke tests). Phase A: log-only, never block the
+// call on a ledger / PostHog failure.
+function meterReplicateImage(model: string, latencyMs: number): void {
+  void recordModelCost({
+    provider: "replicate_image",
+    model,
+    reason: "replicate_image",
+    unitKind: "calls",
+    units: 1,
+    costUsdMicros: usdMicrosForReplicateImage(model),
+    latencyMs,
+  });
+}
+
+function meterReplicateVideo(model: string, durationSeconds: number, latencyMs: number): void {
+  void recordModelCost({
+    provider: "replicate_video",
+    model,
+    reason: "replicate_video",
+    unitKind: "seconds",
+    units: durationSeconds,
+    costUsdMicros: usdMicrosForReplicateVideo(model, durationSeconds),
+    latencyMs,
+  });
 }
 
 export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:3" | "3:2";
@@ -234,6 +266,7 @@ export async function runVideo(options: RunVideoOptions): Promise<RunVideoResult
 
   let attempt = 0;
   let lastError: unknown;
+  const startedAt = Date.now();
   while (attempt <= MAX_RETRIES) {
     try {
       const output = await replicate.run(model as `${string}/${string}`, { input });
@@ -243,6 +276,7 @@ export async function runVideo(options: RunVideoOptions): Promise<RunVideoResult
           `Replicate video model ${model} returned unexpected output shape: ${JSON.stringify(output).slice(0, 200)}`,
         );
       }
+      meterReplicateVideo(model, durationSeconds, Date.now() - startedAt);
       return { url, replicateId: null, model };
     } catch (err) {
       lastError = err;
@@ -268,6 +302,7 @@ export async function runImage(options: RunImageOptions): Promise<RunImageResult
 
   let attempt = 0;
   let lastError: unknown;
+  const startedAt = Date.now();
   while (attempt <= MAX_RETRIES) {
     try {
       const output = await replicate.run(model as `${string}/${string}`, { input });
@@ -277,6 +312,7 @@ export async function runImage(options: RunImageOptions): Promise<RunImageResult
           `Replicate model ${model} returned unexpected output shape: ${JSON.stringify(output).slice(0, 200)}`,
         );
       }
+      meterReplicateImage(model, Date.now() - startedAt);
       return { url, replicateId: null, model };
     } catch (err) {
       lastError = err;

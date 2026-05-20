@@ -8,3 +8,4 @@
 
 # Local script outputs (smoke tests, frame renders, etc.)
 /out/
+.mcp.json

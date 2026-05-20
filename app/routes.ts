@@ -11,6 +11,8 @@ export default [
   route("editor", "routes/editor.tsx"),
   route("export", "routes/export.tsx"),
   route("settings", "routes/settings.tsx"),
+  route("pricing", "routes/pricing.tsx"),
+  route("checkout", "routes/checkout.tsx"),
   route("api/jobs", "routes/api.jobs.tsx"),
   route("api/jobs/:id", "routes/api.jobs.$id.tsx"),
   route("api/shots/:id/retry", "routes/api.shots.$id.retry.tsx"),
@@ -32,4 +34,6 @@ export default [
   route("api/auth/signout", "routes/api.auth.signout.tsx"),
   route("api/auth/forgot-password", "routes/api.auth.forgot-password.tsx"),
   route("api/auth/reset-password", "routes/api.auth.reset-password.tsx"),
+  route("api/billing/customer", "routes/api.billing.customer.tsx"),
+  route("api/webhooks/paddle", "routes/api.webhooks.paddle.tsx"),
 ] satisfies RouteConfig;

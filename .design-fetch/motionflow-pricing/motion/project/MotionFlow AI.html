@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MotionFlow AI — Cinematic launch videos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  html, body, #root { height: 100%; }
+  body { background: #06070A; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="primitives.jsx"></script>
+<script type="text/babel" src="screens/landing.jsx"></script>
+<script type="text/babel" src="screens/auth.jsx"></script>
+<script type="text/babel" src="screens/home.jsx"></script>
+<script type="text/babel" src="screens/projects.jsx"></script>
+<script type="text/babel" src="screens/editor.jsx"></script>
+<script type="text/babel" src="screens/paywall.jsx"></script>
+<script type="text/babel" src="screens/checkout.jsx"></script>
+<script type="text/babel" src="screens/pricing.jsx"></script>
+<script type="text/babel" src="screens/director.jsx"></script>
+<script type="text/babel" src="screens/export.jsx"></script>
+<script type="text/babel" src="screens/settings.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+// useState already exposed globally by primitives.jsx
+
+/* App: connected interactive flow used inside any artboard */
+const App = ({ initial = "landing", emptyEditor = false, paywallOpen = false }) => {
+  const [screen, setScreen] = useState(initial);
+  const go = (s) => setScreen(s);
+  const navMap = { home:"home", projects:"projects", settings:"settings" };
+
+  // New flow: landing CTA drops users straight into the editor (try-before-signup).
+  // Auth screens are only reached via the "Sign in" link / paywall.
+  if (screen === "landing")  return <LandingScreen onCta={()=>go("editor-try")}/>;
+  if (screen === "login")    return <AuthScreen mode="login" onSwitch={()=>go("register")} onSubmit={()=>go("editor")} onBack={()=>go("landing")}/>;
+  if (screen === "register") return <AuthScreen mode="register" onSwitch={()=>go("login")} onSubmit={()=>go("editor")} onBack={()=>go("landing")}/>;
+  if (screen === "home")     return <HomeScreen onNav={(k)=>go(navMap[k])} onPickTemplate={()=>go("editor")}/>;
+  if (screen === "projects") return <ProjectsScreen onNav={(k)=>go(navMap[k])} onOpenProject={()=>go("editor")}/>;
+  if (screen === "editor-try") return <EditorScreen onNav={(k)=>go(navMap[k])} onContinue={()=>go("login")} onSignIn={()=>go("login")} empty={true}/>;
+  if (screen === "editor")   return <EditorScreen onNav={(k)=>go(navMap[k])} onContinue={()=>go("export")} onSignIn={()=>go("login")} onUpgrade={()=>go("checkout")} empty={emptyEditor} paywallOpen={paywallOpen}/>;
+  if (screen === "checkout") return <CheckoutScreen onBack={()=>go("editor")} onComplete={()=>go("export")} initialPlan="annual"/>;
+  if (screen === "pricing")  return <PricingScreen onBack={()=>go("landing")} onChoose={()=>go("checkout")}/>;
+  if (screen === "director") return <DirectorScreen onNav={(k)=>go(navMap[k])} onContinue={()=>go("export")}/>;
+  if (screen === "export")   return <ExportScreen onNav={(k)=>go(navMap[k])}/>;
+  if (screen === "settings") return <SettingsScreen onNav={(k)=>go(navMap[k])}/>;
+  return null;
+};
+
+const Frame = ({ children }) => (
+  <div style={{ width: "100%", height: "100%", background: "#06070A", overflow: "hidden", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)" }}>
+    {children}
+  </div>
+);
+
+const Root = () => (
+  <DesignCanvas
+    title="MotionFlow AI"
+    subtitle="Cinematic launch videos · 5-screen interactive prototype"
+  >
+    <DCSection id="flow" title="The product flow">
+      <DCArtboard id="landing" label="01 — Landing · open & explorable" width={1440} height={1700}>
+        <Frame><App initial="landing"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="editor-try" label="02 — Editor · try before signup (no auth)" width={1600} height={1000}>
+        <Frame><App initial="editor-try"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="paywall" label="03 — Paywall · moment of value creation" width={1600} height={1000}>
+        <Frame><App initial="editor" paywallOpen={true}/></Frame>
+      </DCArtboard>
+      <DCArtboard id="pricing" label="03 — Pricing · 4 plans with per-card credit sliders" width={1440} height={1700}>
+        <Frame><App initial="pricing"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="checkout" label="03b — Checkout · premium upgrade" width={1440} height={1200}>
+        <Frame><App initial="checkout"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="login" label="04a — Sign in (only via paywall / link)" width={1440} height={900}>
+        <Frame><App initial="login"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="register" label="04b — Register" width={1440} height={900}>
+        <Frame><App initial="register"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="home" label="05 — Home · template catalog (authed)" width={1440} height={1900}>
+        <Frame><App initial="home"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="projects" label="06 — Projects" width={1440} height={1000}>
+        <Frame><App initial="projects"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="director" label="07 — Director Studio · script → storyboard → AI pipeline" width={1600} height={1100}>
+        <Frame><App initial="director"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="editor" label="08 — Editor (post-generate, with scenes)" width={1600} height={1000}>
+        <Frame><App initial="editor"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="export" label="09 — Export & share" width={1440} height={1100}>
+        <Frame><App initial="export"/></Frame>
+      </DCArtboard>
+      <DCArtboard id="settings" label="10 — Settings" width={1440} height={1100}>
+        <Frame><App initial="settings"/></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="live" title="Live prototype — click through the full flow">
+      <DCArtboard id="prototype" label="Connected flow · start at landing" width={1600} height={1080}>
+        <Frame><App initial="landing"/></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+</script>
+</body>
+</html>

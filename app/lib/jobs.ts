@@ -1,4 +1,13 @@
 import {
+  attachReservationToJob,
+  isBillingEnabled,
+  reconcileJob,
+  reserveCredits,
+} from "./billing/credits";
+import { estimateJobCost } from "./billing/estimate";
+import { withMeterContext } from "./billing/meter";
+import { flushPostHog } from "./posthog";
+import {
   DEFAULT_FILM_MODE,
   DIRECTOR_MODEL,
   FILM_MODES,
@@ -168,9 +177,56 @@ export type CreateJobInput = {
   audioSfxEnabled?: boolean;
 };
 
+// Thrown by createJob when the user's balance can't cover the worst-case
+// reservation. The api.jobs route maps this to a 402-style JSON response
+// with the shortfall amount so the UI can prompt for a top-up.
+export class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly shortfallCredits: number,
+    public readonly balance: number,
+    public readonly required: number,
+  ) {
+    super(
+      `Insufficient credits: need ${required}, balance ${balance}, short ${shortfallCredits}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
 export async function createJob(input: CreateJobInput): Promise<{ jobId: string }> {
   const script = input.script.trim();
   if (!script) throw new Error("Script is required");
+
+  // Worst-case reservation BEFORE we insert the job. The estimator falls back
+  // to MAX_SHOTS when sceneCountGuess is null; reconcileJob() refunds the
+  // unused portion if the LLM picks fewer scenes. video=false because
+  // per-shot clips are opt-in via /api/shots/:id/clip and reserve their own
+  // credits at that endpoint. autoCritique mirrors the env flag so the
+  // inline critique pass is covered when HYPERFRAMES_AUTO_CRITIQUE=true.
+  const estimate = estimateJobCost({
+    sceneCountGuess: null,
+    video: false,
+    audioVoiceover: input.audioVoiceoverEnabled ?? false,
+    audioMusic: input.audioMusicEnabled ?? false,
+    audioSfx: input.audioSfxEnabled ?? false,
+    autoCritique: AUTO_CRITIQUE_ENABLED,
+    includePolish: false,
+  });
+
+  // Reserve credits first; throw without inserting if the balance is short
+  // so we don't leave an orphan job row. Idempotency key uses a fresh UUID
+  // (no jobId yet); attachReservationToJob() links it after the insert.
+  // Dev environments without Paddle keys skip the reservation step so the
+  // dev loop stays unblocked — telemetry still flows via recordConsumption.
+  let reservationKey: string | null = null;
+  if (input.userId && isBillingEnabled()) {
+    reservationKey = `reserve:${crypto.randomUUID()}`;
+    const reserve = await reserveCredits(input.userId, estimate, null, reservationKey);
+    if (!reserve.ok) {
+      const shortfall = Math.max(0, reserve.required - reserve.balance);
+      throw new InsufficientCreditsError(shortfall, reserve.balance, reserve.required);
+    }
+  }
 
   const db = getSupabase();
   const { data, error } = await db
@@ -192,6 +248,7 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string 
       audio_voiceover_enabled: input.audioVoiceoverEnabled ?? false,
       audio_music_enabled: input.audioMusicEnabled ?? false,
       audio_sfx_enabled: input.audioSfxEnabled ?? false,
+      cost_estimate_credits: estimate,
     })
     .select("id")
     .single();
@@ -199,7 +256,11 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string 
   if (error || !data) {
     throw new Error(`createJob failed: ${error?.message ?? "no row returned"}`);
   }
-  return { jobId: data.id as string };
+  const jobId = data.id as string;
+  if (reservationKey) {
+    await attachReservationToJob(reservationKey, jobId);
+  }
+  return { jobId };
 }
 
 export type UpdateJobBrandInput = {
@@ -914,23 +975,53 @@ export async function runJob(jobId: string): Promise<void> {
   }
   const job = jobData as JobRow;
 
-  try {
-    if (job.generation_mode === "legacy_ai_media") {
-      await runLegacyAiMediaJob(jobId, job);
-    } else {
-      await runHyperframesDirect(jobId, job);
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`runJob(${jobId}) failed:`, message);
-    await setJobStatus(jobId, {
-      status: "failed",
-      error: message,
-      completed_at: new Date().toISOString(),
-    }).catch((statusErr) =>
-      console.error(`runJob(${jobId}) could not record failure:`, statusErr),
-    );
+  // Look up plan tier once so every PostHog model_cost event emitted by the
+  // pipeline can be segmented by plan without re-querying user_billing. Best-
+  // effort: jobs from anonymous users (no user_id) get planTier = null.
+  let planTier: string | null = null;
+  if (job.user_id) {
+    const { data: billing } = await db
+      .from("user_billing")
+      .select("plan_tier")
+      .eq("user_id", job.user_id)
+      .maybeSingle();
+    planTier = (billing?.plan_tier as string | null) ?? null;
   }
+
+  // Establish the ambient meter context for this job. Every meter() call
+  // anywhere downstream — Replicate, ElevenLabs, GPT-4o, Opus — picks up
+  // userId+jobId+planTier from AsyncLocalStorage and appends a ledger row.
+  // reconcileJob() in the finally block backfills jobs.cost_actual_credits
+  // and refunds any unused reservation back to the user's balance. Then
+  // flushPostHog() drains buffered model_cost events so serverless cold-stop
+  // doesn't drop them.
+  await withMeterContext({ userId: job.user_id, jobId, planTier }, async () => {
+    try {
+      if (job.generation_mode === "legacy_ai_media") {
+        await runLegacyAiMediaJob(jobId, job);
+      } else {
+        await runHyperframesDirect(jobId, job);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`runJob(${jobId}) failed:`, message);
+      await setJobStatus(jobId, {
+        status: "failed",
+        error: message,
+        completed_at: new Date().toISOString(),
+      }).catch((statusErr) =>
+        console.error(`runJob(${jobId}) could not record failure:`, statusErr),
+      );
+    } finally {
+      await reconcileJob(jobId).catch((err) =>
+        console.error(
+          `runJob(${jobId}) reconcile failed:`,
+          err instanceof Error ? err.message : err,
+        ),
+      );
+      await flushPostHog();
+    }
+  });
 }
 
 // ─── HyperFrames branch (default) ─────────────────────────────────────────

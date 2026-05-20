@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { recordModelCost } from "./billing/track-cost";
+import { usdMicrosForGpt4oVision } from "./billing/pricing-usd";
 import type { FilmMode } from "./director";
 
 const VALIDATOR_MODEL = "gpt-4o";
@@ -100,6 +102,7 @@ ${args.requiresUi ? "- hasUiElements === true (a real monitor showing software U
   const MAX_ATTEMPTS = 2;
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const startedAt = Date.now();
     try {
       const completion = await openai.chat.completions.create({
         model: VALIDATOR_MODEL,
@@ -123,6 +126,23 @@ ${args.requiresUi ? "- hasUiElements === true (a real monitor showing software U
             ],
           },
         ],
+      });
+
+      // Cost telemetry — fires only inside a runJob() meter context. No-op
+      // for scripts / smoke tests where userId is null.
+      const inputTokens = completion.usage?.prompt_tokens ?? 0;
+      const outputTokens = completion.usage?.completion_tokens ?? 0;
+      void recordModelCost({
+        provider: "openai_gpt4o",
+        model: VALIDATOR_MODEL,
+        reason: "gpt4o_vision",
+        unitKind: "tokens",
+        units: inputTokens + outputTokens,
+        inputTokens,
+        outputTokens,
+        costUsdMicros: usdMicrosForGpt4oVision(inputTokens, outputTokens),
+        latencyMs: Date.now() - startedAt,
+        extra: { mode: args.mode, requires_ui: args.requiresUi },
       });
 
       const text = completion.choices[0]?.message?.content ?? "{}";

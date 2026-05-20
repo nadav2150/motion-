@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.jobs";
-import { createJob, runJob } from "../lib/jobs";
+import { createJob, InsufficientCreditsError, runJob } from "../lib/jobs";
 import { requireUserApi } from "../lib/auth";
 
 export async function action({ request }: Route.ActionArgs) {
@@ -81,6 +81,18 @@ export async function action({ request }: Route.ActionArgs) {
 
     return Response.json({ jobId }, { headers });
   } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      return Response.json(
+        {
+          error: "insufficient_credits",
+          message: "You don't have enough credits for this generation.",
+          required_credits: err.required,
+          balance_credits: err.balance,
+          shortfall_credits: err.shortfallCredits,
+        },
+        { status: 402, headers },
+      );
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error("/api/jobs POST failed:", message);
     return Response.json({ error: message }, { status: 500, headers });

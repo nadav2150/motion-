@@ -8,6 +8,9 @@
 //
 // API docs: https://elevenlabs.io/docs/api-reference/text-to-speech
 
+import { recordModelCost } from "./billing/track-cost";
+import { usdMicrosForElevenLabs } from "./billing/pricing-usd";
+
 export const TTS_MODELS = [
   "eleven_multilingual_v2",
   "eleven_turbo_v2_5",
@@ -183,6 +186,7 @@ export async function generateVoiceover(
   const voiceId = args.voiceId ?? getDefaultVoiceId();
   const modelId = args.modelId ?? DEFAULT_MODEL_ID;
 
+  const startedAt = Date.now();
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
     voiceId,
   )}?output_format=mp3_44100_128`;
@@ -217,5 +221,22 @@ export async function generateVoiceover(
     throw new Error(`ElevenLabs TTS failed (${res.status})${detail}`);
   }
 
-  return Buffer.from(await res.arrayBuffer());
+  const audio = Buffer.from(await res.arrayBuffer());
+
+  // Cost telemetry — fires only inside a runJob() meter context. ElevenLabs
+  // charges per CHARACTER (the audio endpoint doesn't return usage metadata,
+  // so we use input text length, which equals what ElevenLabs bills).
+  const chars = args.text.length;
+  void recordModelCost({
+    provider: "elevenlabs",
+    model: modelId,
+    reason: "elevenlabs_tts",
+    unitKind: "characters",
+    units: chars,
+    costUsdMicros: usdMicrosForElevenLabs(modelId, chars),
+    latencyMs: Date.now() - startedAt,
+    extra: { voice_id: voiceId },
+  });
+
+  return audio;
 }

@@ -27,6 +27,13 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { type ConsumptionReason } from "../billing/credits";
+import {
+  creditsForOpus,
+  creditsForSonnet,
+} from "../billing/meter";
+import { recordModelCost } from "../billing/track-cost";
+import { usdMicrosForAnthropic } from "../billing/pricing-usd";
 import {
   TTS_MODEL_IDS,
   TTS_MODELS,
@@ -41,6 +48,51 @@ const MODEL = "claude-opus-4-7";
 // fast here and we reserve Opus 4.7 wall-time for the creative passes
 // (storyboard, blueprint, scene fills, refinement).
 const SONNET_MODEL = "claude-sonnet-4-6";
+
+// Cost telemetry helper. Call right after `const usage = response.usage` at
+// each Anthropic call site. No-op when called outside a runJob() meter
+// context (scripts, smoke tests). Cache-read tokens are charged at 1/10 of
+// regular input rate per Anthropic — we approximate by attributing only
+// cache_create + (input - cache_read) to input cost.
+type AnthropicUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+};
+function meterAnthropic(
+  model: typeof MODEL | typeof SONNET_MODEL,
+  usage: AnthropicUsage,
+  reason: ConsumptionReason,
+): void {
+  // Effective billable input = full input. Anthropic's prompt cache discounts
+  // cache_read tokens to ~10% of base, but the response.usage.input_tokens
+  // already excludes the cached portion — only cache_creation and fresh
+  // input tokens are in input_tokens (per the API docs).
+  const tokensIn = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+  const tokensOut = usage.output_tokens;
+  const credits =
+    model === MODEL
+      ? creditsForOpus({ input_tokens: tokensIn, output_tokens: tokensOut })
+      : creditsForSonnet({ input_tokens: tokensIn, output_tokens: tokensOut });
+  if (credits <= 0) return;
+  const costUsdMicros = usdMicrosForAnthropic(model, tokensIn, tokensOut);
+  void recordModelCost({
+    provider: "anthropic",
+    model,
+    reason,
+    unitKind: "tokens",
+    units: tokensIn + tokensOut,
+    inputTokens: tokensIn,
+    outputTokens: tokensOut,
+    costUsdMicros,
+    creditsCharged: credits,
+    extra: {
+      cache_read: usage.cache_read_input_tokens ?? 0,
+      cache_create: usage.cache_creation_input_tokens ?? 0,
+    },
+  });
+}
 
 /**
  * Parse a JSON response from an Anthropic structured-output call. Wraps the
@@ -1365,6 +1417,8 @@ async function runStoryboardCall(
       format: { type: "json_schema", schema: STORYBOARD_JSON_SCHEMA },
     },
   });
+
+  meterAnthropic(MODEL, response.usage, "opus_director");
 
   const textBlock = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text",
@@ -2820,6 +2874,8 @@ export async function generateAssetPlan(
     },
   });
 
+  meterAnthropic(MODEL, response.usage, "opus_director");
+
   const textBlock = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text",
   );
@@ -3042,6 +3098,8 @@ export async function generateVisionCritique(
     },
   });
 
+  meterAnthropic(SONNET_MODEL, response.usage, "sonnet_scene_critique");
+
   const block = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text",
   );
@@ -3142,6 +3200,8 @@ The ${motionTrailUrls.length} attached images are the motion-trail composites, i
       format: { type: "json_schema", schema: FILM_CRITIQUE_SCHEMA },
     },
   });
+
+  meterAnthropic(SONNET_MODEL, response.usage, "opus_film_critique");
 
   const block = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text",
@@ -3271,6 +3331,8 @@ export async function generateFilmBlueprint(
       format: { type: "json_schema", schema: FILM_BLUEPRINT_SCHEMA },
     },
   });
+
+  meterAnthropic(MODEL, response.usage, "opus_blueprint");
 
   const textBlock = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text",
@@ -3640,13 +3702,15 @@ const AUDIO_DIRECTION_REFINE_ADDENDUM = `
 
 You will receive two extra blocks in the user message: PREVIOUS PLAN (what you emitted last run, with the resolved track/SFX names alongside) and USER COMMENTS PER SCENE (free-text feedback). Your job is to emit a NEW AudioPlan that minimally changes the previous one to address the comments.
 
-RESTRAINT FIRST. Most comments are visual/motion/typography and do NOT touch audio. For any scene whose comments don't mention audio, return that scene's voiceover/SFX EXACTLY as before (same text, same deliveryHint, same freesoundQuery, same kind, same momentSeconds). For bgMusic, leave jamendoQuery + moodTags + energyHint unchanged unless a comment explicitly asks for a different music feel.
+RESTRAINT FIRST — WITH ONE EXCEPTION. Most comments are visual/motion/typography and do NOT touch audio. For any scene whose comments don't mention audio, return that scene's voiceover/SFX EXACTLY as before (same text, same deliveryHint, same freesoundQuery, same kind, same momentSeconds). For bgMusic, leave jamendoQuery + moodTags + energyHint unchanged unless a comment explicitly asks for a different music feel.
+THE EXCEPTION: when a comment EXPLICITLY asks to add audio to a scene that was silent in the PREVIOUS PLAN (marked "(no voiceover — silent)" or absent from sfxCues), you MUST add the new entry. "RESTRAINT FIRST" never means "ignore a direct request to add audio". Silence in the previous plan was a default, not a locked decision — a comment overrides it.
 
 AUDIO-RELATED KEYWORDS to watch for in comments (case-insensitive):
   music, volume, louder, quieter, softer, mute, duck, lift, bed, track, score, song
   voice, voiceover, vo, narration, narrator, speak, say, read, tone, delivery, pace
   sfx, sound effect, whoosh, boom, click, impact, punch, transition, swell, riser, ambient
   swap, replace, change <audio-noun>, different <audio-noun>
+  add, missing, missed, needs, need, should have, forgot, no <audio-noun>
 
 CHANGE TYPES:
   • "lower/quieter music on scene X" → add { sceneId: "sX", volume: 0.10 } to bgMusicVolumeOverrides. Don't change bgMusic.jamendoQuery.
@@ -3654,9 +3718,11 @@ CHANGE TYPES:
   • "change the whoosh to a deeper boom on scene X" → update that scene's sfxCue { kind: "impact", freesoundQuery: "deep cinematic boom" }.
   • "voiceover should be more intimate on scene X" → change that scene's voiceover deliveryHint to "intimate" (and optionally tighten text).
   • "rewrite the voiceover on scene X to say Y" → update that scene's voiceover.text to Y.
+  • "add VO on scene X" / "you missed voiceover on scene X" / "scene X needs narration" / "scene X has no voice" → CREATE a new voiceover entry: { sceneId: "sX", text: <short line that ADDS to the scene's on-screen copy, ≤25 words, shaped for natural prosody>, deliveryHint: <pick to match film rhythm + brand voice>, voiceId: <SAME voiceId as the other voiceovers in PREVIOUS PLAN to preserve film identity> }. Keep the rest of the plan unchanged.
+  • "add a whoosh/boom/click on scene X" → CREATE a new sfxCue entry for that scene with appropriate kind, freesoundQuery, and momentSeconds within the scene.
   • "different music — try ambient lo-fi instead" → change bgMusic.jamendoQuery + moodTags + energyHint. Clear bgMusicVolumeOverrides unless other comments require them.
 
-If a comment is ambiguous, prefer NO CHANGE. Better to under-edit than to drift the film's sonic identity.
+If a comment is ambiguous, prefer NO CHANGE. Better to under-edit than to drift the film's sonic identity. BUT: explicit additive requests ("add", "missing", "you forgot", "needs") are NEVER ambiguous — fulfill them.
 `;
 
 // Sprint 3 refinement input. `previousResolved` is the bundle stored under
@@ -3673,7 +3739,10 @@ export type AudioDirectionFeedback = {
   commentsByScene: Array<{ sceneId: string; comments: string }>;
 };
 
-function renderPreviousPlanBlock(feedback: AudioDirectionFeedback): string {
+function renderPreviousPlanBlock(
+  feedback: AudioDirectionFeedback,
+  storyboard: Storyboard,
+): string {
   const p = feedback.previousPlan;
   const r = feedback.previousResolved;
 
@@ -3681,12 +3750,19 @@ function renderPreviousPlanBlock(feedback: AudioDirectionFeedback): string {
     ? `${p.bgMusic.jamendoQuery} (${p.bgMusic.energyHint}) → resolved: "${r.bgMusic?.title ?? "?"}" by ${r.bgMusic?.artist ?? "?"}`
     : "none";
 
-  const voByScene = new Map(r.voiceovers.map((v) => [v.sceneId, v] as const));
-  const voLines = p.voiceovers
-    .map((v) => {
-      const resolved = voByScene.get(v.sceneId);
-      const snippet = (resolved?.text ?? v.text).slice(0, 80);
-      return `  ${v.sceneId}: deliveryHint=${v.deliveryHint} · text=${JSON.stringify(snippet)}`;
+  // Render ONE line per scene so the LLM can see which scenes were silent.
+  // Without this, scenes omitted from p.voiceovers were invisible and the
+  // RESTRAINT bias caused comments like "add VO here" to be ignored.
+  const voPlanned = new Map(p.voiceovers.map((v) => [v.sceneId, v] as const));
+  const voResolved = new Map(r.voiceovers.map((v) => [v.sceneId, v] as const));
+  const voLines = storyboard.scenes
+    .map((_, i) => {
+      const sid = `s${i + 1}`;
+      const planned = voPlanned.get(sid);
+      if (!planned) return `  ${sid}: (no voiceover — silent)`;
+      const resolved = voResolved.get(sid);
+      const snippet = (resolved?.text ?? planned.text).slice(0, 80);
+      return `  ${sid}: deliveryHint=${planned.deliveryHint} · text=${JSON.stringify(snippet)}`;
     })
     .join("\n") || "  (none)";
 
@@ -3803,7 +3879,7 @@ FILM RHYTHM:
 
 ${
     feedback
-      ? `\n${renderPreviousPlanBlock(feedback)}\n\n${renderCommentsBlock(feedback)}\n\nProduce the REVISED AudioPlan JSON now. Restraint first — for any scene whose comments don't mention audio, return its voiceover/SFX identical to the previous plan. Address only what the comments explicitly ask for.\n`
+      ? `\n${renderPreviousPlanBlock(feedback, storyboard)}\n\n${renderCommentsBlock(feedback)}\n\nProduce the REVISED AudioPlan JSON now. Restraint first — for any scene whose comments don't mention audio, return its voiceover/SFX identical to the previous plan. But when a comment EXPLICITLY asks to add audio to a silent scene ("add VO here", "you missed voiceover on this scene", "this scene needs narration", "add a whoosh here"), you MUST create a new entry for that scene — absence in the previous plan does NOT mean "leave it silent" once a comment asks for it.\n`
       : "Produce the AudioPlan JSON now. Restraint over abundance — silence is a choice. ONE music query, voiceovers only where they ADD, SFX only on the beats that earn it.\n"
   }`;
 }
@@ -3870,6 +3946,8 @@ export async function generateAudioDirection(
       format: { type: "json_schema", schema: AUDIO_DIRECTION_SCHEMA },
     },
   });
+
+  meterAnthropic(MODEL, response.usage, "opus_audio_direction");
 
   const textBlock = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text",
@@ -4652,6 +4730,7 @@ async function generateSceneFill(
     if (block.type === "text") raw += block.text;
   }
   const usage = response.usage;
+  meterAnthropic(MODEL, usage, "opus_scene_fill");
   console.log(
     `[hyperframes scene ${curr.id}] stop_reason=${response.stop_reason} ` +
       `input=${usage.input_tokens} output=${usage.output_tokens} ` +
@@ -4737,21 +4816,42 @@ async function generateScenesWithContinuity(
     prevSceneIntentFallback: idx === 0 ? null : blueprint.sceneOutline[idx - 1],
   }));
 
+  // Cache warmup: fire scene 1 alone, await it, then parallel-fire the rest.
+  // Anthropic's prompt cache requires the FIRST request carrying a given
+  // cache_control prefix to COMMIT before subsequent calls can read it —
+  // when all 14 scenes raced in parallel before, every one of them saw an
+  // empty cache and paid cache-create. Sequencing scene 1 makes the
+  // FILM_SYSTEM_PROMPT prefix a hot cache entry that scenes 2..N can read
+  // (~25 % cheaper input tokens) for the remainder of the batch.
+  // PostHog model_cost telemetry: pre-fix showed 260K cache_creates / 0
+  // cache_reads across 16 calls. Post-fix should show ~1 cache_create + N-1
+  // cache_reads — see verification query in the plan file.
   console.log(
-    `[hyperframes orchestrator] all ${N} scenes (parallel ${N}/${N}, blueprint-only continuity)`,
+    `[hyperframes orchestrator] scene 1 solo (cache warm) + ${N - 1} parallel`,
   );
 
-  const fills = await Promise.all(
-    contexts.map((ctx, idx) =>
-      generateSceneFill(
-        blueprint,
-        idx,
-        ctx.continuityState,
-        ctx.prevSceneIntentFallback,
-        null,
+  const [firstFill, ...restFills] = await (async () => {
+    const first = await generateSceneFill(
+      blueprint,
+      0,
+      contexts[0].continuityState,
+      contexts[0].prevSceneIntentFallback,
+      null,
+    );
+    const rest = await Promise.all(
+      contexts.slice(1).map((ctx, offset) =>
+        generateSceneFill(
+          blueprint,
+          offset + 1,
+          ctx.continuityState,
+          ctx.prevSceneIntentFallback,
+          null,
+        ),
       ),
-    ),
-  );
+    );
+    return [first, ...rest];
+  })();
+  const fills = [firstFill, ...restFills];
 
   return { fills, contexts };
 }

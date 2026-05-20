@@ -1,3 +1,6 @@
+import { recordModelCost } from "./billing/track-cost";
+import { usdMicrosForFreeApi } from "./billing/pricing-usd";
+
 export type JamendoTrack = {
   id: string;
   title: string;
@@ -69,6 +72,7 @@ export async function searchTracks(query: string, limit = 20): Promise<JamendoTr
   url.searchParams.set("include", "musicinfo");
   url.searchParams.set("imagesize", "200");
 
+  const startedAt = Date.now();
   const res = await fetch(url, { method: "GET" });
   if (!res.ok) {
     throw new Error(`Jamendo request failed (${res.status})`);
@@ -80,6 +84,19 @@ export async function searchTracks(query: string, limit = 20): Promise<JamendoTr
   }
 
   const results = Array.isArray(body.results) ? body.results : [];
+
+  // Call-volume telemetry only. Jamendo is free at our tier, so cost = 0.
+  void recordModelCost({
+    provider: "jamendo",
+    model: "jamendo_v30_tracks",
+    reason: "jamendo_search",
+    unitKind: "calls",
+    units: 1,
+    costUsdMicros: usdMicrosForFreeApi(),
+    latencyMs: Date.now() - startedAt,
+    extra: { result_count: results.length },
+  });
+
   return results
     .map(normalize)
     .filter((t): t is JamendoTrack => t !== null);
