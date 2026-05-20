@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let cached: SupabaseClient | null = null;
+let envLogged = false;
 
 function decodeJwtRole(jwt: string): string | null {
   try {
@@ -15,9 +16,7 @@ function decodeJwtRole(jwt: string): string | null {
   }
 }
 
-export function getSupabase(): SupabaseClient {
-  if (cached) return cached;
-
+function readEnv(): { url: string; key: string } {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -25,37 +24,60 @@ export function getSupabase(): SupabaseClient {
       "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env",
     );
   }
-
-  const host = new URL(url).host;
-  if (key.startsWith("sb_secret_")) {
-    console.log(`[supabase] connected via secret key (host=${host})`);
-  } else if (key.startsWith("sb_publishable_")) {
-    console.warn(
-      `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY is a PUBLISHABLE key (sb_publishable_...). Writes will fail with RLS errors. Use the secret key (sb_secret_...) from Supabase → Project Settings → API Keys.`,
-    );
-  } else if (key.startsWith("eyJ")) {
-    const role = decodeJwtRole(key);
-    if (role === "service_role") {
-      console.log(`[supabase] connected as legacy service_role JWT (host=${host})`);
-    } else if (role) {
+  if (!envLogged) {
+    envLogged = true;
+    const host = new URL(url).host;
+    if (key.startsWith("sb_secret_")) {
+      console.log(`[supabase] connected via secret key (host=${host})`);
+    } else if (key.startsWith("sb_publishable_")) {
       console.warn(
-        `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY decodes to role="${role}" — expected "service_role". Writes will fail with RLS errors.`,
+        `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY is a PUBLISHABLE key (sb_publishable_...). Writes will fail with RLS errors. Use the secret key (sb_secret_...) from Supabase → Project Settings → API Keys.`,
       );
+    } else if (key.startsWith("eyJ")) {
+      const role = decodeJwtRole(key);
+      if (role === "service_role") {
+        console.log(`[supabase] connected as legacy service_role JWT (host=${host})`);
+      } else if (role) {
+        console.warn(
+          `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY decodes to role="${role}" — expected "service_role". Writes will fail with RLS errors.`,
+        );
+      } else {
+        console.warn(
+          `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY looks like a JWT but could not be decoded.`,
+        );
+      }
     } else {
       console.warn(
-        `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY looks like a JWT but could not be decoded.`,
+        `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY is in an unrecognized format. RLS bypass uncertain.`,
       );
     }
-  } else {
-    console.warn(
-      `[supabase] WARNING: SUPABASE_SERVICE_ROLE_KEY is in an unrecognized format. RLS bypass uncertain.`,
-    );
   }
+  return { url, key };
+}
 
+export function getSupabase(): SupabaseClient {
+  if (cached) return cached;
+  const { url, key } = readEnv();
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   return cached;
+}
+
+// Fresh, non-cached client for auth operations that mutate in-memory session
+// state (signInWithPassword, refreshSession). The cached getSupabase() client
+// is shared across all requests, and supabase-js's PostgREST fetch wrapper
+// uses the in-memory session's access_token in preference to the service_role
+// key (see _getAccessToken in @supabase/supabase-js). If signInWithPassword
+// runs on the shared client, subsequent DB queries on that same client use
+// the user's JWT, which hits RLS (jobs/shots tables have only a service_role
+// policy — see 20260523_jobs_shots_service_role_policy.sql) and silently
+// returns 0 rows. Use this fresh client for any auth call that sets a session.
+export function createAuthSupabaseClient(): SupabaseClient {
+  const { url, key } = readEnv();
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 export type JobStatus =

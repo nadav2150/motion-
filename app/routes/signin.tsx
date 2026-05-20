@@ -1,9 +1,9 @@
-import { redirect, useActionData, useNavigate } from "react-router";
+import { useActionData, useNavigate } from "react-router";
 import type { Route } from "./+types/signin";
 import { SignInScreen } from "../motionflow/screens/signin";
 import {
   AuthError,
-  getUserFromRequest,
+  getUserWithRefresh,
   setSessionCookies,
   signInWithEmail,
 } from "../lib/auth";
@@ -28,11 +28,16 @@ function safeNext(raw: string | null): string {
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Already signed in — skip the form and continue to the originally
-  // requested destination (or /home).
-  const user = await getUserFromRequest(request);
+  // requested destination (or /home). Uses getUserWithRefresh so an expired
+  // access token with a valid refresh token doesn't force the user to sign
+  // in again unnecessarily.
+  const { user, refreshed } = await getUserWithRefresh(request);
   if (user) {
     const url = new URL(request.url);
-    return redirect(safeNext(url.searchParams.get("next")));
+    const headers = new Headers();
+    if (refreshed) setSessionCookies(headers, refreshed);
+    headers.set("Location", safeNext(url.searchParams.get("next")));
+    return new Response(null, { status: 302, headers });
   }
   return null;
 }

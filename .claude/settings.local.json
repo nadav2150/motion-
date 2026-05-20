@@ -109,7 +109,8 @@
       "Bash(Select-Object Name, PSIsContainer)",
       "Bash(del .scan-bt.cjs)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\" -Recurse -Force)",
-      "Bash(Select-Object FullName)"
+      "Bash(Select-Object FullName)",
+      "WebFetch(domain:www.who.is)"
     ]
   },
   "enabledPlugins": {

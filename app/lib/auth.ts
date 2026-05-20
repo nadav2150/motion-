@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase";
+import { createAuthSupabaseClient, getSupabase } from "./supabase";
 
 export const ACCESS_COOKIE = "mf_at";
 export const REFRESH_COOKIE = "mf_rt";
@@ -60,7 +60,9 @@ export async function signInWithEmail(
   if (!email?.trim() || !password) {
     throw new AuthError("Email and password are required");
   }
-  const supabase = getSupabase();
+  // Fresh client — see createAuthSupabaseClient comment for why this can't
+  // share the cached client.
+  const supabase = createAuthSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim(),
     password,
@@ -233,8 +235,12 @@ export async function getUserWithRefresh(
 
   if (!refreshToken) return { user: null, refreshed: null };
 
+  // Fresh client — refreshSession mutates in-memory session state which would
+  // poison subsequent DB queries on the shared client (see
+  // createAuthSupabaseClient comment).
+  const authClient = createAuthSupabaseClient();
   try {
-    const { data, error } = await supabase.auth.refreshSession({
+    const { data, error } = await authClient.auth.refreshSession({
       refresh_token: refreshToken,
     });
     if (error || !data.session || !data.user) {
@@ -256,6 +262,30 @@ export async function getUserWithRefresh(
   } catch {
     return { user: null, refreshed: null };
   }
+}
+
+/**
+ * Guard for API endpoints (returns JSON, not HTML). Returns user + headers;
+ * throws a 401 JSON Response with cleared cookies when there's no valid
+ * session. The returned `headers` carry refreshed Set-Cookie values from a
+ * silent token refresh — thread them into the route's final Response so the
+ * browser keeps the refreshed session.
+ */
+export async function requireUserApi(
+  request: Request,
+): Promise<{ user: AuthUser; headers: Headers }> {
+  const { user, refreshed } = await getUserWithRefresh(request);
+  const headers = new Headers();
+  if (refreshed) setSessionCookies(headers, refreshed);
+  if (!user) {
+    clearSessionCookies(headers);
+    headers.set("Content-Type", "application/json");
+    throw new Response(JSON.stringify({ error: "Not authenticated" }), {
+      status: 401,
+      headers,
+    });
+  }
+  return { user, headers };
 }
 
 /**

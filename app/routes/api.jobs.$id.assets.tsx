@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.jobs.$id.assets";
-import { getUserFromRequest } from "../lib/auth";
+import { requireUserApi } from "../lib/auth";
 import { uploadBuffer, STORYBOARDS_BUCKET } from "../lib/storage";
 import { getSupabase } from "../lib/supabase";
 
@@ -67,10 +67,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     return Response.json({ error: "Missing job id" }, { status: 400 });
   }
 
-  const user = await getUserFromRequest(request);
-  if (!user) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  const { user, headers } = await requireUserApi(request);
 
   const db = getSupabase();
   const { data: job, error: fetchErr } = await db
@@ -81,11 +78,11 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (fetchErr || !job) {
     return Response.json(
       { error: fetchErr?.message ?? "Job not found" },
-      { status: 404 },
+      { status: 404, headers },
     );
   }
   if (job.user_id && job.user_id !== user.id) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
+    return Response.json({ error: "Forbidden" }, { status: 403, headers });
   }
 
   const existing = isAssetArray(job.assets) ? job.assets : [];
@@ -95,19 +92,19 @@ export async function action({ request, params }: Route.ActionArgs) {
     try {
       form = await request.formData();
     } catch {
-      return Response.json({ error: "Invalid form data" }, { status: 400 });
+      return Response.json({ error: "Invalid form data" }, { status: 400, headers });
     }
     const file = form.get("file");
     if (!(file instanceof File)) {
-      return Response.json({ error: "Missing file" }, { status: 400 });
+      return Response.json({ error: "Missing file" }, { status: 400, headers });
     }
     if (file.size === 0) {
-      return Response.json({ error: "Empty file" }, { status: 400 });
+      return Response.json({ error: "Empty file" }, { status: 400, headers });
     }
     if (file.size > MAX_BYTES) {
       return Response.json(
         { error: `Asset must be ≤ ${MAX_BYTES / 1024 / 1024} MB` },
-        { status: 413 },
+        { status: 413, headers },
       );
     }
 
@@ -142,13 +139,13 @@ export async function action({ request, params }: Route.ActionArgs) {
         .update({ assets: updated })
         .eq("id", jobId);
       if (updErr) {
-        return Response.json({ error: updErr.message }, { status: 500 });
+        return Response.json({ error: updErr.message }, { status: 500, headers });
       }
-      return Response.json({ assets: updated, added: asset });
+      return Response.json({ assets: updated, added: asset }, { headers });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`/api/jobs/${jobId}/assets POST failed:`, message);
-      return Response.json({ error: message }, { status: 500 });
+      return Response.json({ error: message }, { status: 500, headers });
     }
   }
 
@@ -156,7 +153,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     const url = new URL(request.url);
     const assetId = url.searchParams.get("assetId");
     if (!assetId) {
-      return Response.json({ error: "assetId is required" }, { status: 400 });
+      return Response.json({ error: "assetId is required" }, { status: 400, headers });
     }
     const target = existing.find((a) => a.id === assetId);
     const updated = existing.filter((a) => a.id !== assetId);
@@ -165,7 +162,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       .update({ assets: updated })
       .eq("id", jobId);
     if (updErr) {
-      return Response.json({ error: updErr.message }, { status: 500 });
+      return Response.json({ error: updErr.message }, { status: 500, headers });
     }
     // Best-effort cleanup of the storage object — don't fail the request if
     // the remove() fails; the row no longer references it either way.
@@ -180,10 +177,10 @@ export async function action({ request, params }: Route.ActionArgs) {
           ),
         );
     }
-    return Response.json({ assets: updated });
+    return Response.json({ assets: updated }, { headers });
   }
 
-  return Response.json({ error: "Method not allowed" }, { status: 405 });
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers });
 }
 
 export async function loader({ params }: Route.LoaderArgs) {

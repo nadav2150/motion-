@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.brand.logo";
-import { getUserFromRequest } from "../lib/auth";
+import { requireUserApi } from "../lib/auth";
 import { uploadBuffer } from "../lib/storage";
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -17,29 +17,26 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const user = await getUserFromRequest(request);
-  if (!user) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  const { user, headers } = await requireUserApi(request);
 
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
-    return Response.json({ error: "Invalid form data" }, { status: 400 });
+    return Response.json({ error: "Invalid form data" }, { status: 400, headers });
   }
 
   const file = form.get("file");
   if (!(file instanceof File)) {
-    return Response.json({ error: "Missing file" }, { status: 400 });
+    return Response.json({ error: "Missing file" }, { status: 400, headers });
   }
   if (file.size === 0) {
-    return Response.json({ error: "Empty file" }, { status: 400 });
+    return Response.json({ error: "Empty file" }, { status: 400, headers });
   }
   if (file.size > MAX_LOGO_BYTES) {
     return Response.json(
       { error: `Logo must be ≤ ${MAX_LOGO_BYTES / 1024 / 1024} MB` },
-      { status: 413 },
+      { status: 413, headers },
     );
   }
 
@@ -59,10 +56,10 @@ export async function action({ request }: Route.ActionArgs) {
       body: buffer,
       contentType,
     });
-    return Response.json({ logoUrl: publicUrl, storagePath: finalPath });
+    return Response.json({ logoUrl: publicUrl, storagePath: finalPath }, { headers });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("/api/brand/logo POST failed:", message);
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: message }, { status: 500, headers });
   }
 }

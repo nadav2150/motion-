@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.shots.$id.comments";
 import { getSupabase } from "../lib/supabase";
-import { getUserFromRequest } from "../lib/auth";
+import { getUserWithRefresh, setSessionCookies } from "../lib/auth";
 
 type SceneComment = {
   id: string;
@@ -45,7 +45,12 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   const existing = isCommentArray(shot.comments) ? shot.comments : [];
-  const user = await getUserFromRequest(request);
+  // Soft auth: anonymous comments are allowed (author=null), but if the
+  // browser sent valid cookies, transparently refresh the access token so
+  // the next request keeps the session.
+  const { user, refreshed } = await getUserWithRefresh(request);
+  const headers = new Headers();
+  if (refreshed) setSessionCookies(headers, refreshed);
   const author = user?.email ?? null;
 
   if (request.method === "POST") {
@@ -53,14 +58,14 @@ export async function action({ request, params }: Route.ActionArgs) {
     try {
       body = await request.json();
     } catch {
-      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+      return Response.json({ error: "Invalid JSON" }, { status: 400, headers });
     }
     const text =
       body && typeof (body as { text?: unknown }).text === "string"
         ? ((body as { text: string }).text).trim()
         : "";
     if (!text) {
-      return Response.json({ error: "text is required" }, { status: 400 });
+      return Response.json({ error: "text is required" }, { status: 400, headers });
     }
     const next: SceneComment = {
       id: `cmt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
@@ -74,16 +79,16 @@ export async function action({ request, params }: Route.ActionArgs) {
       .update({ comments: updated })
       .eq("id", id);
     if (updErr) {
-      return Response.json({ error: updErr.message }, { status: 500 });
+      return Response.json({ error: updErr.message }, { status: 500, headers });
     }
-    return Response.json({ comments: updated });
+    return Response.json({ comments: updated }, { headers });
   }
 
   if (request.method === "DELETE") {
     const url = new URL(request.url);
     const commentId = url.searchParams.get("commentId");
     if (!commentId) {
-      return Response.json({ error: "commentId is required" }, { status: 400 });
+      return Response.json({ error: "commentId is required" }, { status: 400, headers });
     }
     const updated = existing.filter((c) => c.id !== commentId);
     const { error: updErr } = await db
@@ -91,12 +96,12 @@ export async function action({ request, params }: Route.ActionArgs) {
       .update({ comments: updated })
       .eq("id", id);
     if (updErr) {
-      return Response.json({ error: updErr.message }, { status: 500 });
+      return Response.json({ error: updErr.message }, { status: 500, headers });
     }
-    return Response.json({ comments: updated });
+    return Response.json({ comments: updated }, { headers });
   }
 
-  return Response.json({ error: "Method not allowed" }, { status: 405 });
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers });
 }
 
 export async function loader({ params }: Route.LoaderArgs) {

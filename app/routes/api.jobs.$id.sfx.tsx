@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.jobs.$id.sfx";
 import { updateJobSfx } from "../lib/jobs";
-import { getUserFromRequest } from "../lib/auth";
+import { requireUserApi } from "../lib/auth";
 
 export async function action({ request, params }: Route.ActionArgs) {
   const id = params.id;
@@ -11,20 +11,17 @@ export async function action({ request, params }: Route.ActionArgs) {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const user = await getUserFromRequest(request);
-  if (!user) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  const { user, headers } = await requireUserApi(request);
 
   if (request.method === "DELETE") {
     try {
       await updateJobSfx(id, user.id, null);
-      return Response.json({ ok: true, sfx: null });
+      return Response.json({ ok: true, sfx: null }, { headers });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const status = message === "Project not found" ? 404 : 500;
       console.error(`/api/jobs/${id}/sfx DELETE failed:`, message);
-      return Response.json({ error: message }, { status });
+      return Response.json({ error: message }, { status, headers });
     }
   }
 
@@ -67,11 +64,11 @@ export async function action({ request, params }: Route.ActionArgs) {
       license: b.license,
     };
     await updateJobSfx(id, user.id, sfx);
-    return Response.json({ ok: true, sfx });
+    return Response.json({ ok: true, sfx }, { headers });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const status = message === "Project not found" ? 404 : 500;
     console.error(`/api/jobs/${id}/sfx POST failed:`, message);
-    return Response.json({ error: message }, { status });
+    return Response.json({ error: message }, { status, headers });
   }
 }

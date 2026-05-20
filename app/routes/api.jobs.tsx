@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.jobs";
 import { createJob, runJob } from "../lib/jobs";
-import { getUserFromRequest } from "../lib/auth";
+import { requireUserApi } from "../lib/auth";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -55,8 +55,9 @@ export async function action({ request }: Route.ActionArgs) {
   const audioMusicEnabled = tracksObj.music === true;
   const audioSfxEnabled = tracksObj.sfx === true;
 
+  const { user, headers } = await requireUserApi(request);
+
   try {
-    const user = await getUserFromRequest(request);
     const { jobId } = await createJob({
       script,
       productDescription: typeof productDescription === "string" ? productDescription : undefined,
@@ -65,7 +66,7 @@ export async function action({ request }: Route.ActionArgs) {
       brandLogoStoragePath:
         typeof brandLogoStoragePath === "string" ? brandLogoStoragePath : null,
       brandColors: cleanedColors,
-      userId: user?.id ?? null,
+      userId: user.id,
       audioVoiceoverEnabled,
       audioMusicEnabled,
       audioSfxEnabled,
@@ -78,11 +79,11 @@ export async function action({ request }: Route.ActionArgs) {
       console.error("runJob threw:", err);
     });
 
-    return Response.json({ jobId });
+    return Response.json({ jobId }, { headers });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("/api/jobs POST failed:", message);
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: message }, { status: 500, headers });
   }
 }
 
