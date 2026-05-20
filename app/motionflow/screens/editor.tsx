@@ -3,7 +3,10 @@ import {
   AppChrome,
   Button,
   IconArrowRight,
+  IconCheck,
+  IconDownload,
   IconLayers,
+  IconLink,
   IconMic,
   IconShare,
   IconWand,
@@ -134,6 +137,20 @@ export const EditorScreen = ({
   });
 
   const [previewDragOver, setPreviewDragOver] = useState(false);
+  const [copiedKind, setCopiedKind] = useState<"share" | "link" | null>(null);
+
+  const finalVideoUrl = shots[0]?.rendered_video_url ?? null;
+
+  const copyVideoLink = async (kind: "share" | "link") => {
+    if (!finalVideoUrl) return;
+    try {
+      await navigator.clipboard.writeText(finalVideoUrl);
+      setCopiedKind(kind);
+      setTimeout(() => setCopiedKind((k) => (k === kind ? null : k)), 1600);
+    } catch {
+      // clipboard unavailable (insecure context / denied); ignore silently
+    }
+  };
 
   // Click-handler that wraps the job-creating action with the latest payload
   // assembled from the script + brand hooks. audioTracks is captured here at
@@ -313,13 +330,47 @@ export const EditorScreen = ({
               {status === "refining_scenes" ? "Improving…" : "Improve from comments"}
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              if (!jobId) return;
-              if (status === "scenes_ready") {
-                // Kick off the render+stitch phase. Bump pollNonce to resume polling.
+          {status === "completed" && finalVideoUrl ? (
+            <>
+              <a
+                href={finalVideoUrl}
+                download={`${(job?.title ?? "motionflow").replace(/[^a-zA-Z0-9_-]+/g, "-")}.mp4`}
+                style={{ textDecoration: "none" }}
+              >
+                <Button variant="primary" size="sm" icon={<IconDownload size={12} />}>
+                  Download MP4
+                </Button>
+              </a>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={copiedKind === "share" ? <IconCheck size={12} /> : <IconShare size={12} />}
+                onClick={() => void copyVideoLink("share")}
+              >
+                {copiedKind === "share" ? "Link copied" : "Share"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={copiedKind === "link" ? <IconCheck size={12} /> : <IconLink size={12} />}
+                onClick={() => void copyVideoLink("link")}
+              >
+                {copiedKind === "link" ? "Copied" : "Copy link"}
+              </Button>
+            </>
+          ) : status === "rendering_scenes" || status === "stitching" ? (
+            <Button variant="ghost" size="sm" disabled>
+              Building video…
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!jobId || status !== "scenes_ready"}
+              onClick={async () => {
+                if (!jobId || status !== "scenes_ready") return;
+                // Kick off the render phase. Bump pollNonce to resume polling
+                // so the header swaps to Download/Share once it finishes.
                 try {
                   const res = await fetch(`/api/jobs/${jobId}/export`, { method: "POST" });
                   const data = (await res.json()) as { error?: string };
@@ -331,16 +382,12 @@ export const EditorScreen = ({
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "Network error");
                 }
-              } else if (status === "completed") {
-                onContinue?.(jobId);
-              } else {
-                onContinue?.(jobId);
-              }
-            }}
-            iconRight={<IconArrowRight size={12}/>}
-          >
-            {status === "scenes_ready" ? "Export · render video" : "Export"}
-          </Button>
+              }}
+              iconRight={status === "scenes_ready" ? <IconArrowRight size={12} /> : undefined}
+            >
+              {status === "scenes_ready" ? "Export · render video" : "Export"}
+            </Button>
+          )}
         </>
       }
     >

@@ -107,7 +107,9 @@
       "Bash(findstr /v \"already\")",
       "Bash(echo \"EXIT=$?\")",
       "Bash(Select-Object Name, PSIsContainer)",
-      "Bash(del .scan-bt.cjs)"
+      "Bash(del .scan-bt.cjs)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\" -Recurse -Force)",
+      "Bash(Select-Object FullName)"
     ]
   },
   "enabledPlugins": {

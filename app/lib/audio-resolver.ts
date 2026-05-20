@@ -40,6 +40,10 @@ export type ResolvedVoiceover = {
   voiceId: string;
   storagePath: string;
   publicUrl: string;
+  // Round-tripped from AudioPlanVoiceover.startOffsetSeconds so the skeleton
+  // builder can place data-start on the headline copy reveal instead of the
+  // raw scene boundary. Default 0.3 when the plan omits it.
+  startOffsetSeconds: number;
 };
 
 export type ResolvedSfxCue = {
@@ -148,13 +152,20 @@ async function resolveVoiceover(
   jobId: string,
   v: AudioPlanVoiceover,
 ): Promise<ResolvedVoiceover | null> {
-  const settings = DELIVERY_SETTINGS[v.deliveryHint];
+  const baseline = DELIVERY_SETTINGS[v.deliveryHint];
+  // LLM-picked per-scene settings override the deliveryHint baseline. Omitted
+  // fields fall through to the baseline (stability/similarityBoost) or to
+  // sensible defaults (style=0.15, speakerBoost=true). modelId omitted = the
+  // TTS client's default (eleven_multilingual_v2).
   try {
     const mp3 = await generateVoiceover({
       text: v.text,
       voiceId: v.voiceId,
-      stability: settings.stability,
-      similarityBoost: settings.similarityBoost,
+      modelId: v.modelId,
+      stability: v.stability ?? baseline.stability,
+      similarityBoost: v.similarityBoost ?? baseline.similarityBoost,
+      style: v.style ?? 0.15,
+      useSpeakerBoost: v.useSpeakerBoost ?? true,
     });
     const mirrored = await uploadSceneAsset({
       jobId,
@@ -163,9 +174,6 @@ async function resolveVoiceover(
       body: mp3,
       contentType: "audio/mpeg",
     });
-    // voiceId is resolved by the TTS client when omitted; we round-trip
-    // the explicit value when the LLM supplied one, otherwise empty so the
-    // editor surfaces "default" rather than a stale id.
     return {
       sceneId: v.sceneId,
       text: v.text,
@@ -173,6 +181,7 @@ async function resolveVoiceover(
       voiceId: v.voiceId ?? "",
       storagePath: mirrored.storagePath,
       publicUrl: mirrored.publicUrl,
+      startOffsetSeconds: v.startOffsetSeconds ?? 0.3,
     };
   } catch (err) {
     console.warn(
@@ -260,12 +269,34 @@ export async function resolveAudioPlan(args: ResolveAudioArgs): Promise<Resolved
     // allows max 6 concurrent requests. Reuse path (cached prevVo) is
     // synchronous and doesn't count against the live-API budget, but we run
     // both branches through the same queue for simplicity.
+    const prevPlanVoBySceneId = new Map(
+      (previousPlan?.voiceovers ?? []).map((pv) => [pv.sceneId, pv] as const),
+    );
     const voiceoverSettled = await runWithConcurrency(
       plan.voiceovers.map((v) => async () => {
         const prevVo = prevVoBySceneId.get(v.sceneId);
-        if (prevVo && prevVo.text === v.text && prevVo.delivery === v.deliveryHint) {
+        const prevPlanVo = prevPlanVoBySceneId.get(v.sceneId);
+        // Reuse the cached MP3 only when every byte-affecting input matches:
+        // text + delivery + voice + model + per-scene settings. startOffsetSeconds
+        // is NOT in the key — it only affects data-start in the next skeleton,
+        // so the cached audio bytes are still valid.
+        const reusable =
+          prevVo &&
+          prevPlanVo &&
+          prevVo.text === v.text &&
+          prevVo.delivery === v.deliveryHint &&
+          prevPlanVo.voiceId === v.voiceId &&
+          prevPlanVo.modelId === v.modelId &&
+          prevPlanVo.stability === v.stability &&
+          prevPlanVo.similarityBoost === v.similarityBoost &&
+          prevPlanVo.style === v.style &&
+          prevPlanVo.useSpeakerBoost === v.useSpeakerBoost;
+        if (reusable) {
           voReusedCount++;
-          return prevVo;
+          // Round-trip the new offset onto the reused entry so a timing-only
+          // tweak still takes effect in the rebuilt skeleton without burning
+          // an ElevenLabs call.
+          return { ...prevVo, startOffsetSeconds: v.startOffsetSeconds ?? 0.3 };
         }
         voRegenCount++;
         return resolveVoiceover(jobId, v);

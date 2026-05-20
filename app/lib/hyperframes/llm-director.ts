@@ -27,6 +27,13 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  TTS_MODEL_IDS,
+  TTS_MODELS,
+  VOICE_CATALOG,
+  VOICE_CATALOG_IDS,
+  type TtsModelId,
+} from "../elevenlabs-tts";
 
 const MODEL = "claude-opus-4-7";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
@@ -2135,7 +2142,11 @@ function indentLines(s: string, indent: string): string {
  */
 export type SkeletonAudio = {
   bgMusic: { streamUrl: string } | null;
-  voiceovers: Array<{ sceneId: string; publicUrl: string }>;
+  // startOffsetSeconds: seconds to delay VO from the scene's start. Drives
+  // the <audio data-start> for each voiceover so the read lands ON the text
+  // reveal (default 0.3s), not before it. Clamped to [0, sceneDur-0.2] by
+  // the skeleton builder; omitted/undefined falls back to 0.3.
+  voiceovers: Array<{ sceneId: string; publicUrl: string; startOffsetSeconds?: number }>;
   sfxCues: Array<{
     sceneId: string;
     momentSeconds: number;
@@ -2279,8 +2290,16 @@ export function buildFilmSkeleton(
     const i = parseInt(vo.sceneId.replace(/^s/, ""), 10) - 1;
     const sceneStart = starts[i];
     if (!Number.isFinite(sceneStart)) continue;
+    // VO lands ON the headline copy reveal, not at the raw scene boundary.
+    // Default 0.3s matches staggerWordReveal@0.3 used by most scene fills.
+    // Clamped to [0, sceneDur-0.2] so the read can't get pushed past the
+    // scene's end — defense-in-depth alongside the resolver's clamp.
+    const sceneDur = storyboard.scenes[i]?.durationSeconds ?? 0;
+    const rawOffset = typeof vo.startOffsetSeconds === "number" ? vo.startOffsetSeconds : 0.3;
+    const offset = Math.max(0, Math.min(rawOffset, Math.max(0, sceneDur - 0.2)));
+    const voStart = sceneStart + offset;
     audioTagsHtml.push(
-      `  <audio id="vo-${vo.sceneId}" src="${escapeHtml(vo.publicUrl)}" data-start="${sceneStart}" data-track-index="${nextAudioTrack++}" data-volume="0.95" preload="auto"></audio>`,
+      `  <audio id="vo-${vo.sceneId}" src="${escapeHtml(vo.publicUrl)}" data-start="${voStart}" data-track-index="${nextAudioTrack++}" data-volume="0.95" preload="auto"></audio>`,
     );
   }
   (audio?.sfxCues ?? []).forEach((cue, j) => {
@@ -3417,6 +3436,19 @@ export type AudioPlanVoiceover = {
   text: string;
   deliveryHint: VoiceoverDelivery;
   voiceId?: string;
+  // Per-scene TTS controls. All optional — omitted fields fall through to
+  // audio-resolver's DELIVERY_SETTINGS map keyed on deliveryHint. The audio
+  // director is encouraged to tune these per scene so the read doesn't sound
+  // like a stock AI voice-over.
+  modelId?: TtsModelId;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+  useSpeakerBoost?: boolean;
+  // Seconds to delay VO playback from the scene's start. Default 0.3s in
+  // the skeleton builder so the VO lands ON the headline copy reveal
+  // (staggerWordReveal@0.3), not before it. Clamped to [0, sceneDur-0.2].
+  startOffsetSeconds?: number;
 };
 
 export type AudioPlanSfxCue = {
@@ -3482,6 +3514,12 @@ const AUDIO_DIRECTION_SCHEMA = {
           text: { type: "string" },
           deliveryHint: { type: "string", enum: [...VOICEOVER_DELIVERIES] },
           voiceId: { type: "string" },
+          modelId: { type: "string", enum: [...TTS_MODELS] },
+          stability: { type: "number" },
+          similarityBoost: { type: "number" },
+          style: { type: "number" },
+          useSpeakerBoost: { type: "boolean" },
+          startOffsetSeconds: { type: "number" },
         },
       },
     },
@@ -3525,11 +3563,43 @@ const AUDIO_DIRECTION_SYSTEM_PROMPT = `You are the audio director for a short ci
    • Return null ONLY if the film is so short/punchy that any music would clutter it (<3 scenes AND total duration <10s AND cadenceMode="staccato_pulse"). Otherwise always return a track query — even held/cinematic films benefit from a quiet bed.
    • Match energyHint to the film's overall energyCurve: a slow_build_then_release film with mostly low energy scenes wants energyHint="low", not "high".
 
-2. voiceovers — per-scene narration text. ONE entry per scene (sceneId s1..sN), or omit a scene to skip its voiceover (do this for type-only logo lockups, silent kickers, etc.).
-   • text is what ElevenLabs will speak verbatim. Keep it SHORT — typically 1 sentence, ≤25 words, that fits naturally into the scene's duration (estimate ~3 words/second for cinematic delivery). NEVER pad to match duration; leave silence if needed.
-   • DO NOT just echo scene.copy if it's already visible on screen. Voiceover should ADD, not duplicate. If the copy is "Privacy that travels with you", the VO might be "Wherever you go. Whatever you do." — complementary, not redundant.
-   • deliveryHint guides ElevenLabs voice settings: cinematic (slow, weighty) | energetic (fast, punchy) | intimate (close, warm) | deadpan (flat, ironic) | authoritative (firm, declarative).
-   • Hold/rest scenes often want NO voiceover at all — the silence is the point. Skip them.
+2. voiceovers — per-scene narration. ONE entry per scene (sceneId s1..sN), or omit a scene to skip its voiceover (type-only logo lockups, silent kickers, etc.).
+
+   YOU ARE THE VOICE DIRECTOR. The default ElevenLabs output sounds like a generic AI voice-over because most callers pick Rachel @ 0.5 stability and never touch the rest. Don't do that. Read the BRAND VOICE block and the FILM RHYTHM, then make six decisions per entry:
+
+   (a) text — what is spoken VERBATIM. Keep it SHORT — typically 1 sentence, ≤25 words, fitting the scene duration (~3 words/sec for cinematic delivery). NEVER pad to match duration; silence is fine.
+       DO NOT echo scene.copy if it's already on-screen. VO should ADD, not duplicate.
+       SHAPE THE TEXT for natural prosody — this is the single biggest lever against "AI voice":
+         · Commas for micro-pauses: "Wherever you go, whatever you do."
+         · Ellipses for a half-second breath: "Some things… stay with you."
+         · Em-dashes — for thought-breaks — like this.
+         · ONE all-caps word per scene MAX for emphasis ("This is YOURS now."). NEVER all-caps full sentences.
+         · For modelId="eleven_v3" you may use inline audio tags like [whispers], [sighs], [laughs softly] sparingly.
+
+   (b) deliveryHint — cinematic (slow, weighty) | energetic (fast, punchy) | intimate (close, warm) | deadpan (flat, ironic) | authoritative (firm, declarative). Drives the resolver's baseline voice_settings when you don't override.
+
+   (c) voiceId — pick ONE voice from the catalog below and USE THAT SAME voiceId FOR EVERY ENTRY IN THE FILM. Switching voices mid-film fractures identity. Match the voice to BRAND VOICE + dominant deliveryHint. If brand_style says "premium minimalist tech" → likely Adam or Thomas. If "warm indie bakery" → Bella or Antoni. If "edgy late-night" → Sam or Callum. If "story-driven cinematic" → Clyde or Rachel.
+${VOICE_CATALOG.map((v) => `       - ${v.id}  ${v.label} — ${v.gender}, ${v.accent}; ${v.tone}. Fits: ${v.fitsDelivery}.`).join("\n")}
+     Default pick when the brief is unspecific: 21m00Tcm4TlvDq8ikWAM (Rachel) — safe, neutral, cinematic. Pick anything else when the brand gives you a reason to.
+
+   (d) modelId — pick per scene:
+       · "eleven_multilingual_v2" (DEFAULT) — most natural for narration. Use for cinematic, intimate, authoritative reads.
+       · "eleven_turbo_v2_5" — flatter and faster. Use only when the read is short and punchy (energetic deliveryHint, ≤8 words).
+       · "eleven_v3" — most expressive; supports inline audio tags. Use for stylized/emotive scenes (a whispered intimate scene, a dramatic climax) where you've actually written audio tags in the text.
+
+   (e) stability / similarityBoost / style / useSpeakerBoost — TUNE PER SCENE. Do NOT reuse one value across the film.
+       · stability (0..1): 0.25–0.40 for emotional/expressive scenes; 0.45–0.55 for default narration; 0.65+ ONLY for steady authoritative reads. Higher = flatter.
+       · similarityBoost (0..1): leave at 0.75 unless the voice sounds off-character — bumping to 0.85+ sharpens identity but can amplify artifacts.
+       · style (0..1): 0.0–0.20 for cinematic; 0.30–0.50 for energetic / dramatic; bump on the climax scene. Only meaningful on multilingual_v2 / v3.
+       · useSpeakerBoost: true by default; set false for intimate/whispered to avoid harshness.
+
+   (f) startOffsetSeconds — SECONDS TO DELAY VO FROM THE SCENE'S START. THIS IS THE LIP-SYNC KNOB.
+       The default scene text reveal (staggerWordReveal) holds copy invisible for the first ~0.3s and only becomes fully legible around ~0.7s. If you set startOffsetSeconds to 0, the VO speaks before the viewer can read the headline — the film sounds out of sync.
+       · DEFAULT: 0.3 (matches the standard text reveal).
+       · Slow fades / held intros / cinematic establishing shots: 0.5–0.8.
+       · Hard cuts / quick punches / energetic staccato_pulse: 0.0–0.15.
+       · NEVER set this so high the VO can't finish within the scene. The resolver clamps to [0, sceneDur − 0.2] defensively.
+       · Hold / rest / type-only scenes: skip the voiceover entirely (omit the entry).
 
 3. sfxCues — per-scene sound effects. AIM FOR RESTRAINT: at most ONE cue per scene, and only on scenes that genuinely need a sonic punctuation. Empty array is fine for quiet films.
    • PRIORITIZE filmRhythm.impactMoments and filmRhythm.climaxIndex — those scenes deserve a punch or impact cue. Rest moments should be silent (no SFX).
@@ -3664,11 +3734,17 @@ function renderCommentsBlock(feedback: AudioDirectionFeedback): string {
   return `USER COMMENTS PER SCENE (treat each block as feedback for that scene; remember most comments are visual and require NO audio change):\n${lines}`;
 }
 
+export type AudioDirectionBriefContext = {
+  brandStyle?: string;
+  productDescription?: string;
+};
+
 function renderAudioDirectionUserPrompt(
   storyboard: Storyboard,
   blueprint: FilmBlueprint,
   tracks: AudioTrackToggles,
   feedback?: AudioDirectionFeedback,
+  briefContext?: AudioDirectionBriefContext,
 ): string {
   const totalSec = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
   const rhythm = blueprint.filmRhythm;
@@ -3713,6 +3789,10 @@ VISUAL IDENTITY:
   signatureMove:  ${blueprint.visualIdentity.signatureMove}
   language:       ${blueprint.visualIdentity.language}
 
+BRAND VOICE:
+  brand_style:         ${briefContext?.brandStyle?.trim() || "(none provided)"}
+  product_description: ${briefContext?.productDescription?.trim() || "(none provided)"}
+
 FILM RHYTHM:
   cadenceMode:    ${rhythm.cadenceMode}
   climax:         s${rhythm.climaxIndex + 1}
@@ -3744,8 +3824,15 @@ export async function generateAudioDirection(
   blueprint: FilmBlueprint,
   tracks: AudioTrackToggles,
   feedback?: AudioDirectionFeedback,
+  briefContext?: AudioDirectionBriefContext,
 ): Promise<AudioPlan> {
-  const userText = renderAudioDirectionUserPrompt(storyboard, blueprint, tracks, feedback);
+  const userText = renderAudioDirectionUserPrompt(
+    storyboard,
+    blueprint,
+    tracks,
+    feedback,
+    briefContext,
+  );
 
   // Refinement mode appends an addendum to the cached base prompt. Keeping
   // the base as its own cache-controlled block means first-run cache hits
@@ -3800,8 +3887,76 @@ export async function generateAudioDirection(
   // (The schema can't enforce these constraints — see comment on
   // AUDIO_DIRECTION_SCHEMA.)
   const validSceneIds = new Set(storyboard.scenes.map((_, i) => `s${i + 1}`));
-  const voiceoversRaw = (parsed.voiceovers ?? [])
+  const voiceoversRawUnnormalized = (parsed.voiceovers ?? [])
     .filter((v) => validSceneIds.has(v.sceneId) && typeof v.text === "string" && v.text.trim().length > 0);
+
+  // voiceId normalization — drop IDs not in VOICE_CATALOG (the LLM can
+  // hallucinate plausible-looking 20-char strings) and collapse to ONE voice
+  // for the whole film. Pick the most-frequently-chosen catalog voice across
+  // emitted entries; ties go to first-seen. Entries with no/unknown voiceId
+  // adopt the chosen one. When nothing valid was emitted, leave voiceId
+  // undefined and let elevenlabs-tts fall through to ELEVENLABS_DEFAULT_VOICE_ID.
+  const voiceIdCounts = new Map<string, number>();
+  const voiceIdOrder: string[] = [];
+  let droppedUnknownVoiceIds = 0;
+  for (const v of voiceoversRawUnnormalized) {
+    if (!v.voiceId) continue;
+    if (!VOICE_CATALOG_IDS.has(v.voiceId)) {
+      droppedUnknownVoiceIds++;
+      continue;
+    }
+    if (!voiceIdCounts.has(v.voiceId)) voiceIdOrder.push(v.voiceId);
+    voiceIdCounts.set(v.voiceId, (voiceIdCounts.get(v.voiceId) ?? 0) + 1);
+  }
+  let filmVoiceId: string | undefined;
+  for (const id of voiceIdOrder) {
+    if (!filmVoiceId || (voiceIdCounts.get(id) ?? 0) > (voiceIdCounts.get(filmVoiceId) ?? 0)) {
+      filmVoiceId = id;
+    }
+  }
+  if (droppedUnknownVoiceIds > 0) {
+    console.warn(
+      `[hyperframes audio] dropped ${droppedUnknownVoiceIds} voiceId(s) not in VOICE_CATALOG; ` +
+        `film voice = ${filmVoiceId ?? "(env default)"}`,
+    );
+  }
+  // Per-entry TTS-control normalization. Each field is independent — invalid
+  // ones are dropped (leave undefined) and the resolver falls back to
+  // DELIVERY_SETTINGS[deliveryHint]. startOffsetSeconds is clamped to leave
+  // ≥0.2s of scene runway so the VO can finish before the scene ends.
+  const sceneDurBySceneId = new Map<string, number>(
+    storyboard.scenes.map((s, i) => [`s${i + 1}`, s.durationSeconds]),
+  );
+  const clamp01 = (n: unknown): number | undefined => {
+    if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+    return Math.max(0, Math.min(1, n));
+  };
+  const voiceoversRaw = voiceoversRawUnnormalized.map((v) => {
+    const dur = sceneDurBySceneId.get(v.sceneId) ?? 0;
+    const rawOffset =
+      typeof v.startOffsetSeconds === "number" && Number.isFinite(v.startOffsetSeconds)
+        ? v.startOffsetSeconds
+        : undefined;
+    const offset =
+      rawOffset !== undefined
+        ? Math.max(0, Math.min(rawOffset, Math.max(0, dur - 0.2)))
+        : undefined;
+    const modelId =
+      typeof v.modelId === "string" && TTS_MODEL_IDS.has(v.modelId)
+        ? (v.modelId as TtsModelId)
+        : undefined;
+    return {
+      ...v,
+      voiceId: filmVoiceId ?? undefined,
+      modelId,
+      stability: clamp01(v.stability),
+      similarityBoost: clamp01(v.similarityBoost),
+      style: clamp01(v.style),
+      useSpeakerBoost:
+        typeof v.useSpeakerBoost === "boolean" ? v.useSpeakerBoost : undefined,
+      startOffsetSeconds: offset,
+    };
+  });
   const sfxCuesRaw = (parsed.sfxCues ?? [])
     .filter(
       (c) =>
@@ -3835,10 +3990,26 @@ export async function generateAudioDirection(
   const sfxCues = tracks.sfx ? sfxCuesRaw : [];
   const bgMusicVolumeOverrides = tracks.music ? bgMusicVolumeOverridesRaw : [];
 
+  // Settings summary: model used (most-common across emitted entries) and
+  // the stability range so we can spot the LLM ignoring per-scene tuning.
+  const modelCounts = new Map<string, number>();
+  const stabilityValues: number[] = [];
+  for (const v of voiceovers) {
+    if (v.modelId) modelCounts.set(v.modelId, (modelCounts.get(v.modelId) ?? 0) + 1);
+    if (typeof v.stability === "number") stabilityValues.push(v.stability);
+  }
+  const dominantModel =
+    Array.from(modelCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "default";
+  const stabilityRange =
+    stabilityValues.length > 0
+      ? `${Math.min(...stabilityValues).toFixed(2)}/${Math.max(...stabilityValues).toFixed(2)}`
+      : "default";
+
   console.log(
     `[hyperframes audio]${feedback ? " (refine)" : ""} tracks=[vo:${tracks.voiceover ? "on" : "off"}, music:${tracks.music ? "on" : "off"}, sfx:${tracks.sfx ? "on" : "off"}] ` +
       `bgMusic=${bgMusic ? `"${bgMusic.jamendoQuery}" (${bgMusic.energyHint})` : "none"}, ` +
-      `voiceovers=${voiceovers.length}/${storyboard.scenes.length} scenes, ` +
+      `voiceovers=${voiceovers.length}/${storyboard.scenes.length} scenes${filmVoiceId ? ` (voice=${filmVoiceId})` : " (voice=default)"} ` +
+      `model=${dominantModel} stability(min/max)=${stabilityRange}, ` +
       `sfx=${sfxCues.length} cues, overrides=${bgMusicVolumeOverrides.length}, ` +
       `input=${response.usage.input_tokens} output=${response.usage.output_tokens}`,
   );

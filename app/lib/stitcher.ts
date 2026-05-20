@@ -67,7 +67,7 @@ function buildFilterComplex(
   shots: ShotRow[],
   durations: number[],
   continuity: unknown,
-): { filter: string; totalDuration: number } {
+): { filter: string; totalDuration: number; shotStarts: number[] } {
   const mult = aggressivenessMultiplier(continuity);
 
   // Per-clip normalization stage. Trim is clamped to the actual file length
@@ -79,9 +79,11 @@ function buildFilterComplex(
     );
   });
 
+  const shotStarts: number[] = new Array(shots.length).fill(0);
+
   if (shots.length === 1) {
     filters.push(`[v0]null[vout]`);
-    return { filter: filters.join(";"), totalDuration: durations[0]! };
+    return { filter: filters.join(";"), totalDuration: durations[0]!, shotStarts };
   }
 
   let prev = "[v0]";
@@ -96,6 +98,8 @@ function buildFilterComplex(
       Math.min(recipe.baseDuration * mult, safeMax),
     );
     const offset = Math.max(0, cum - d);
+    // Visible start of shot i in the output = moment the xfade into it begins.
+    shotStarts[i] = offset;
     const tag = i === shots.length - 1 ? "[vout]" : `[vx${i}]`;
     filters.push(
       `${prev}[v${i}]xfade=transition=${recipe.transition}:duration=${d.toFixed(3)}:offset=${offset.toFixed(3)}${tag}`,
@@ -104,7 +108,7 @@ function buildFilterComplex(
     cum = cum - d + durations[i]!;
   }
 
-  return { filter: filters.join(";"), totalDuration: cum };
+  return { filter: filters.join(";"), totalDuration: cum, shotStarts };
 }
 
 function probeDuration(filePath: string): Promise<number> {
@@ -217,6 +221,113 @@ async function bumpBucketLimitForVideo(): Promise<void> {
   }
 }
 
+type AudioInput = {
+  localPath: string;
+  delayMs: number;
+  volume: number;
+  loop: boolean;
+  trimSeconds: number | null;
+  label: string;
+};
+
+type AudioCollectStats = { voiceover: number; music: number; sfx: number };
+
+type SfxCue = { url?: unknown; momentSec?: unknown; volume?: unknown };
+
+async function collectAudioInputs(
+  job: JobRow,
+  shots: ShotRow[],
+  shotStarts: number[],
+  totalDuration: number,
+  tmpDir: string,
+): Promise<{ inputs: AudioInput[]; stats: AudioCollectStats }> {
+  const inputs: AudioInput[] = [];
+  const stats: AudioCollectStats = { voiceover: 0, music: 0, sfx: 0 };
+
+  // 1. Voiceover per shot.
+  if (job.audio_voiceover_enabled === true) {
+    for (let i = 0; i < shots.length; i++) {
+      const url = shots[i]!.voiceover_url;
+      if (!url) continue;
+      const local = path.join(tmpDir, `vo-${String(i).padStart(3, "0")}.mp3`);
+      try {
+        await downloadToFile(url, local);
+        inputs.push({
+          localPath: local,
+          delayMs: Math.max(0, Math.round(shotStarts[i]! * 1000)),
+          volume: 0.95,
+          loop: false,
+          trimSeconds: null,
+          label: `vo-${i}`,
+        });
+        stats.voiceover++;
+      } catch (err) {
+        console.warn(
+          `[stitch] voiceover download failed for shot ${i}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+  }
+  const anyVoiceover = stats.voiceover > 0;
+
+  // 2. Background music (job-level, looped to fill totalDuration).
+  if (job.audio_music_enabled === true && job.music_url) {
+    const local = path.join(tmpDir, "bgm.mp3");
+    try {
+      await downloadToFile(job.music_url, local);
+      inputs.push({
+        localPath: local,
+        delayMs: 0,
+        volume: anyVoiceover ? 0.22 : 0.45,
+        loop: true,
+        trimSeconds: totalDuration,
+        label: "bgm",
+      });
+      stats.music = 1;
+    } catch (err) {
+      console.warn(
+        `[stitch] background music download failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  // 3. SFX cues per shot (each cue is a one-shot at shotStart + momentSec).
+  if (job.audio_sfx_enabled === true) {
+    for (let i = 0; i < shots.length; i++) {
+      const cuesRaw = shots[i]!.sfx_cues;
+      const cues: SfxCue[] = Array.isArray(cuesRaw) ? (cuesRaw as SfxCue[]) : [];
+      for (let j = 0; j < cues.length; j++) {
+        const cue = cues[j];
+        const url = typeof cue?.url === "string" ? cue.url : null;
+        if (!url) continue;
+        const moment = Number(cue?.momentSec);
+        const safeMoment = Number.isFinite(moment) && moment >= 0 ? moment : 0;
+        const rawVol = Number(cue?.volume);
+        const volume = Number.isFinite(rawVol) && rawVol > 0 ? rawVol : 0.55;
+        const local = path.join(tmpDir, `sfx-${String(i).padStart(3, "0")}-${j}.mp3`);
+        try {
+          await downloadToFile(url, local);
+          inputs.push({
+            localPath: local,
+            delayMs: Math.max(0, Math.round((shotStarts[i]! + safeMoment) * 1000)),
+            volume,
+            loop: false,
+            trimSeconds: null,
+            label: `sfx-${i}-${j}`,
+          });
+          stats.sfx++;
+        } catch (err) {
+          console.warn(
+            `[stitch] sfx download failed for shot ${i} cue ${j}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+    }
+  }
+
+  return { inputs, stats };
+}
+
 export async function stitchJobFinal(jobId: string): Promise<void> {
   const result = await getJob(jobId);
   if (!result) {
@@ -274,44 +385,105 @@ export async function stitchJobFinal(jobId: string): Promise<void> {
     );
 
     // 2. Filter graph
-    const { filter, totalDuration } = buildFilterComplex(ordered, effective, job.continuity);
-    const outPath = path.join(tmp, "final.mp4");
-
-    const args: string[] = ["-y"];
-    for (let i = 0; i < ordered.length; i++) {
-      args.push("-i", path.join(tmp, `${String(i).padStart(3, "0")}.mp4`));
-    }
-    args.push(
-      "-f",
-      "lavfi",
-      "-i",
-      "anullsrc=channel_layout=stereo:sample_rate=48000",
-      "-filter_complex",
-      filter,
-      "-map",
-      "[vout]",
-      "-map",
-      `${ordered.length}:a`,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "medium",
-      "-crf",
-      "20",
-      "-pix_fmt",
-      "yuv420p",
-      "-r",
-      "30",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-shortest",
-      "-movflags",
-      "+faststart",
-      outPath,
+    const { filter: vFilter, totalDuration, shotStarts } = buildFilterComplex(
+      ordered,
+      effective,
+      job.continuity,
     );
 
+    // 2b. Pull every enabled audio source (voiceover per shot, background
+    // music, SFX cues) and stage them in the same tmp dir.
+    const { inputs: audioInputs, stats: audioStats } = await collectAudioInputs(
+      job,
+      ordered,
+      shotStarts,
+      totalDuration,
+      tmp,
+    );
+
+    const outPath = path.join(tmp, "final.mp4");
+    const videoInputCount = ordered.length;
+
+    const args: string[] = ["-y"];
+    for (let i = 0; i < videoInputCount; i++) {
+      args.push("-i", path.join(tmp, `${String(i).padStart(3, "0")}.mp4`));
+    }
+
+    if (audioInputs.length === 0) {
+      // Fallback: no enabled audio. Keep historical silent-stereo behavior.
+      args.push(
+        "-f", "lavfi",
+        "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+        "-filter_complex", vFilter,
+        "-map", "[vout]",
+        "-map", `${videoInputCount}:a`,
+      );
+    } else {
+      // Real audio. Each input is normalized to 48k stereo, optionally trimmed
+      // (looped bgm), delayed to its timeline position, then volume-scaled.
+      for (const inp of audioInputs) {
+        if (inp.loop) {
+          args.push("-stream_loop", "-1", "-i", inp.localPath);
+        } else {
+          args.push("-i", inp.localPath);
+        }
+      }
+
+      const audioFilters: string[] = [];
+      audioInputs.forEach((inp, k) => {
+        const inputIdx = videoInputCount + k;
+        const parts: string[] = [
+          `[${inputIdx}:a]aresample=48000`,
+          `aformat=channel_layouts=stereo`,
+        ];
+        if (inp.trimSeconds != null) {
+          parts.push(`atrim=0:${inp.trimSeconds.toFixed(3)}`);
+          parts.push(`asetpts=PTS-STARTPTS`);
+        }
+        if (inp.delayMs > 0) {
+          parts.push(`adelay=${inp.delayMs}|${inp.delayMs}`);
+        }
+        parts.push(`volume=${inp.volume.toFixed(3)}`);
+        audioFilters.push(`${parts.join(",")}[a${k}]`);
+      });
+
+      const mixLabels = audioInputs.map((_, k) => `[a${k}]`).join("");
+      // normalize=0 — amix's default normalizer divides every input by K,
+      // which makes a multi-source mix barely audible. Volumes are already
+      // balanced per source above.
+      audioFilters.push(
+        `${mixLabels}amix=inputs=${audioInputs.length}:duration=longest:dropout_transition=0:normalize=0[aout]`,
+      );
+
+      const combined = [vFilter, ...audioFilters].join(";");
+      args.push(
+        "-filter_complex", combined,
+        "-map", "[vout]",
+        "-map", "[aout]",
+      );
+    }
+
+    args.push(
+      "-c:v", "libx264",
+      "-preset", "medium",
+      "-crf", "20",
+      "-pix_fmt", "yuv420p",
+      "-r", "30",
+      "-c:a", "aac",
+      "-b:a", "128k",
+    );
+    if (audioInputs.length === 0) {
+      args.push("-shortest");
+    } else {
+      // Bound output to video duration. Looped bgm produces an infinite stream
+      // until atrim cuts it; explicit -t is the safer cap.
+      args.push("-t", totalDuration.toFixed(3));
+    }
+    args.push("-movflags", "+faststart", outPath);
+
+    console.log(
+      `[stitch ${jobId}] mixing ${audioInputs.length} audio source${audioInputs.length === 1 ? "" : "s"}: ${audioStats.voiceover} voiceover, ${audioStats.music} music, ${audioStats.sfx} sfx`,
+    );
     console.log(
       `[stitch ${jobId}] ffmpeg ${ordered.length} clips → ${outPath} (est ${totalDuration.toFixed(2)}s)`,
     );

@@ -1040,7 +1040,10 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
     await setJobStatus(jobId, { status: "audio_direction" });
     try {
       const audioPlan: AudioPlan = await timed(jobId, "audio_direction_plan", () =>
-        generateAudioDirection(storyboard, blueprintWithAssets, tracks),
+        generateAudioDirection(storyboard, blueprintWithAssets, tracks, undefined, {
+          brandStyle: job.brand_style ?? undefined,
+          productDescription: job.product_description ?? undefined,
+        }),
       );
       resolvedAudio = await timed(jobId, "audio_direction_resolve", () =>
         resolveAudioPlan({ jobId, plan: audioPlan, totalFilmSeconds, tracks }),
@@ -1467,26 +1470,35 @@ export async function improveScenesFromComments(jobId: string): Promise<void> {
         comments: r.feedbackText,
       }));
       refreshedAudioPlan = await timed(jobId, "audio_redirect_plan", () =>
-        generateAudioDirection(storyboard, blueprint, improveTracks, {
-          previousPlan: audioDirection.plan,
-          previousResolved: {
-            bgMusic: audioDirection.resolved.bgMusic,
-            voiceovers: audioDirection.resolved.voiceovers.map((v) => ({
-              sceneId: v.sceneId,
-              text: v.text,
-              delivery: v.delivery,
-              publicUrl: v.publicUrl,
-            })),
-            sfxCues: audioDirection.resolved.sfxCues.map((c) => ({
-              sceneId: c.sceneId,
-              momentSeconds: c.momentSeconds,
-              kind: c.kind,
-              name: c.name,
-              url: c.url,
-            })),
+        generateAudioDirection(
+          storyboard,
+          blueprint,
+          improveTracks,
+          {
+            previousPlan: audioDirection.plan,
+            previousResolved: {
+              bgMusic: audioDirection.resolved.bgMusic,
+              voiceovers: audioDirection.resolved.voiceovers.map((v) => ({
+                sceneId: v.sceneId,
+                text: v.text,
+                delivery: v.delivery,
+                publicUrl: v.publicUrl,
+              })),
+              sfxCues: audioDirection.resolved.sfxCues.map((c) => ({
+                sceneId: c.sceneId,
+                momentSeconds: c.momentSeconds,
+                kind: c.kind,
+                name: c.name,
+                url: c.url,
+              })),
+            },
+            commentsByScene,
           },
-          commentsByScene,
-        }),
+          {
+            brandStyle: job.brand_style ?? undefined,
+            productDescription: job.product_description ?? undefined,
+          },
+        ),
       );
       refreshedAudio = await timed(jobId, "audio_redirect_resolve", () =>
         resolveAudioPlan({
