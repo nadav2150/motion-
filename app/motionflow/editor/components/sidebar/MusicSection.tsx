@@ -2,6 +2,7 @@ import { IconMusic, Switch } from "../../../primitives";
 import { MusicPicker, type CurrentMusic } from "../../../MusicPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
+import { PlanLockedBadge } from "./PlanLockedBadge";
 
 // audio_direction column holds { plan, resolved } when the auto-audio
 // pipeline ran on this job. We use resolved.bgMusic.trackId to detect
@@ -23,6 +24,8 @@ export const MusicSection = ({
   enabled,
   onEnabledChange,
   locked,
+  planLocked = false,
+  onUpsell,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -34,6 +37,8 @@ export const MusicSection = ({
   enabled: boolean;
   onEnabledChange: (next: boolean) => void;
   locked: boolean;
+  planLocked?: boolean;
+  onUpsell?: () => void;
 }) => {
   const autoTrackId = getAutoBgTrackId(job);
   const isAuto = !!autoTrackId && job?.music_track_id === autoTrackId;
@@ -47,16 +52,20 @@ export const MusicSection = ({
   return (
   <AccordionSection
     label="MUSIC"
-    badge={isAuto ? `✨ ${titleText}` : titleText}
+    badge={planLocked ? "PRO" : isAuto ? `✨ ${titleText}` : titleText}
     open={open}
     onToggle={onToggle}
     headerControl={
-      <Switch
-        checked={enabled}
-        onChange={onEnabledChange}
-        disabled={locked}
-        label="Enable background music for next generation"
-      />
+      planLocked ? (
+        <PlanLockedBadge onClick={onUpsell} />
+      ) : (
+        <Switch
+          checked={enabled}
+          onChange={onEnabledChange}
+          disabled={locked}
+          label="Enable background music for next generation"
+        />
+      )
     }
   >
     {jobId ? (

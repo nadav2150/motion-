@@ -31,7 +31,13 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
-export const SettingsScreen = ({ onNav }: { onNav?: (k: NavKey) => void }) => {
+export const SettingsScreen = ({
+  onNav,
+  credits,
+}: {
+  onNav?: (k: NavKey) => void;
+  credits?: number | null;
+}) => {
   const [section, setSection] = useState("workspace");
   const sections = [
     { k: "workspace", t: "Workspace" },
@@ -47,6 +53,7 @@ export const SettingsScreen = ({ onNav }: { onNav?: (k: NavKey) => void }) => {
       active="settings"
       onNav={onNav}
       project="Settings"
+      credits={credits}
       right={<Button variant="primary" size="sm">Save changes</Button>}
     >
       <div className="mf-bg-bloom"/>

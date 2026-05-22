@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconMic, IconPause, IconPlay, Switch } from "../../../primitives";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { ShotRow } from "../../types";
+import { PlanLockedBadge } from "./PlanLockedBadge";
 
 // Per-scene voiceover viewer. Reads each shot's voiceover_url + voiceover_text
 // (written by the auto-audio pipeline in app/lib/jobs.ts:persistResolvedAudio)
@@ -20,6 +21,8 @@ export const VoiceoverSection = ({
   enabled,
   onEnabledChange,
   locked,
+  planLocked = false,
+  onUpsell,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -27,6 +30,10 @@ export const VoiceoverSection = ({
   enabled: boolean;
   onEnabledChange: (next: boolean) => void;
   locked: boolean;
+  // True when the current plan does not include audio. Replaces the
+  // enable-switch with a crown badge that fires `onUpsell` on click.
+  planLocked?: boolean;
+  onUpsell?: () => void;
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingShotId, setPlayingShotId] = useState<string | null>(null);
@@ -64,16 +71,28 @@ export const VoiceoverSection = ({
   return (
     <AccordionSection
       label="VOICEOVER"
-      badge={count > 0 ? `✨ ${count}/${shots.length}` : enabled ? "ON" : "OFF"}
+      badge={
+        planLocked
+          ? "PRO"
+          : count > 0
+            ? `✨ ${count}/${shots.length}`
+            : enabled
+              ? "ON"
+              : "OFF"
+      }
       open={open}
       onToggle={onToggle}
       headerControl={
-        <Switch
-          checked={enabled}
-          onChange={onEnabledChange}
-          disabled={locked}
-          label="Enable voiceover for next generation"
-        />
+        planLocked ? (
+          <PlanLockedBadge onClick={onUpsell} />
+        ) : (
+          <Switch
+            checked={enabled}
+            onChange={onEnabledChange}
+            disabled={locked}
+            label="Enable voiceover for next generation"
+          />
+        )
       }
     >
       <audio ref={audioRef} onEnded={() => setPlayingShotId(null)} preload="none" />

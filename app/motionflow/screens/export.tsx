@@ -82,11 +82,13 @@ export const ExportScreen = ({
   onNav,
   onNewProject,
   onBackToEditor,
+  credits,
 }: {
   jobId?: string | null;
   onNav?: (k: NavKey) => void;
   onNewProject?: () => void;
   onBackToEditor?: () => void;
+  credits?: number | null;
 }) => {
   const f = useFrame();
   const [job, setJob] = useState<JobRow | null>(null);
@@ -172,6 +174,7 @@ export const ExportScreen = ({
         active="export"
         onNav={onNav}
         project="No job selected"
+        credits={credits}
         right={<Button variant="ghost" size="sm" onClick={onNewProject}>New project</Button>}
       >
         <div className="mf-bg-bloom" />
@@ -202,6 +205,7 @@ export const ExportScreen = ({
       active="export"
       onNav={onNav}
       project={job?.title ?? "Untitled launch"}
+      credits={credits}
       right={
         <>
           <FinalStatusPill status={finalStatus} />

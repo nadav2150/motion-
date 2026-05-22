@@ -135,7 +135,18 @@
       "Bash(echo \"exit=$?\")",
       "mcp__paddle-live__execute",
       "PowerShell($tmp = \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\\\\.design-fetch\\\\motionflow-pricing.zip\"; $bytes = [System.IO.File]::ReadAllBytes\\($tmp\\); [System.Text.Encoding]::ASCII.GetString\\($bytes[0..200]\\) -replace \"[^\\\\x20-\\\\x7E]\", \".\"; \"---ustar_at_offset_257:\"; [System.Text.Encoding]::ASCII.GetString\\($bytes[257..262]\\))",
-      "PowerShell(Rename-Item *)"
+      "PowerShell(Rename-Item *)",
+      "Bash(git reset *)",
+      "Bash(git restore *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(findstr *)",
+      "Bash(exist \".env\" type .env)",
+      "Bash(exist \".env.local\" type .env.local)",
+      "Bash(gzip -dc \"C:/Users/User/.claude/projects/C--Users-User-Desktop-motionglass/b4034fbd-c05b-4d57-b43f-16a97dbef6d1/tool-results/webfetch-1779370849801-in8keu.bin\")",
+      "Bash(mkdir -p /tmp/mf-design)",
+      "Bash(tar -xzf \"C:/Users/User/.claude/projects/C--Users-User-Desktop-motionglass/b4034fbd-c05b-4d57-b43f-16a97dbef6d1/tool-results/webfetch-1779370849801-in8keu.bin\" -C /tmp/mf-design)"
     ]
   },
   "enabledPlugins": {

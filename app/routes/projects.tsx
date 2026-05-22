@@ -4,6 +4,7 @@ import { ProjectsScreen, type ProjectCard } from "../motionflow/screens/projects
 import type { NavKey } from "../motionflow/primitives";
 import { requireUserOrRedirect } from "../lib/auth";
 import { listProjectsForUser, type ProjectSummary } from "../lib/jobs";
+import { loadCreditsForUI } from "../lib/billing/loader";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Projects — MotionFlow AI" }];
@@ -18,6 +19,8 @@ const navPath: Record<NavKey, string> = {
 type LoaderData = {
   authed: boolean;
   projects: ProjectCard[];
+  credits: number | null;
+  planTier: string | null;
   debug?: {
     userId: string | null;
     email: string | null;
@@ -106,6 +109,7 @@ function relativeTime(iso: string): string {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { user, headers } = await requireUserOrRedirect(request);
+  const { credits, planTier } = await loadCreditsForUI(user.id);
   try {
     const summaries = await listProjectsForUser(user.id);
     console.log(
@@ -115,6 +119,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       {
         authed: true,
         projects: summaries.map(toCard),
+        credits,
+        planTier,
         debug: {
           userId: user.id,
           email: user.email,
@@ -131,6 +137,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       {
         authed: true,
         projects: [],
+        credits,
+        planTier,
         debug: {
           userId: user.id,
           email: user.email,
@@ -146,11 +154,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 export default function ProjectsRoute() {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const { authed, projects, debug } = useLoaderData() as LoaderData;
+  const { authed, projects, credits, debug } = useLoaderData() as LoaderData;
   return (
     <ProjectsScreen
       authed={authed}
       projects={projects}
+      credits={credits}
       debug={debug}
       onNav={(k) => navigate(navPath[k])}
       onOpenProject={(id, target) => {

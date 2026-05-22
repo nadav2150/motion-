@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   AppChrome,
   Button,
@@ -14,6 +15,9 @@ import {
   useFrame,
   type NavKey,
 } from "../primitives";
+import { PaywallModal, type PaywallTrigger } from "../PaywallModal";
+import { estimateJobCostBreakdown } from "../../lib/billing/estimate";
+import { getPlanFeatures } from "../../lib/billing/plan-features";
 import type { JobStatus } from "../editor/types";
 import { TERMINAL, inputStyle } from "../editor/constants";
 import {
@@ -38,16 +42,32 @@ import { VoiceoverSection } from "../editor/components/sidebar/VoiceoverSection"
 import { CinemaPreviewPane } from "../editor/components/preview/CinemaPreviewPane";
 import { ClockDebugOverlay } from "../editor/components/ClockDebugOverlay";
 
+// Cheap line-based scene estimate, clamped to plan max. Pure UI heuristic
+// for the live cost preview — the real director picks the actual count, so
+// under-estimating here is safe (the server still reserves against the
+// worst case via MAX_SHOTS in estimate.ts).
+function guessSceneCount(script: string, maxScenes: number): number {
+  const parts = script
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean).length;
+  return Math.max(1, Math.min(maxScenes, parts || 1));
+}
+
 export const EditorScreen = ({
   onNav,
   onContinue,
   empty = false,
   initialJobId,
+  credits,
+  planTier,
 }: {
   onNav?: (k: NavKey) => void;
   onContinue?: (jobId?: string | null) => void;
   empty?: boolean;
   initialJobId?: string | null;
+  credits?: number | null;
+  planTier?: string | null;
 }) => {
   const f = useFrame();
 
@@ -226,12 +246,52 @@ export const EditorScreen = ({
   // seeks `time`) updates the visible scene without depending on selection.
   const previewShotInline = currentShot;
 
+  const navigate = useNavigate();
+
+  // Plan-driven UI gating. Free plan has audio: false → all three audio
+  // toggles render as crowns instead of switches.
+  const planFeatures = useMemo(() => getPlanFeatures(planTier ?? null), [planTier]);
+
+  // Live cost estimate — recomputes as the user types or flips toggles.
+  // sceneCountGuess is a cheap heuristic for the preview number; the server
+  // still reserves against MAX_SHOTS, so under-estimating here is safe.
+  const estimate = useMemo(() => {
+    const sceneCountGuess = guessSceneCount(script, planFeatures.maxScenes);
+    return estimateJobCostBreakdown({
+      sceneCountGuess,
+      video: false,
+      // If the plan blocks audio we never include audio costs in the preview,
+      // even if the toggle state was carried over from a higher-tier session.
+      audioVoiceover: planFeatures.audio && audioTracks.voiceover,
+      audioMusic:     planFeatures.audio && audioTracks.music,
+      audioSfx:       planFeatures.audio && audioTracks.sfx,
+    });
+  }, [script, planFeatures.maxScenes, planFeatures.audio, audioTracks]);
+
+  const insufficientCredits =
+    typeof credits === "number" && credits < estimate.total;
+
+  const [paywall, setPaywall] = useState<PaywallTrigger | null>(null);
+
+  // Wraps handleGenerate so the paywall fires instead of the API when the
+  // user doesn't have enough credits. Plan-locked toggles are blocked at
+  // the section level (their switch is replaced with a crown), so we don't
+  // need to re-check audio gating here.
+  const handlePrimaryAction = () => {
+    if (insufficientCredits) {
+      setPaywall("insufficient_credits");
+      return;
+    }
+    handleGenerate();
+  };
+
   return (
     <>
     <AppChrome
       active="editor"
       onNav={onNav}
       project={job?.title ?? "Untitled launch"}
+      credits={credits}
       right={
         <>
           {showStoryboard ? (
@@ -240,7 +300,7 @@ export const EditorScreen = ({
               {directDurationLabel && (
                 <span
                   className="mf-mono"
-                  title="Time from clicking Direct storyboard until scenes were ready"
+                  title="Time from clicking Bring it to life until scenes were ready"
                   style={{
                     fontSize: 10,
                     letterSpacing: "0.08em",
@@ -492,6 +552,8 @@ export const EditorScreen = ({
               enabled={audioTracks.voiceover}
               onEnabledChange={(v) => setAudioTrack("voiceover", v)}
               locked={audioLocked}
+              planLocked={!planFeatures.audio}
+              onUpsell={() => setPaywall("audio_locked")}
             />
 
             <MusicSection
@@ -505,6 +567,8 @@ export const EditorScreen = ({
               enabled={audioTracks.music}
               onEnabledChange={(v) => setAudioTrack("music", v)}
               locked={audioLocked}
+              planLocked={!planFeatures.audio}
+              onUpsell={() => setPaywall("audio_locked")}
             />
 
             <SfxSection
@@ -517,6 +581,8 @@ export const EditorScreen = ({
               enabled={audioTracks.sfx}
               onEnabledChange={(v) => setAudioTrack("sfx", v)}
               locked={audioLocked}
+              planLocked={!planFeatures.audio}
+              onUpsell={() => setPaywall("audio_locked")}
             />
 
             <AssetsSection
@@ -555,13 +621,14 @@ export const EditorScreen = ({
           </div>
 
           <button
-            onClick={handleGenerate}
+            onClick={handlePrimaryAction}
             disabled={!script.trim() || generating}
             style={{
               padding: "10px 14px", borderRadius: 10,
               border: "1px solid rgba(167,139,250,0.45)",
               background: "linear-gradient(135deg, #7AA2FF 0%, #A78BFA 55%, #67E8F9 100%)",
-              color: "#0B0C10", fontSize: 12.5, fontWeight: 600, letterSpacing: "-0.005em",
+              color: "#0B0C10", fontSize: 12.5, fontWeight: 600,
+              letterSpacing: "0.08em", textTransform: "uppercase",
               fontFamily: "inherit",
               cursor: !script.trim() || generating ? "not-allowed" : "pointer",
               opacity: !script.trim() || generating ? 0.65 : 1,
@@ -569,7 +636,7 @@ export const EditorScreen = ({
               boxShadow: "0 4px 14px rgba(122,162,255,0.30), inset 0 1px 0 rgba(255,255,255,0.18)",
             }}
           >
-            {generating ? (
+            {generating && (
               <span
                 style={{
                   width: 12, height: 12, borderRadius: "50%",
@@ -578,11 +645,40 @@ export const EditorScreen = ({
                   animation: "mf-spin-slow 0.6s linear infinite",
                 }}
               />
-            ) : (
-              <IconWand size={12}/>
             )}
-            {generating ? "Creating job…" : "Direct storyboard"}
+            {generating
+              ? "Bringing it to life…"
+              : insufficientCredits
+                ? "Get more credits"
+                : "Bring it to life"}
           </button>
+
+          {!generating && (
+            <div
+              className="mf-mono"
+              style={{
+                marginTop: -2,
+                fontSize: 10.5,
+                letterSpacing: "0.06em",
+                textAlign: "center",
+                color: insufficientCredits ? "#FCA5A5" : "var(--ink-3)",
+              }}
+              title={
+                `Worst-case estimate: ${estimate.scenes} scene${estimate.scenes === 1 ? "" : "s"}` +
+                ` (${estimate.jobBase + estimate.base} base` +
+                (estimate.voiceover ? ` + ${estimate.voiceover} voiceover` : "") +
+                (estimate.music ? ` + ${estimate.music} music` : "") +
+                (estimate.sfx ? ` + ${estimate.sfx} sfx` : "") +
+                `). Unused credits are refunded after generation.`
+              }
+            >
+              {insufficientCredits ? "NEEDS " : "≈ "}
+              {estimate.total.toLocaleString()} CREDITS
+              {typeof credits === "number" && (
+                <> · BALANCE {credits.toLocaleString()}</>
+              )}
+            </div>
+          )}
 
           {error && (
             <div
@@ -709,6 +805,14 @@ export const EditorScreen = ({
       audioRef={audioRef}
       sfxRef={sfxRef}
       voRef={voRef}
+    />
+    <PaywallModal
+      open={paywall !== null}
+      trigger={paywall ?? "generate"}
+      planTier={planTier}
+      onClose={() => setPaywall(null)}
+      onUpgrade={(tier) => navigate(`/checkout?plan=${tier}`)}
+      onSeePricing={() => navigate("/pricing")}
     />
     </>
   );

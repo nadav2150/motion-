@@ -3,6 +3,7 @@ import { IconPause, IconPlay, IconWave, Switch } from "../../../primitives";
 import { SfxPicker, type CurrentSfx } from "../../../SfxPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
+import { PlanLockedBadge } from "./PlanLockedBadge";
 
 // Per-scene SFX cue shape (as written by persistResolvedAudio in jobs.ts).
 type SfxCueRow = {
@@ -35,6 +36,8 @@ export const SfxSection = ({
   enabled,
   onEnabledChange,
   locked,
+  planLocked = false,
+  onUpsell,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -45,6 +48,8 @@ export const SfxSection = ({
   enabled: boolean;
   onEnabledChange: (next: boolean) => void;
   locked: boolean;
+  planLocked?: boolean;
+  onUpsell?: () => void;
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -110,16 +115,20 @@ export const SfxSection = ({
   return (
     <AccordionSection
       label="SFX"
-      badge={badge}
+      badge={planLocked ? "PRO" : badge}
       open={open}
       onToggle={onToggle}
       headerControl={
-        <Switch
-          checked={enabled}
-          onChange={onEnabledChange}
-          disabled={locked}
-          label="Enable per-scene SFX for next generation"
-        />
+        planLocked ? (
+          <PlanLockedBadge onClick={onUpsell} />
+        ) : (
+          <Switch
+            checked={enabled}
+            onChange={onEnabledChange}
+            disabled={locked}
+            label="Enable per-scene SFX for next generation"
+          />
+        )
       }
     >
       <audio ref={audioRef} onEnded={() => setPlayingKey(null)} preload="none" />

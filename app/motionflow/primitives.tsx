@@ -5,7 +5,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useRouteLoaderData } from "react-router";
+import { useNavigate, useRouteLoaderData } from "react-router";
 
 /* ───────── Icons (custom, minimal stroke) ───────── */
 type IconProps = {
@@ -449,12 +449,17 @@ export const AppChrome = ({
   project = "Untitled launch",
   children,
   right,
+  credits,
 }: {
   active?: string;
   onNav?: (k: NavKey) => void;
   project?: string;
   children?: ReactNode;
   right?: ReactNode;
+  // Live credit balance from user_billing.credits_balance. When provided,
+  // renders a CreditsPill at the start of the top-bar right cluster. Pass
+  // null while the balance is loading; omit entirely to hide the pill.
+  credits?: number | null;
 }) => (
   <div className="mf-app">
     <aside className="mf-side">
@@ -488,12 +493,38 @@ export const AppChrome = ({
           <IconChevron size={12} style={{ transform: "rotate(-90deg)", opacity: 0.4 }}/>
           <span>{project}</span>
         </div>
-        <div className="mf-topbar-right">{right}</div>
+        <div className="mf-topbar-right">
+          {typeof credits === "number" && <CreditsPill credits={credits} />}
+          {right}
+        </div>
       </header>
       <div className="mf-content">{children}</div>
     </main>
   </div>
 );
+
+export const CreditsPill = ({ credits }: { credits: number }) => {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() => navigate("/pricing")}
+      title="View plans & buy more credits"
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 7,
+        padding: "0 11px", height: 28, borderRadius: 8,
+        background: "rgba(122,162,255,0.06)",
+        border: "1px solid rgba(122,162,255,0.25)",
+        color: "var(--ink-1)", fontFamily: "inherit", fontSize: 12, fontWeight: 500,
+        cursor: "pointer",
+      }}
+    >
+      <IconSparkle size={11} style={{ color: "#7AA2FF" }} />
+      <span>
+        <strong style={{ color: "white" }}>{credits.toLocaleString()}</strong> credits
+      </span>
+    </button>
+  );
+};
 
 /* Striped image placeholder */
 export const Placeholder = ({

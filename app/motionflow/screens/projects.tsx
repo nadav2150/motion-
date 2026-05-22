@@ -38,6 +38,7 @@ export const ProjectsScreen = ({
   authed,
   projects,
   debug,
+  credits,
   onNav,
   onOpenProject,
   onNewProject,
@@ -52,6 +53,7 @@ export const ProjectsScreen = ({
     queryCount: number;
     error: string | null;
   };
+  credits?: number | null;
   onNav?: (k: NavKey) => void;
   onOpenProject?: (id: string, target: "editor" | "export") => void;
   onNewProject?: () => void;
@@ -93,6 +95,7 @@ export const ProjectsScreen = ({
       active="projects"
       onNav={onNav}
       project="Projects"
+      credits={credits}
       right={
         <>
           <div style={{ display: "flex", padding: 3, borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)" }}>

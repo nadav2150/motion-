@@ -96,7 +96,7 @@ export async function registerWithEmail(
   email: string,
   password: string,
   name?: string,
-): Promise<Session> {
+): Promise<Session & { userId: string }> {
   const trimmedEmail = email?.trim();
   if (!trimmedEmail) throw new AuthError("Email is required");
   if (!password || password.length < 8) {
@@ -104,18 +104,19 @@ export async function registerWithEmail(
   }
 
   const supabase = getSupabase();
-  const { error: createErr } = await supabase.auth.admin.createUser({
+  const { data: created, error: createErr } = await supabase.auth.admin.createUser({
     email: trimmedEmail,
     password,
     email_confirm: true,
     user_metadata: name ? { name } : undefined,
   });
-  if (createErr) {
+  if (createErr || !created.user) {
     // Supabase returns a friendly message for "User already registered"
-    throw new AuthError(createErr.message, 400);
+    throw new AuthError(createErr?.message ?? "Failed to create user", 400);
   }
 
-  return signInWithEmail(trimmedEmail, password);
+  const session = await signInWithEmail(trimmedEmail, password);
+  return { ...session, userId: created.user.id };
 }
 
 function parseCookies(header: string | null): Record<string, string> {
