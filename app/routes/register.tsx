@@ -3,6 +3,7 @@ import type { Route } from "./+types/register";
 import { RegisterScreen } from "../motionflow/screens/register";
 import { AuthError, registerWithEmail, setSessionCookies } from "../lib/auth";
 import { getOrCreateBilling, grantCredits } from "../lib/billing/credits";
+import { buildMeta } from "../lib/seo";
 
 // Free plan's monthly grant. Sized to exactly cover one worst-case 2-scene
 // Free generation (1,100 base + 2 × 1,000 per-scene = 3,100). After the
@@ -16,10 +17,12 @@ import { getOrCreateBilling, grantCredits } from "../lib/billing/credits";
 const SIGNUP_GRANT_CREDITS = 3_100;
 
 export function meta(_: Route.MetaArgs) {
-  return [
-    { title: "Create account — Videly AI" },
-    { name: "description", content: "Start free with Videly AI — no credit card required." },
-  ];
+  return buildMeta({
+    title: "Create account — Videly",
+    description: "Start free with Videly — no credit card required.",
+    path: "/register",
+    noIndex: true,
+  });
 }
 
 type ActionData = { error: string };

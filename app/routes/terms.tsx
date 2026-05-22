@@ -1,15 +1,15 @@
 import { useNavigate } from "react-router";
 import type { Route } from "./+types/terms";
 import { LegalScreen, P, UL, type LegalSection } from "../motionflow/screens/legal";
+import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
-  return [
-    { title: "Terms of Service — Videly AI" },
-    {
-      name: "description",
-      content: "The terms that govern your use of the Videly AI platform, billing, and AI-generated content.",
-    },
-  ];
+  return buildMeta({
+    title: "Terms of Service — Videly",
+    description:
+      "The terms that govern your use of the Videly platform, billing, and AI-generated launch and product videos.",
+    path: "/terms",
+  });
 }
 
 const LAST_UPDATED = "May 22, 2026";

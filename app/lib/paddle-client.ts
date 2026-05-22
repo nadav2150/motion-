@@ -6,13 +6,28 @@ import { initializePaddle, type Paddle } from "@paddle/paddle-js";
 
 let paddlePromise: Promise<Paddle | undefined> | null = null;
 
+function paddleEnv(): "live" | "sandbox" {
+  return (import.meta.env.VITE_PADDLE_ENV ?? "sandbox") === "live" ? "live" : "sandbox";
+}
+
+// Read a VITE_PADDLE-prefixed env var, picking VITE_PADDLE_LIVE_<NAME> when
+// VITE_PADDLE_ENV=live and VITE_PADDLE_SANDBOX_<NAME> otherwise.
+function readPaddleEnvVar(name: string): string | undefined {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const prefix = paddleEnv() === "live" ? "VITE_PADDLE_LIVE_" : "VITE_PADDLE_SANDBOX_";
+  return env[`${prefix}${name}`];
+}
+
 export function getPaddle(): Promise<Paddle | undefined> {
   if (typeof window === "undefined") return Promise.resolve(undefined);
   if (!paddlePromise) {
-    const environment = (import.meta.env.VITE_PADDLE_ENV ?? "sandbox") as "sandbox" | "production";
-    const token = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined;
+    const environment = paddleEnv() === "live" ? "production" : "sandbox";
+    const token = readPaddleEnvVar("CLIENT_TOKEN");
     if (!token) {
-      console.error("[paddle-client] VITE_PADDLE_CLIENT_TOKEN is missing — Paddle.js will not initialize.");
+      const expected = paddleEnv() === "live"
+        ? "VITE_PADDLE_LIVE_CLIENT_TOKEN"
+        : "VITE_PADDLE_SANDBOX_CLIENT_TOKEN";
+      console.error(`[paddle-client] ${expected} is missing — Paddle.js will not initialize.`);
       return Promise.resolve(undefined);
     }
     paddlePromise = initializePaddle({ environment, token });
@@ -91,21 +106,27 @@ export const PADDLE_INLINE_FRAME_CLASS = "mf-paddle-frame";
 export function priceIdForTier(tier: "starter" | "pro" | "studio"): string | undefined {
   switch (tier) {
     case "starter":
-      return import.meta.env.VITE_PADDLE_PRICE_STARTER as string | undefined;
+      return readPaddleEnvVar("PRICE_STARTER");
     case "pro":
-      return import.meta.env.VITE_PADDLE_PRICE_PRO as string | undefined;
+      return readPaddleEnvVar("PRICE_PRO");
     case "studio":
-      return import.meta.env.VITE_PADDLE_PRICE_STUDIO as string | undefined;
+      return readPaddleEnvVar("PRICE_STUDIO");
   }
 }
 
 export function priceIdForPack(size: "small" | "medium" | "large"): string | undefined {
   switch (size) {
     case "small":
-      return import.meta.env.VITE_PADDLE_PRICE_PACK_SMALL as string | undefined;
+      return readPaddleEnvVar("PRICE_PACK_SMALL");
     case "medium":
-      return import.meta.env.VITE_PADDLE_PRICE_PACK_MEDIUM as string | undefined;
+      return readPaddleEnvVar("PRICE_PACK_MEDIUM");
     case "large":
-      return import.meta.env.VITE_PADDLE_PRICE_PACK_LARGE as string | undefined;
+      return readPaddleEnvVar("PRICE_PACK_LARGE");
   }
+}
+
+// Public helper for error messages so callers can tell users which env-scoped
+// variable is missing without hard-coding the prefix.
+export function priceEnvVarName(name: string): string {
+  return (paddleEnv() === "live" ? "VITE_PADDLE_LIVE_" : "VITE_PADDLE_SANDBOX_") + name;
 }

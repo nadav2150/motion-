@@ -7,12 +7,15 @@ import {
   setSessionCookies,
   signInWithEmail,
 } from "../lib/auth";
+import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
-  return [
-    { title: "Sign in — Videly AI" },
-    { name: "description", content: "Sign in to Videly AI to continue editing your cinematic launch videos." },
-  ];
+  return buildMeta({
+    title: "Sign in — Videly",
+    description: "Sign in to Videly to continue building your launch videos.",
+    path: "/signin",
+    noIndex: true,
+  });
 }
 
 type ActionData = { error: string };

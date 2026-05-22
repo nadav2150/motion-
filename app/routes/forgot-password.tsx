@@ -2,12 +2,15 @@ import { useActionData, useNavigate } from "react-router";
 import type { Route } from "./+types/forgot-password";
 import { ForgotPasswordScreen } from "../motionflow/screens/forgot-password";
 import { AuthError, requestPasswordReset } from "../lib/auth";
+import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
-  return [
-    { title: "Forgot password — Videly AI" },
-    { name: "description", content: "Reset your Videly AI password." },
-  ];
+  return buildMeta({
+    title: "Forgot password — Videly",
+    description: "Reset your Videly password.",
+    path: "/forgot-password",
+    noIndex: true,
+  });
 }
 
 type ActionData =

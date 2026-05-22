@@ -9,7 +9,20 @@ import {
 
 import type { Route } from "./+types/root";
 import { getUserFromRequest } from "./lib/auth";
+import { SITE_NAME, SITE_URL } from "./lib/seo";
 import "./app.css";
+
+// Organization schema lives at the document root so every page emits it. Wire
+// social profiles into `sameAs` (Twitter/LinkedIn/etc.) as they go live —
+// Google uses them to associate the brand with its public identities.
+const ORGANIZATION_JSONLD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: SITE_NAME,
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo.svg`,
+  sameAs: [],
+});
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getUserFromRequest(request);
@@ -35,8 +48,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#06070A" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <Meta />
         <Links />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: ORGANIZATION_JSONLD }}
+        />
       </head>
       <body>
         {children}

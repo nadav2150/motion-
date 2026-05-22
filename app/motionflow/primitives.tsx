@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -140,6 +139,9 @@ export const IconFolder = (p: IconProps) => (
 );
 export const IconSettings = (p: IconProps) => (
   <Icon {...p} d={<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></>} />
+);
+export const IconLogOut = (p: IconProps) => (
+  <Icon {...p} d={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></>} />
 );
 
 export const IconLogo = ({ size = 24 }: { size?: number }) => (
@@ -370,129 +372,45 @@ function initialsFor(user: AuthedUser | null | undefined): string {
 const SideAvatar = () => {
   const data = useRouteLoaderData("root") as { user?: AuthedUser | null } | undefined;
   const user = data?.user ?? null;
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  if (!user) {
+    return (
+      <a
+        href="/signin"
+        className="mf-side-btn"
+        aria-label="Sign in"
+        style={{ textDecoration: "none" }}
+      >
+        <IconLogOut size={18} style={{ transform: "scaleX(-1)" }} />
+      </a>
+    );
+  }
 
   const initials = initialsFor(user);
-  const label = user?.name || user?.email || "Account";
 
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
-      <button
-        type="button"
-        className="mf-avatar"
-        onClick={() => setOpen((v) => !v)}
-        title={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        style={{
-          background: "transparent",
-          border: 0,
-          cursor: "pointer",
-          font: "inherit",
-          color: "inherit",
-          padding: 0,
-        }}
-      >
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div className="mf-avatar" aria-hidden>
         {initials}
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          style={{
-            position: "absolute",
-            bottom: "calc(100% + 8px)",
-            left: 4,
-            minWidth: 220,
-            padding: 8,
-            background: "rgba(11,12,16,0.96)",
-            border: "1px solid var(--line)",
-            borderRadius: 12,
-            boxShadow: "0 12px 32px -8px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04)",
-            backdropFilter: "blur(12px)",
-            zIndex: 50,
+      </div>
+      <form method="post" action="/api/auth/signout" style={{ margin: 0 }}>
+        <button
+          type="submit"
+          className="mf-side-btn"
+          aria-label="Sign out"
+          style={{ color: "#FCA5A5" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(255,107,107,0.08)";
+            e.currentTarget.style.borderColor = "rgba(255,107,107,0.20)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.borderColor = "transparent";
           }}
         >
-          {user ? (
-            <>
-              <div style={{ padding: "8px 10px 6px", display: "flex", flexDirection: "column", gap: 2 }}>
-                <span style={{ fontSize: 12.5, color: "var(--ink-0)", fontWeight: 500, lineHeight: 1.3 }}>
-                  {user.name || (user.email ? user.email.split("@")[0] : "Account")}
-                </span>
-                {user.email && (
-                  <span
-                    className="mf-mono"
-                    style={{
-                      fontSize: 10,
-                      color: "var(--ink-3)",
-                      letterSpacing: "0.04em",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {user.email}
-                  </span>
-                )}
-              </div>
-              <div style={{ height: 1, background: "var(--line)", margin: "6px 0" }} />
-              <form method="post" action="/api/auth/signout" style={{ margin: 0 }}>
-                <button
-                  type="submit"
-                  role="menuitem"
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    background: "transparent",
-                    border: 0,
-                    color: "#FCA5A5",
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    fontFamily: "inherit",
-                    cursor: "pointer",
-                    borderRadius: 6,
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,107,107,0.08)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  Sign out
-                </button>
-              </form>
-            </>
-          ) : (
-            <div style={{ padding: "8px 10px" }}>
-              <div style={{ fontSize: 12.5, color: "var(--ink-1)", marginBottom: 4 }}>Not signed in</div>
-              <a
-                href="/signin"
-                className="mf-mono"
-                style={{ fontSize: 11, color: "#7AA2FF", letterSpacing: "0.04em" }}
-              >
-                Sign in →
-              </a>
-            </div>
-          )}
-        </div>
-      )}
+          <IconLogOut size={18} />
+        </button>
+      </form>
     </div>
   );
 };

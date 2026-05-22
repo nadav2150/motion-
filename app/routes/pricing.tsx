@@ -5,16 +5,15 @@ import {
   type PackKey,
   type PricingTierKey,
 } from "../motionflow/screens/pricing";
+import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
-  return [
-    { title: "Pricing — Videly AI" },
-    {
-      name: "description",
-      content:
-        "Plans and credits for Videly AI. Start free with 3,100 credits or scale to 60,000 credits/month on Studio. Cancel anytime.",
-    },
-  ];
+  return buildMeta({
+    title: "Pricing — AI product video plans · Videly",
+    description:
+      "AI product video pricing for Videly. Start free with 3,100 credits, or scale up to 60,000 credits a month for launch and feature-announcement videos. Cancel anytime.",
+    path: "/pricing",
+  });
 }
 
 export default function PricingRoute() {

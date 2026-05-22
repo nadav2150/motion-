@@ -22,7 +22,7 @@ import { PaywallModal, type PaywallTrigger } from "../PaywallModal";
 import { estimateJobCostBreakdown } from "../../lib/billing/estimate";
 import { getPlanFeatures } from "../../lib/billing/plan-features";
 import type { JobStatus } from "../editor/types";
-import { TERMINAL, inputStyle } from "../editor/constants";
+import { STATUS_TONE, TERMINAL, inputStyle } from "../editor/constants";
 import {
   AccordionSection,
   ComingSoonPanel,
@@ -857,6 +857,8 @@ export const EditorScreen = ({
            onPreview={(id) => setPreviewShotId(id)}
            sceneTimings={sceneTimings}
            onAssetDrop={handleAssetDrop}
+           isThinking={generating || (!!job && !TERMINAL.includes(job.status as JobStatus))}
+           thinkingLabel={job ? STATUS_TONE[job.status as JobStatus]?.label : "WORKING"}
          />
        )}
       </div>

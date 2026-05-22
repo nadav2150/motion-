@@ -163,7 +163,23 @@
       "Bash(echo \"TSC_EXIT=$?\")",
       "Bash(echo \"TSC=$?\")",
       "Bash(mkdir -p design-v2)",
-      "Bash(tar -xzf webfetch-1779479599704-71ak2j.bin -C design-v2)"
+      "Bash(tar -xzf webfetch-1779479599704-71ak2j.bin -C design-v2)",
+      "mcp__plugin_cloudflare_cloudflare-docs__search_cloudflare_documentation",
+      "mcp__paddle-live__search",
+      "Bash(echo \"exit:$?\")",
+      "mcp__plugin_cloudflare_cloudflare-bindings__accounts_list",
+      "Bash(npx wrangler *)",
+      "Bash(echo \"---grep exit:$?---\")",
+      "Bash(nslookup videly.io)",
+      "Bash(nslookup videly.io 8.8.8.8)",
+      "Bash(nslookup www.videly.io 8.8.8.8)",
+      "Bash(docker run *)",
+      "Bash(timeout 5 docker logs videly-debug)",
+      "Bash(docker stop *)",
+      "Bash(wait)",
+      "Bash(docker rm *)",
+      "mcp__supabase__get_project",
+      "Bash(grep -oE \"sitemap[^\\\\\"]{0,40}\" build/server/index.js)"
     ]
   },
   "enabledPlugins": {

@@ -1,15 +1,15 @@
 import { useNavigate } from "react-router";
 import type { Route } from "./+types/privacy";
 import { LegalScreen, P, UL, type LegalSection } from "../motionflow/screens/legal";
+import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
-  return [
-    { title: "Privacy Policy — Videly AI" },
-    {
-      name: "description",
-      content: "How Videly collects, uses, and safeguards your data when you create cinematic videos with our AI tools.",
-    },
-  ];
+  return buildMeta({
+    title: "Privacy Policy — Videly",
+    description:
+      "How Videly collects, uses, and safeguards your data when you create AI launch and product videos with our motion design tools.",
+    path: "/privacy",
+  });
 }
 
 const LAST_UPDATED = "May 22, 2026";

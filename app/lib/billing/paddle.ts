@@ -8,18 +8,28 @@ import type { PlanTier } from "./plan-features";
 
 let cached: Paddle | null = null;
 
+function paddleEnv(): "live" | "sandbox" {
+  return (process.env.PADDLE_ENV ?? "sandbox").toLowerCase() === "live" ? "live" : "sandbox";
+}
+
+// Read a Paddle env-scoped variable. PADDLE_ENV=live picks PADDLE_LIVE_<NAME>,
+// PADDLE_ENV=sandbox picks PADDLE_SANDBOX_<NAME>. Returns undefined when the
+// var isn't set so callers can decide whether to error or no-op.
+function readPaddleEnvVar(name: string): string | undefined {
+  const prefix = paddleEnv() === "live" ? "PADDLE_LIVE_" : "PADDLE_SANDBOX_";
+  return process.env[`${prefix}${name}`];
+}
+
 function readEnvKey(): string {
-  const env = (process.env.PADDLE_ENV ?? "sandbox").toLowerCase();
-  const key = env === "live" ? process.env.PADDLE_LIVE_API_KEY : process.env.PADDLE_SANDBOX_API_KEY;
+  const key = readPaddleEnvVar("API_KEY");
   if (!key) {
-    throw new Error(`PADDLE_${env === "live" ? "LIVE" : "SANDBOX"}_API_KEY must be set in .env`);
+    throw new Error(`PADDLE_${paddleEnv().toUpperCase()}_API_KEY must be set in .env`);
   }
   return key;
 }
 
 function paddleEnvironment(): Environment {
-  const env = (process.env.PADDLE_ENV ?? "sandbox").toLowerCase();
-  return env === "live" ? Environment.production : Environment.sandbox;
+  return paddleEnv() === "live" ? Environment.production : Environment.sandbox;
 }
 
 export function getPaddle(): Paddle {
@@ -29,9 +39,11 @@ export function getPaddle(): Paddle {
 }
 
 export function getWebhookSecret(): string {
-  const secret = process.env.PADDLE_WEBHOOK_SECRET;
+  const secret = readPaddleEnvVar("WEBHOOK_SECRET");
   if (!secret) {
-    throw new Error("PADDLE_WEBHOOK_SECRET must be set in .env (Paddle dashboard → Notifications → endpoint secret)");
+    throw new Error(
+      `PADDLE_${paddleEnv().toUpperCase()}_WEBHOOK_SECRET must be set in .env (Paddle dashboard → Notifications → endpoint secret)`,
+    );
   }
   return secret;
 }
@@ -56,17 +68,17 @@ export type CatalogEntry = SubscriptionCatalogEntry | CreditPackCatalogEntry;
 function buildCatalog(): Record<string, CatalogEntry> {
   const map: Record<string, CatalogEntry> = {};
   const subs: Array<[string | undefined, PlanTier, number]> = [
-    [process.env.PADDLE_PRICE_STARTER, "starter", 8_000],
-    [process.env.PADDLE_PRICE_PRO,     "pro",     20_000],
-    [process.env.PADDLE_PRICE_STUDIO,  "studio",  60_000],
+    [readPaddleEnvVar("PRICE_STARTER"), "starter", 8_000],
+    [readPaddleEnvVar("PRICE_PRO"),     "pro",     20_000],
+    [readPaddleEnvVar("PRICE_STUDIO"),  "studio",  60_000],
   ];
   for (const [id, planTier, monthlyGrant] of subs) {
     if (id) map[id] = { kind: "subscription", planTier, monthlyGrant };
   }
   const packs: Array<[string | undefined, "small" | "medium" | "large", number]> = [
-    [process.env.PADDLE_PRICE_PACK_SMALL,  "small",  5_000],
-    [process.env.PADDLE_PRICE_PACK_MEDIUM, "medium", 25_000],
-    [process.env.PADDLE_PRICE_PACK_LARGE,  "large",  75_000],
+    [readPaddleEnvVar("PRICE_PACK_SMALL"),  "small",  5_000],
+    [readPaddleEnvVar("PRICE_PACK_MEDIUM"), "medium", 25_000],
+    [readPaddleEnvVar("PRICE_PACK_LARGE"),  "large",  75_000],
   ];
   for (const [id, packSize, credits] of packs) {
     if (id) map[id] = { kind: "credit_pack", packSize, credits };

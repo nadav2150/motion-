@@ -1,0 +1,72 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "videly",
+  "main": "src/worker.ts",
+  // Set to today's date. Bumping this opts into newer Workers runtime
+  // behavior; safe to advance when you upgrade @cloudflare/containers.
+  "compatibility_date": "2026-05-22",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Single container class wraps the Node/React Router server.
+  // standard-2 gives 1 vCPU + 6 GiB memory — enough for the Playwright
+  // Chromium pool + a few concurrent renders without thrashing. Bump to
+  // standard-3 (2 vCPU, 8 GiB) if hyperframes renders queue up.
+  "containers": [
+    {
+      "class_name": "VidelyContainer",
+      "image": "./Dockerfile",
+      "max_instances": 10,
+      "instance_type": "standard-2",
+      "name": "videly-app",
+      // Build-time vars baked into the Vite client bundle. Paddle.js needs
+      // the live client token + price IDs to mount the checkout overlay.
+      "image_vars": {
+        "VITE_PADDLE_ENV": "live",
+        "VITE_PADDLE_LIVE_CLIENT_TOKEN": "live_3a5d48068628998b8e048efcbb9",
+        "VITE_PADDLE_LIVE_PRICE_STARTER": "pri_01ks3rsqyc329pz20rcgfkgh16",
+        "VITE_PADDLE_LIVE_PRICE_PRO": "pri_01ks3rsr8yf913e3e9gn7nynjv",
+        "VITE_PADDLE_LIVE_PRICE_STUDIO": "pri_01ks3rsrkns56txergpsy57sb3",
+        "VITE_PADDLE_LIVE_PRICE_PACK_SMALL": "pri_01ks3rsrycjymd14dc8spt60mk",
+        "VITE_PADDLE_LIVE_PRICE_PACK_MEDIUM": "pri_01ks3rss8h4gtca93ccp4v445d",
+        "VITE_PADDLE_LIVE_PRICE_PACK_LARGE": "pri_01ks3rssk5qg4f0wr6ce7ftxy0"
+      }
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "VIDELY_CONTAINER",
+        "class_name": "VidelyContainer"
+      }
+    ]
+  },
+
+  // SQLite-backed DO required by Containers — never switch to legacy
+  // `new_classes`. The migration tag is permanent; once shipped, append
+  // additional migrations rather than editing this one.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["VidelyContainer"]
+    }
+  ],
+
+  // Bind videly.io (apex + www) to this Worker. The custom_domain flag
+  // makes Cloudflare provision the cert + DNS record automatically.
+  "routes": [
+    {
+      "pattern": "videly.io",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.videly.io",
+      "custom_domain": true
+    }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

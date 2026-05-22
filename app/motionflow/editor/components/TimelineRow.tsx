@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Button,
   IconImage,
+  IconLogo,
   IconMusic,
-  IconScissors,
   IconType,
   IconWand,
 } from "../../primitives";
@@ -26,6 +25,8 @@ export const TimelineRow = ({
   onPreview,
   sceneTimings,
   onAssetDrop,
+  isThinking,
+  thinkingLabel,
 }: {
   shots: ShotRow[];
   totalDuration: number;
@@ -41,6 +42,11 @@ export const TimelineRow = ({
     trackKind: "video" | "motion" | "text" | "audio",
     asset: JobAsset,
   ) => void;
+  // While true, the timeline is covered by a blurred Videly-logo overlay so
+  // the user can't interact with mid-flight scene tiles. The parent flips
+  // this back to false once the job reaches a TERMINAL status.
+  isThinking?: boolean;
+  thinkingLabel?: string;
 }) => {
   // Tracks which scene tile currently has a draggable hovering over it, so we
   // can light up just that tile's border. Cleared on dragleave / drop.
@@ -93,18 +99,12 @@ export const TimelineRow = ({
   const playheadPct = Math.max(0, Math.min(1, time / total)) * 100;
 
   return (
-    <div style={{ borderTop: "1px solid var(--line)", background: "rgba(8,9,13,0.55)", padding: "16px 28px 18px", minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <span className="mf-eyebrow">TIMELINE</span>
-          <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-4)", letterSpacing: "0.08em" }}>
-            {shots.length} {shots.length === 1 ? "SCENE" : "SCENES"} · 4 TRACKS
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <Button variant="ghost" size="sm" icon={<IconScissors size={12}/>}>Split</Button>
-          <Button variant="ghost" size="sm" icon={<IconWand size={12}/>}>Auto-fit</Button>
-        </div>
+    <div style={{ position: "relative", borderTop: "1px solid var(--line)", background: "rgba(8,9,13,0.55)", padding: "16px 28px 18px", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+        <span className="mf-eyebrow">TIMELINE</span>
+        <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-4)", letterSpacing: "0.08em" }}>
+          {shots.length} {shots.length === 1 ? "SCENE" : "SCENES"} · 4 TRACKS
+        </span>
       </div>
 
       {/* Ruler — same coordinate system as the tracks. */}
@@ -416,6 +416,67 @@ export const TimelineRow = ({
           );
         })}
       </div>
+
+      {isThinking && (
+        <div
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 10,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(8,9,13,0.55)",
+            backdropFilter: "blur(10px) saturate(140%)",
+            WebkitBackdropFilter: "blur(10px) saturate(140%)",
+            borderTop: "1px solid var(--line)",
+            cursor: "wait",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, pointerEvents: "none" }}>
+            <div
+              className="mf-float"
+              style={{
+                position: "relative",
+                display: "grid",
+                placeItems: "center",
+                width: 72,
+                height: 72,
+                borderRadius: 20,
+                background: "rgba(122,162,255,0.10)",
+                border: "1px solid rgba(122,162,255,0.30)",
+                boxShadow: "0 0 60px rgba(122,162,255,0.35), inset 0 0 20px rgba(167,139,250,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: -6,
+                  borderRadius: 24,
+                  border: "1px solid rgba(122,162,255,0.35)",
+                  animation: "mf-ring-pulse 2.4s ease-out infinite",
+                }}
+              />
+              <IconLogo size={36} />
+            </div>
+            <span
+              className="mf-mono"
+              style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--ink-1)" }}
+            >
+              {thinkingLabel ?? "GENERATING"}…
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                color: "var(--ink-3)",
+                animation: "mf-pulse-soft 1.6s ease-in-out infinite",
+              }}
+            >
+              Videly is building your timeline
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

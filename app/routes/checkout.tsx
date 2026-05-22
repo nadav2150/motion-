@@ -7,7 +7,12 @@ import {
   type CheckoutPack,
 } from "../motionflow/screens/checkout";
 import { requireUserOrRedirect } from "../lib/auth";
-import { openPaddleCheckout, priceIdForPack, priceIdForTier } from "../lib/paddle-client";
+import {
+  openPaddleCheckout,
+  priceEnvVarName,
+  priceIdForPack,
+  priceIdForTier,
+} from "../lib/paddle-client";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -60,7 +65,11 @@ export default function CheckoutRoute() {
     try {
       const priceId = priceIdForTier(tier);
       if (!priceId) {
-        alert(`No Paddle price configured for tier "${tier}". Set VITE_PADDLE_PRICE_${tier.toUpperCase()} in .env.`);
+        alert(
+          `No Paddle price configured for tier "${tier}". Set ${priceEnvVarName(
+            `PRICE_${tier.toUpperCase()}`,
+          )} in .env.`,
+        );
         return;
       }
       // Resolve the optional pack add-on. We treat a missing pack price as a
@@ -72,7 +81,7 @@ export default function CheckoutRoute() {
         if (!packPriceId) {
           console.warn(
             `[checkout] no Paddle price configured for pack "${pack}". ` +
-              `Set VITE_PADDLE_PRICE_PACK_${pack.toUpperCase()} in .env. ` +
+              `Set ${priceEnvVarName(`PRICE_PACK_${pack.toUpperCase()}`)} in .env. ` +
               `Continuing with subscription only.`,
           );
         } else {

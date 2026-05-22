@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /home
+Disallow: /projects
+Disallow: /editor
+Disallow: /export
+Disallow: /settings
+Disallow: /checkout
+Disallow: /signin
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+
+Sitemap: https://videly.io/sitemap.xml
