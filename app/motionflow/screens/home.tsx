@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   AppChrome,
   Button,
@@ -9,6 +9,7 @@ import {
   IconUpload,
   Pill,
   useFrame,
+  useIsMobile,
   type NavKey,
 } from "../primitives";
 
@@ -31,6 +32,8 @@ export const HomeScreen = ({
   credits?: number | null;
 }) => {
   const f = useFrame();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const m = useIsMobile(rootRef, 720);
   const cats = ["All", "Product launch", "Feature reveal", "Funding", "Recap", "Social reel"];
   const [cat, setCat] = useState("All");
 
@@ -52,32 +55,36 @@ export const HomeScreen = ({
   ];
 
   return (
+    <div ref={rootRef} style={{ width: "100%", height: "100%" }}>
     <AppChrome
       active="home"
       onNav={onNav}
       project="Home"
       credits={credits}
+      mobile={m}
       right={
-        <Button variant="ghost" size="sm" icon={<IconUpload size={12} />} onClick={onNewBlank ?? onPickTemplate}>
-          Import screenshots
-        </Button>
+        m ? null : (
+          <Button variant="ghost" size="sm" icon={<IconUpload size={12} />} onClick={onNewBlank ?? onPickTemplate}>
+            Import screenshots
+          </Button>
+        )
       }
     >
       <div className="mf-bg-bloom" />
 
-      <div style={{ position: "relative", padding: "40px 56px 80px", maxWidth: 1320, margin: "0 auto" }}>
+      <div style={{ position: "relative", padding: m ? "24px 18px 32px" : "40px 56px 80px", maxWidth: 1320, margin: "0 auto" }}>
         {/* Hero invite */}
-        <div style={{ marginBottom: 32 }}>
-          <h1 className="mf-h1" style={{ margin: 0, fontSize: 48, lineHeight: 1.05 }}>
+        <div style={{ marginBottom: m ? 22 : 32 }}>
+          <h1 className="mf-h1" style={{ margin: 0, fontSize: m ? 28 : 48, lineHeight: 1.05 }}>
             Make your first video in <span className="mf-grad-text">60 seconds.</span>
           </h1>
-          <div className="mf-body" style={{ marginTop: 12, fontSize: 16, color: "var(--ink-2)", maxWidth: 640 }}>
+          <div className="mf-body" style={{ marginTop: m ? 10 : 12, fontSize: m ? 14 : 16, color: "var(--ink-2)", maxWidth: 640 }}>
             Pick a template, drop a screenshot, or remix something we made — your credits cover the render.
           </div>
         </div>
 
         {/* Two-path start */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 44 }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 10 : 14, marginBottom: m ? 32 : 44 }}>
           <PathCard
             variant="primary"
             eyebrow="FASTEST · 0 SETUP"
@@ -180,8 +187,8 @@ export const HomeScreen = ({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 16, marginBottom: 56,
+            gridTemplateColumns: m ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: m ? 12 : 16, marginBottom: m ? 36 : 56,
           }}
         >
           {templates.map((tp, i) => (
@@ -202,7 +209,7 @@ export const HomeScreen = ({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: m ? 12 : 14 }}>
           {community.map((c, i) => (
             <CommunityCard key={i} c={c} onClick={onPickTemplate} />
           ))}
@@ -211,25 +218,30 @@ export const HomeScreen = ({
         {/* Soft footer prompt */}
         <div
           style={{
-            marginTop: 56, padding: "26px 28px", borderRadius: 16,
+            marginTop: m ? 36 : 56, padding: m ? "20px 20px" : "26px 28px", borderRadius: 16,
             background: "rgba(255,255,255,0.02)", border: "1px solid var(--line)",
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24,
+            display: "flex",
+            flexDirection: m ? "column" : "row",
+            alignItems: m ? "flex-start" : "center",
+            justifyContent: "space-between",
+            gap: m ? 14 : 24,
           }}
         >
           <div>
-            <div style={{ fontSize: 16, fontWeight: 500, color: "white", letterSpacing: "-0.01em" }}>
+            <div style={{ fontSize: m ? 15 : 16, fontWeight: 500, color: "white", letterSpacing: "-0.01em" }}>
               Need more credits?
             </div>
-            <div style={{ marginTop: 4, fontSize: 13, color: "var(--ink-2)" }}>
+            <div style={{ marginTop: 4, fontSize: m ? 12.5 : 13, color: "var(--ink-2)" }}>
               Top up with a credit pack or upgrade your plan anytime.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, width: m ? "100%" : "auto" }}>
             <Button variant="primary" size="md" iconRight={<IconArrowRight size={14} />} onClick={onSeePricing}>See pricing</Button>
           </div>
         </div>
       </div>
     </AppChrome>
+    </div>
   );
 };
 

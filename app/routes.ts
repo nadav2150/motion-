@@ -13,6 +13,8 @@ export default [
   route("settings", "routes/settings.tsx"),
   route("pricing", "routes/pricing.tsx"),
   route("checkout", "routes/checkout.tsx"),
+  route("privacy", "routes/privacy.tsx"),
+  route("terms", "routes/terms.tsx"),
   route("api/jobs", "routes/api.jobs.tsx"),
   route("api/jobs/:id", "routes/api.jobs.$id.tsx"),
   route("api/shots/:id/retry", "routes/api.shots.$id.retry.tsx"),

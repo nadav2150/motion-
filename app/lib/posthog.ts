@@ -13,11 +13,15 @@ import { PostHog } from "posthog-node";
 
 type PostHogLike = {
   capture(args: { distinctId: string; event: string; properties?: Record<string, unknown> }): void;
+  identify(args: { distinctId: string; properties?: Record<string, unknown> }): void;
   shutdown(): Promise<void>;
 };
 
 const NOOP_CLIENT: PostHogLike = {
   capture() {
+    // no-op
+  },
+  identify() {
     // no-op
   },
   async shutdown() {

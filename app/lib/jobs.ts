@@ -77,6 +77,7 @@ import {
 } from "./hyperframes/llm-director";
 import { renderScene } from "./hyperframes/render";
 import { captureMotionTrailComposite, captureSceneThumbnail } from "./hyperframes/thumbnail";
+import { injectWatermarkOverlay, shouldApplyWatermark } from "./hyperframes/watermark";
 import { sourceAssets, type JobAssetEntry } from "./assets";
 import { resolveAudioPlan, type ResolvedAudio } from "./audio-resolver";
 
@@ -1869,11 +1870,17 @@ async function runHyperframesExport(jobId: string): Promise<void> {
   let result;
   try {
     const html = await timed(jobId, "export_fetch_html", () => fetchSceneHTML(compositionUrl));
+    // Free-tier watermark: read the job owner's plan and inject the
+    // bottom-right overlay into the composition HTML before render. Done
+    // here (vs. ffmpeg post-process) so the watermark is captured as part
+    // of every frame — no extra pass, no extra cost.
+    const watermark = await shouldApplyWatermark(jobId);
+    const finalHtml = watermark ? injectWatermarkOverlay(html) : html;
     result = await timed(jobId, "export_render_scene", () =>
       renderScene({
         jobId,
         sceneId: "main",
-        files: { html, css: "", js: "" },
+        files: { html: finalHtml, css: "", js: "" },
       }),
     );
   } catch (err) {

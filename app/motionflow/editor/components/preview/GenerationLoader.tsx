@@ -121,11 +121,16 @@ export const GenerationLoader = ({
   return (
     <div
       style={{
-        flex: 1,
+        // Absolute-fill the preview pane (which is position: relative).
+        // Using absolute + inset:0 instead of flex:1 so the loader is
+        // always perfectly centered regardless of whatever else the
+        // section flex-column is rendering (bloom backdrop, future siblings).
+        position: "absolute",
+        inset: 0,
         display: "grid",
         placeItems: "center",
         padding: "40px 28px",
-        position: "relative",
+        pointerEvents: "none",
       }}
     >
       <style>{`
@@ -134,8 +139,8 @@ export const GenerationLoader = ({
           to   { transform: translate(-50%, -50%) rotate(360deg); }
         }
         @keyframes mfLoaderPulse {
-          0%, 100% { transform: scale(1); }
-          50%      { transform: scale(1.06); }
+          0%, 100% { transform: translate(-50%, -50%) scale(1); }
+          50%      { transform: translate(-50%, -50%) scale(1.06); }
         }
         @keyframes mfLoaderGlow {
           0%, 100% { box-shadow: 0 0 60px 10px rgba(122,162,255,0.40), inset 0 1px 0 rgba(255,255,255,0.10); }

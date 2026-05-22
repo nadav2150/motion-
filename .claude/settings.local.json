@@ -152,7 +152,18 @@
       "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 60)",
       "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 80)",
       "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 40)",
-      "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 20)"
+      "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 20)",
+      "Bash(mkdir -p design-extract)",
+      "Bash(tar -xzf webfetch-1779476745764-19xort.bin -C design-extract)",
+      "mcp__plugin_cloudflare_cloudflare-bindings__set_active_account",
+      "Bash(cloudflared --version)",
+      "Bash(where cloudflared *)",
+      "mcp__plugin_cloudflare_cloudflare-api__execute",
+      "mcp__plugin_cloudflare_cloudflare-api__search",
+      "Bash(echo \"TSC_EXIT=$?\")",
+      "Bash(echo \"TSC=$?\")",
+      "Bash(mkdir -p design-v2)",
+      "Bash(tar -xzf webfetch-1779479599704-71ak2j.bin -C design-v2)"
     ]
   },
   "enabledPlugins": {

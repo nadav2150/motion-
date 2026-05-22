@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { uploadFinalVideo } from "../storage";
 import { getSupabase, type ShotRow } from "../supabase";
+import { ensureWatermarkPng, shouldApplyWatermark } from "./watermark";
 
 const FFMPEG_BIN = process.env.FFMPEG_PATH || "ffmpeg";
 
@@ -63,23 +64,17 @@ export async function stitchHyperframes(jobId: string): Promise<void> {
 
     const finalPath = path.join(workDir, "final.mp4");
 
-    // Try `-c copy` first.
-    const copyOk = await tryFfmpeg([
-      "-y",
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      concatFile,
-      "-c",
-      "copy",
-      finalPath,
-    ]);
+    // Free-tier jobs get a watermark overlay (Videly logo + "videly.io")
+    // in the bottom-right of the final cut. Watermarked encodes must run
+    // through the re-encode path because filter_complex can't be combined
+    // with `-c copy`. Paid jobs first try `-c copy` for speed and fall
+    // back to a plain re-encode if the streams aren't concat-compatible.
+    const needsWatermark = await shouldApplyWatermark(jobId);
+    const watermarkPath = needsWatermark ? await ensureWatermarkPng() : null;
 
-    if (!copyOk) {
-      // Re-encode fallback.
-      const ok = await tryFfmpeg([
+    let copyOk = false;
+    if (!needsWatermark) {
+      copyOk = await tryFfmpeg([
         "-y",
         "-f",
         "concat",
@@ -87,6 +82,35 @@ export async function stitchHyperframes(jobId: string): Promise<void> {
         "0",
         "-i",
         concatFile,
+        "-c",
+        "copy",
+        finalPath,
+      ]);
+    }
+
+    if (!copyOk) {
+      // Re-encode. With a watermark, overlay it bottom-right with a 20px
+      // margin. `0:a?` keeps the audio track if present and silently drops
+      // when scenes have no audio.
+      const reEncodeArgs: string[] = [
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        concatFile,
+        ...(watermarkPath ? ["-i", watermarkPath] : []),
+        ...(watermarkPath
+          ? [
+              "-filter_complex",
+              "[0:v][1:v]overlay=W-w-20:H-h-20[v]",
+              "-map",
+              "[v]",
+              "-map",
+              "0:a?",
+            ]
+          : []),
         "-c:v",
         "libx264",
         "-preset",
@@ -98,9 +122,12 @@ export async function stitchHyperframes(jobId: string): Promise<void> {
         "-b:a",
         "128k",
         finalPath,
-      ]);
+      ];
+      const ok = await tryFfmpeg(reEncodeArgs);
       if (!ok) {
-        throw new Error(`ffmpeg re-encode also failed for job ${jobId}`);
+        throw new Error(
+          `ffmpeg re-encode${needsWatermark ? " with watermark" : ""} failed for job ${jobId}`,
+        );
       }
     }
 

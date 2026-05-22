@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   AppChrome,
   Button,
@@ -7,6 +7,7 @@ import {
   IconPlus,
   IconSparkle,
   IconTrash,
+  useIsMobile,
   type NavKey,
 } from "../primitives";
 
@@ -60,6 +61,8 @@ export const ProjectsScreen = ({
   onDeleteProject?: (id: string) => Promise<void> | void;
   onSignIn?: () => void;
 }) => {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const m = useIsMobile(rootRef, 720);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [confirmDelete, setConfirmDelete] = useState<ProjectCard | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -91,12 +94,17 @@ export const ProjectsScreen = ({
   };
 
   return (
+    <div ref={rootRef} style={{ width: "100%", height: "100%" }}>
     <AppChrome
       active="projects"
       onNav={onNav}
       project="Projects"
       credits={credits}
+      mobile={m}
       right={
+        m ? (
+          <Button variant="primary" size="sm" onClick={onNewProject} iconRight={<IconPlus size={14}/>}>New</Button>
+        ) : (
         <>
           <div style={{ display: "flex", padding: 3, borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)" }}>
             {(["grid", "list"] as const).map((v) => (
@@ -117,13 +125,14 @@ export const ProjectsScreen = ({
           </div>
           <Button variant="primary" size="sm" onClick={onNewProject} iconRight={<IconPlus size={14}/>}>New project</Button>
         </>
+        )
       }
     >
       <div className="mf-bg-bloom"/>
-      <div style={{ position: "relative", padding: "48px 56px 80px", maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ marginBottom: 32 }}>
-          <div className="mf-eyebrow" style={{ marginBottom: 12 }}>WORKSPACE</div>
-          <h1 className="mf-h1" style={{ margin: 0, fontSize: 40 }}>
+      <div style={{ position: "relative", padding: m ? "28px 18px 56px" : "48px 56px 80px", maxWidth: 1320, margin: "0 auto" }}>
+        <div style={{ marginBottom: m ? 24 : 32 }}>
+          <div className="mf-eyebrow" style={{ marginBottom: m ? 10 : 12 }}>WORKSPACE</div>
+          <h1 className="mf-h1" style={{ margin: 0, fontSize: m ? 28 : 40 }}>
             Projects
             {projects.length > 0 && (
               <span style={{ color: "var(--ink-3)" }}>
@@ -196,6 +205,7 @@ export const ProjectsScreen = ({
         />
       )}
     </AppChrome>
+    </div>
   );
 };
 

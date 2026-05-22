@@ -336,6 +336,29 @@ body {
   .mf-auth-grid { grid-template-columns: 1fr; gap: 48px; padding: 16px 32px 48px; }
   .mf-auth-stage { display: none; }
 }
+/* Phone-sized viewports — both /signin and /register share these styles.
+   Tighten the header, drop muted helper copy, shrink card padding +
+   title, and trim the legal footer so the form fits a 360–420px screen
+   without horizontal scroll. */
+@media (max-width: 720px) {
+  .mf-auth-top { padding: 14px 18px; }
+  .mf-auth-top-right { gap: 10px; font-size: 13px; }
+  .mf-auth-top-muted { display: none; }
+  .mf-auth-grid { gap: 24px; padding: 8px 16px 32px; }
+  .mf-auth-card { padding: 24px 20px 22px; max-width: none; border-radius: 16px; }
+  .mf-auth-card-head { margin-bottom: 18px; }
+  .mf-auth-card-title { font-size: 22px; margin: 6px 0 4px; }
+  .mf-auth-card-sub { font-size: 13px; }
+  .mf-auth-social { grid-template-columns: 1fr; gap: 8px; margin-bottom: 14px; }
+  .mf-auth-social-btn { padding: 12px 14px; }
+  .mf-auth-divide { margin: 2px 0 14px; }
+  .mf-auth-form { gap: 12px; }
+  .mf-input { padding: 12px 13px; font-size: 15px; } /* 15px+ prevents iOS auto-zoom on focus */
+  .mf-input-wrap .mf-input { padding-right: 56px; }
+  .mf-auth-remember { font-size: 12.5px; }
+  .mf-auth-foot { margin-top: 14px; padding-top: 14px; font-size: 12.5px; }
+  .mf-auth-legal { font-size: 9.5px; max-width: none; padding: 0 8px; }
+}
 
 /* ── Left stage ── */
 .mf-auth-stage {

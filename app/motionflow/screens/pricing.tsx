@@ -1,5 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { IconArrowRight, IconCheck } from "../primitives";
+
+// Container-width based mobile detection — same pattern as landing.tsx.
+// We measure the scroll container rather than the viewport so the page
+// stays responsive when previewed inside fixed-width artboards.
+function useIsMobile(ref: RefObject<HTMLDivElement | null>, threshold = 720) {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = (w: number) => setM(w < threshold);
+    apply(el.clientWidth);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [ref, threshold]);
+  return m;
+}
 
 // Subscription tiers shown on /pricing. Numbers come from the real billing
 // catalog: Paddle custom_data.monthlyGrant + checkout.tsx TIER_MONTHLY_USD
@@ -146,6 +165,8 @@ export function PricingScreen({
   onCta?: () => void;
 }) {
   const [selectedKey, setSelectedKey] = useState<PricingTierKey>("pro");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const m = useIsMobile(scrollRef, 720);
 
   // Per-card pack selection. Each plan card has its own slider so users can
   // explore add-ons across plans without losing state.
@@ -161,6 +182,7 @@ export function PricingScreen({
 
   return (
     <div
+      ref={scrollRef}
       style={{
         width: "100%",
         minHeight: "100%",
@@ -218,17 +240,17 @@ export function PricingScreen({
           zIndex: 2,
           maxWidth: 1320,
           margin: "0 auto",
-          padding: "64px 56px 24px",
+          padding: m ? "56px 20px 12px" : "64px 56px 24px",
           textAlign: "center",
         }}
       >
         <h1
           style={{
             margin: 0,
-            fontSize: 60,
+            fontSize: m ? 34 : 60,
             fontWeight: 500,
             letterSpacing: "-0.035em",
-            lineHeight: 1.02,
+            lineHeight: m ? 1.05 : 1.02,
           }}
         >
           Plans that scale with your{" "}
@@ -245,9 +267,9 @@ export function PricingScreen({
         </h1>
         <p
           style={{
-            margin: "16px auto 0",
+            margin: m ? "14px auto 0" : "16px auto 0",
             maxWidth: 600,
-            fontSize: 16,
+            fontSize: m ? 14 : 16,
             color: "var(--ink-2)",
             lineHeight: 1.55,
             letterSpacing: "-0.005em",
@@ -258,52 +280,116 @@ export function PricingScreen({
         </p>
       </section>
 
-      <section
-        style={{
-          position: "relative",
-          zIndex: 2,
-          maxWidth: 1440,
-          margin: "0 auto",
-          padding: "40px 40px 24px",
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 18,
-          alignItems: "stretch",
-        }}
-      >
-        {PLANS.map((plan) => (
-          <PricingCard
-            key={plan.key}
-            plan={plan}
-            packKey={packs[plan.key]}
-            onPackChange={(next) =>
-              setPacks((prev) => ({ ...prev, [plan.key]: next }))
-            }
-            selected={selectedKey === plan.key}
-            onSelect={() => setSelectedKey(plan.key)}
-            onChoose={() => onSelectTier?.(plan.key, packs[plan.key])}
-          />
-        ))}
-      </section>
+      {m ? (
+        // Mobile: horizontal swipe deck. Cards keep a fixed width and snap
+        // into place; the container scrolls horizontally with one card
+        // centered per swipe. Side padding becomes scroll-padding so the
+        // first/last cards center cleanly too.
+        <section
+          style={{
+            position: "relative",
+            zIndex: 2,
+            padding: "20px 0 12px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              padding: "0 20px",
+              overflowX: "auto",
+              overflowY: "hidden",
+              scrollSnapType: "x mandatory",
+              scrollPaddingLeft: 20,
+              scrollPaddingRight: 20,
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+            }}
+          >
+            {PLANS.map((plan) => (
+              <div
+                key={plan.key}
+                style={{
+                  flex: "0 0 84%",
+                  maxWidth: 320,
+                  scrollSnapAlign: "center",
+                }}
+              >
+                <PricingCard
+                  plan={plan}
+                  packKey={packs[plan.key]}
+                  onPackChange={(next) =>
+                    setPacks((prev) => ({ ...prev, [plan.key]: next }))
+                  }
+                  selected={selectedKey === plan.key}
+                  onSelect={() => setSelectedKey(plan.key)}
+                  onChoose={() => onSelectTier?.(plan.key, packs[plan.key])}
+                  mobile
+                />
+              </div>
+            ))}
+          </div>
+          <div
+            className="mf-mono"
+            style={{
+              marginTop: 10,
+              fontSize: 9.5,
+              color: "var(--ink-4)",
+              letterSpacing: "0.14em",
+              textAlign: "center",
+            }}
+          >
+            ← SWIPE TO COMPARE PLANS →
+          </div>
+        </section>
+      ) : (
+        <section
+          style={{
+            position: "relative",
+            zIndex: 2,
+            maxWidth: 1440,
+            margin: "0 auto",
+            padding: "40px 40px 24px",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 18,
+            alignItems: "stretch",
+          }}
+        >
+          {PLANS.map((plan) => (
+            <PricingCard
+              key={plan.key}
+              plan={plan}
+              packKey={packs[plan.key]}
+              onPackChange={(next) =>
+                setPacks((prev) => ({ ...prev, [plan.key]: next }))
+              }
+              selected={selectedKey === plan.key}
+              onSelect={() => setSelectedKey(plan.key)}
+              onChoose={() => onSelectTier?.(plan.key, packs[plan.key])}
+            />
+          ))}
+        </section>
+      )}
 
       <section
         style={{
           position: "relative",
           zIndex: 2,
           maxWidth: 1320,
-          margin: "40px auto 0",
-          padding: "0 56px",
+          margin: m ? "32px auto 0" : "40px auto 0",
+          padding: m ? "0 20px" : "0 56px",
         }}
       >
         <div
           style={{
-            padding: "20px 26px",
+            padding: m ? "18px 18px" : "20px 26px",
             borderRadius: 16,
             background: "rgba(255,255,255,0.02)",
             border: "1px solid var(--line)",
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr 1fr",
-            gap: 24,
+            gridTemplateColumns: m ? "1fr 1fr" : "1fr 1fr 1fr 1fr",
+            gap: m ? 16 : 24,
           }}
         >
           {[
@@ -370,18 +456,18 @@ export function PricingScreen({
           position: "relative",
           zIndex: 2,
           maxWidth: 1100,
-          margin: "64px auto 0",
-          padding: "0 56px 80px",
+          margin: m ? "48px auto 0" : "64px auto 0",
+          padding: m ? "0 20px 56px" : "0 56px 80px",
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <div style={{ textAlign: "center", marginBottom: m ? 24 : 32 }}>
           <div className="mf-eyebrow" style={{ marginBottom: 10 }}>
             FAQ · CREDITS DEMYSTIFIED
           </div>
           <h2
             style={{
               margin: 0,
-              fontSize: 32,
+              fontSize: m ? 24 : 32,
               fontWeight: 500,
               letterSpacing: "-0.025em",
             }}
@@ -393,8 +479,8 @@ export function PricingScreen({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 14,
+            gridTemplateColumns: m ? "1fr" : "1fr 1fr",
+            gap: m ? 12 : 14,
           }}
         >
           {[
@@ -513,6 +599,7 @@ function PricingCard({
   selected,
   onSelect,
   onChoose,
+  mobile = false,
 }: {
   plan: Plan;
   packKey: PackKey;
@@ -520,6 +607,10 @@ function PricingCard({
   selected: boolean;
   onSelect: () => void;
   onChoose: () => void;
+  // When true, the card is rendered inside the horizontal swipe deck:
+  // padding tightens and the desktop `minHeight: 720` is dropped so the
+  // card collapses to its natural height per swipe.
+  mobile?: boolean;
 }) {
   const dollars = plan.monthlyUsd;
   const cents = "00";
@@ -536,7 +627,7 @@ function PricingCard({
         position: "relative",
         display: "flex",
         flexDirection: "column",
-        padding: "28px 24px 26px",
+        padding: mobile ? "22px 20px 20px" : "28px 24px 26px",
         borderRadius: 18,
         background: selected
           ? "linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 100%)"
@@ -548,7 +639,8 @@ function PricingCard({
         cursor: "pointer",
         transition: "all 280ms cubic-bezier(.2,.8,.2,1)",
         overflow: "hidden",
-        minHeight: 720,
+        minHeight: mobile ? 0 : 720,
+        height: mobile ? "100%" : undefined,
       }}
     >
       {plan.popular && (

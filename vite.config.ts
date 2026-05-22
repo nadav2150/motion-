@@ -7,6 +7,14 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  server: {
+    allowedHosts: ["dev.videly.io"],
+    hmr: {
+      protocol: "wss",
+      host: "dev.videly.io",
+      clientPort: 443,
+    },
+  },
   optimizeDeps: {
     include: ["@iconify/react"],
   },

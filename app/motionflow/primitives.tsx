@@ -4,8 +4,32 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useNavigate, useRouteLoaderData } from "react-router";
+
+/* ───────── Mobile detection ─────────
+   Container-width based — measures the scroll container rather than the
+   viewport so the layout reacts to its actual size. New screens should
+   import this hook from primitives instead of duplicating it. */
+export const useIsMobile = (
+  ref: RefObject<HTMLDivElement | null>,
+  threshold = 720,
+) => {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = (w: number) => setM(w < threshold);
+    apply(el.clientWidth);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [ref, threshold]);
+  return m;
+};
 
 /* ───────── Icons (custom, minimal stroke) ───────── */
 type IconProps = {
@@ -259,28 +283,68 @@ export const Switch = ({
 export const TopNav = ({
   onCta,
   onSignIn,
+  isAuthed = false,
+  mobile = false,
 }: {
   onCta?: () => void;
   onSignIn?: () => void;
+  // When true, the right side collapses to a single "Open the app" CTA
+  // with a small "Signed in" indicator — Sign in + Start free would just
+  // redirect to the same place.
+  isAuthed?: boolean;
+  // When true (container <720px), the nav collapses: links hidden,
+  // padding tightens, "Sign in" hidden so only the primary CTA remains.
+  mobile?: boolean;
 }) => (
-  <nav className="mf-nav">
+  <nav className="mf-nav" style={mobile ? { padding: "14px 20px" } : undefined}>
     <div className="mf-nav-brand">
       <IconLogo size={22}/>
       <span>Videly</span>
       <span className="mf-nav-badge">AI</span>
     </div>
-    <div className="mf-nav-links">
-      <a>Product</a><a>Showcase</a><a>Pricing</a><a>Docs</a>
-    </div>
+    {!mobile && (
+      <div className="mf-nav-links">
+        <a>Product</a><a>Showcase</a><a>Pricing</a><a>Docs</a>
+      </div>
+    )}
     <div className="mf-nav-cta">
-      <button
-        className="mf-nav-link"
-        onClick={onSignIn}
-        style={{ background: "transparent", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}
-      >
-        Sign in
-      </button>
-      <Button size="sm" variant="primary" onClick={onCta} iconRight={<IconArrowRight size={14}/>}>Start free</Button>
+      {isAuthed ? (
+        <>
+          {!mobile && (
+            <span
+              className="mf-mono"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                fontSize: 10.5, letterSpacing: "0.10em",
+                color: "var(--ink-3)",
+              }}
+            >
+              <span
+                style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: "#A6F0BD",
+                  boxShadow: "0 0 8px rgba(166,240,189,0.7)",
+                }}
+              />
+              SIGNED IN
+            </span>
+          )}
+          <Button size="sm" variant="primary" onClick={onCta} iconRight={<IconArrowRight size={14}/>}>Open the app</Button>
+        </>
+      ) : (
+        <>
+          {!mobile && (
+            <button
+              className="mf-nav-link"
+              onClick={onSignIn}
+              style={{ background: "transparent", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}
+            >
+              Sign in
+            </button>
+          )}
+          <Button size="sm" variant="primary" onClick={onCta} iconRight={<IconArrowRight size={14}/>}>Start free</Button>
+        </>
+      )}
     </div>
   </nav>
 );
@@ -440,6 +504,7 @@ export const AppChrome = ({
   children,
   right,
   credits,
+  mobile = false,
 }: {
   active?: string;
   onNav?: (k: NavKey) => void;
@@ -450,48 +515,115 @@ export const AppChrome = ({
   // renders a CreditsPill at the start of the top-bar right cluster. Pass
   // null while the balance is loading; omit entirely to hide the pill.
   credits?: number | null;
-}) => (
-  <div className="mf-app">
-    <aside className="mf-side">
-      <div className="mf-side-brand">
-        <IconLogo size={22}/>
-      </div>
-      <div className="mf-side-stack">
-        {([
-          { k: "home" as const,     icon: <IconHome size={18}/>,     label: "Home" },
-          { k: "projects" as const, icon: <IconFolder size={18}/>,   label: "Projects" },
-          { k: "settings" as const, icon: <IconSettings size={16}/>, label: "Settings" },
-        ]).map((it) => (
-          <button
-            key={it.k}
-            className={`mf-side-btn ${active === it.k ? "is-active" : ""}`}
-            onClick={() => onNav?.(it.k)}
-            title={it.label}
-          >
-            {it.icon}
-          </button>
-        ))}
-      </div>
-      <div className="mf-side-foot">
-        <SideAvatar />
-      </div>
-    </aside>
-    <main className="mf-main">
-      <header className="mf-topbar">
-        <div className="mf-crumb">
-          <span className="mf-crumb-muted">Projects</span>
-          <IconChevron size={12} style={{ transform: "rotate(-90deg)", opacity: 0.4 }}/>
-          <span>{project}</span>
+  // When true (container <720px), the sidebar collapses and a bottom
+  // tab bar replaces it with the same Home / Projects / Settings choices.
+  mobile?: boolean;
+}) => {
+  if (mobile) {
+    return (
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", height: "100%" }}>
+        <header
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 16px", borderBottom: "1px solid var(--line)",
+            background: "rgba(8,9,13,0.6)", backdropFilter: "blur(20px)",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <IconLogo size={20}/>
+            <span
+              style={{
+                fontSize: 13.5, fontWeight: 500, color: "var(--ink-0)",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}
+            >
+              {project}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {typeof credits === "number" && <CreditsPill credits={credits} />}
+            {right}
+          </div>
+        </header>
+        <div className="mf-content" style={{ flex: 1, overflow: "auto", paddingBottom: 64 }}>
+          {children}
         </div>
-        <div className="mf-topbar-right">
-          {typeof credits === "number" && <CreditsPill credits={credits} />}
-          {right}
+        <nav
+          style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            display: "flex", padding: "8px 12px",
+            borderTop: "1px solid var(--line)",
+            background: "rgba(6,7,10,0.92)", backdropFilter: "blur(20px)",
+            flexShrink: 0,
+          }}
+        >
+          {([
+            { k: "home" as const,     icon: <IconHome size={18}/>,     label: "Home" },
+            { k: "projects" as const, icon: <IconFolder size={18}/>,   label: "Projects" },
+            { k: "settings" as const, icon: <IconSettings size={16}/>, label: "Settings" },
+          ]).map((it) => (
+            <button
+              key={it.k}
+              onClick={() => onNav?.(it.k)}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                padding: "6px 0", background: "transparent", border: "none", cursor: "pointer",
+                color: active === it.k ? "var(--ink-0)" : "var(--ink-3)",
+                fontFamily: "inherit", fontSize: 10.5, fontWeight: 500, letterSpacing: "-0.005em",
+              }}
+            >
+              {it.icon}
+              <span>{it.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+  return (
+    <div className="mf-app">
+      <aside className="mf-side">
+        <div className="mf-side-brand">
+          <IconLogo size={22}/>
         </div>
-      </header>
-      <div className="mf-content">{children}</div>
-    </main>
-  </div>
-);
+        <div className="mf-side-stack">
+          {([
+            { k: "home" as const,     icon: <IconHome size={18}/>,     label: "Home" },
+            { k: "projects" as const, icon: <IconFolder size={18}/>,   label: "Projects" },
+            { k: "settings" as const, icon: <IconSettings size={16}/>, label: "Settings" },
+          ]).map((it) => (
+            <button
+              key={it.k}
+              className={`mf-side-btn ${active === it.k ? "is-active" : ""}`}
+              onClick={() => onNav?.(it.k)}
+              title={it.label}
+            >
+              {it.icon}
+            </button>
+          ))}
+        </div>
+        <div className="mf-side-foot">
+          <SideAvatar />
+        </div>
+      </aside>
+      <main className="mf-main">
+        <header className="mf-topbar">
+          <div className="mf-crumb">
+            <span className="mf-crumb-muted">Projects</span>
+            <IconChevron size={12} style={{ transform: "rotate(-90deg)", opacity: 0.4 }}/>
+            <span>{project}</span>
+          </div>
+          <div className="mf-topbar-right">
+            {typeof credits === "number" && <CreditsPill credits={credits} />}
+            {right}
+          </div>
+        </header>
+        <div className="mf-content">{children}</div>
+      </main>
+    </div>
+  );
+};
 
 export const CreditsPill = ({ credits }: { credits: number }) => {
   const navigate = useNavigate();

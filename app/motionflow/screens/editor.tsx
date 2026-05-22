@@ -9,11 +9,13 @@ import {
   IconDownload,
   IconLayers,
   IconLink,
+  IconLogo,
   IconMic,
   IconShare,
   IconWand,
   Pill,
   useFrame,
+  useIsMobile,
   type NavKey,
 } from "../primitives";
 import { PaywallModal, type PaywallTrigger } from "../PaywallModal";
@@ -59,6 +61,11 @@ export const EditorScreen = ({
   planTier?: string | null;
 }) => {
   const f = useFrame();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // Editor is desktop-only — the storyboard, scene inspector, and timeline
+  // need a wide canvas. Below 720px we show a "desktop-only" gate per the
+  // Director Studio design.
+  const m = useIsMobile(rootRef, 720);
 
   const jobIdRef = useRef<string | null>(null);
 
@@ -290,6 +297,10 @@ export const EditorScreen = ({
   };
 
   return (
+    <div ref={rootRef} style={{ width: "100%", height: "100%" }}>
+    {m ? (
+      <EditorMobileGate f={f} onBackHome={() => onNav?.("home")} />
+    ) : (
     <>
     <AppChrome
       active="editor"
@@ -885,8 +896,312 @@ export const EditorScreen = ({
       onSeePricing={() => navigate("/pricing")}
     />
     </>
+    )}
+    </div>
   );
 };
+
+// Desktop-only gate shown when the editor container is < 720px. Mirrors
+// the design's DirectorMobileGate — aurora bloom, animated camera glyph,
+// feature list of what's available on desktop, and a primary "Back to
+// Home" CTA wired to the existing onNav callback.
+const EditorMobileGate = ({
+  f,
+  onBackHome,
+}: {
+  f: number;
+  onBackHome?: () => void;
+}) => (
+  <div
+    style={{
+      position: "relative",
+      width: "100%",
+      height: "100%",
+      overflow: "hidden",
+      background: "#06070A",
+      color: "var(--ink-0)",
+      display: "flex",
+      flexDirection: "column",
+      fontFamily: "'Geist', system-ui, sans-serif",
+    }}
+  >
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        background: `
+          radial-gradient(600px 400px at ${30 + Math.sin(f / 120) * 8}% ${
+          25 + Math.cos(f / 140) * 6
+        }%, rgba(122,162,255,0.22), transparent 60%),
+          radial-gradient(500px 360px at ${75 + Math.sin(f / 100) * 6}% ${
+          78 + Math.cos(f / 130) * 8
+        }%, rgba(167,139,250,0.18), transparent 60%),
+          radial-gradient(400px 320px at 50% 110%, rgba(103,232,249,0.12), transparent 60%)
+        `,
+        filter: "blur(8px)",
+      }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        opacity: 0.35,
+        backgroundImage:
+          "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
+        backgroundSize: "40px 40px",
+        maskImage: "radial-gradient(ellipse at center, black 30%, transparent 75%)",
+        WebkitMaskImage:
+          "radial-gradient(ellipse at center, black 30%, transparent 75%)",
+      }}
+    />
+
+    <header
+      style={{
+        position: "relative",
+        zIndex: 2,
+        padding: "14px 18px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <IconLogo size={20} />
+        <span style={{ fontSize: 13.5, fontWeight: 500, letterSpacing: "-0.01em" }}>
+          Videly AI
+        </span>
+      </div>
+      <div
+        className="mf-mono"
+        style={{ fontSize: 9.5, color: "var(--ink-3)", letterSpacing: "0.14em" }}
+      >
+        DIRECTOR STUDIO
+      </div>
+    </header>
+
+    <div
+      style={{
+        position: "relative",
+        zIndex: 2,
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 28px",
+        textAlign: "center",
+        overflow: "auto",
+      }}
+    >
+      <div style={{ position: "relative", marginBottom: 28 }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: -22,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(122,162,255,0.30), transparent 65%)",
+            filter: "blur(20px)",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "relative",
+            width: 72,
+            height: 72,
+            borderRadius: 20,
+            background:
+              "linear-gradient(135deg, #7AA2FF 0%, #A78BFA 55%, #67E8F9 100%)",
+            display: "grid",
+            placeItems: "center",
+            color: "#0B0C10",
+            boxShadow:
+              "0 16px 40px -10px rgba(122,162,255,0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
+            transform: `rotate(${Math.sin(f / 60) * 1.5}deg)`,
+            transition: "transform 200ms",
+          }}
+        >
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="2" y="7" width="15" height="10" rx="2" />
+            <path d="M17 10l5-3v10l-5-3" />
+            <circle cx="7" cy="12" r="1.4" />
+          </svg>
+        </div>
+      </div>
+
+      <div
+        className="mf-mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.18em",
+          color: "#7AA2FF",
+          marginBottom: 14,
+        }}
+      >
+        DESKTOP‑ONLY EXPERIENCE
+      </div>
+      <h1
+        style={{
+          margin: 0,
+          fontSize: 28,
+          fontWeight: 500,
+          letterSpacing: "-0.025em",
+          lineHeight: 1.15,
+          maxWidth: 320,
+        }}
+      >
+        Director Studio doesn't <span className="mf-grad-text">fit a small screen.</span>
+      </h1>
+      <p
+        style={{
+          margin: "14px auto 0",
+          maxWidth: 320,
+          fontSize: 13.5,
+          color: "var(--ink-2)",
+          lineHeight: 1.55,
+        }}
+      >
+        The storyboard, shot inspector, and AI pipeline rely on a wide canvas.
+        Open Videly on a laptop or desktop to direct your film.
+      </p>
+
+      <div
+        style={{
+          marginTop: 24,
+          padding: "14px 16px",
+          borderRadius: 12,
+          background: "rgba(255,255,255,0.025)",
+          border: "1px solid var(--line)",
+          maxWidth: 320,
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          gap: 9,
+          textAlign: "left",
+        }}
+      >
+        {[
+          "Multi-shot storyboard editor",
+          "Per-shot composition & camera",
+          "Live image → video pipeline",
+          "Side-by-side render inspector",
+        ].map((t) => (
+          <div
+            key={t}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 12.5,
+              color: "var(--ink-1)",
+            }}
+          >
+            <span
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 4,
+                background: "rgba(122,162,255,0.10)",
+                border: "1px solid rgba(122,162,255,0.30)",
+                color: "#7AA2FF",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <IconCheck size={10} stroke={2.5} />
+            </span>
+            {t}
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          marginTop: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          width: "100%",
+          maxWidth: 320,
+        }}
+      >
+        <button
+          onClick={onBackHome}
+          style={{
+            width: "100%",
+            height: 44,
+            borderRadius: 10,
+            border: "1px solid rgba(167,139,250,0.45)",
+            background:
+              "linear-gradient(135deg, #7AA2FF 0%, #A78BFA 55%, #67E8F9 100%)",
+            color: "#0B0C10",
+            fontSize: 13.5,
+            fontWeight: 600,
+            letterSpacing: "-0.005em",
+            fontFamily: "inherit",
+            cursor: "pointer",
+            boxShadow:
+              "0 8px 28px rgba(122,162,255,0.32), inset 0 1px 0 rgba(255,255,255,0.22)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+          }}
+        >
+          Back to Home
+          <IconArrowRight size={13} />
+        </button>
+        <button
+          type="button"
+          style={{
+            width: "100%",
+            height: 42,
+            borderRadius: 10,
+            background: "rgba(255,255,255,0.035)",
+            border: "1px solid var(--line)",
+            color: "var(--ink-1)",
+            fontSize: 12.5,
+            fontWeight: 500,
+            fontFamily: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          Email me a desktop link
+        </button>
+      </div>
+    </div>
+
+    <div
+      className="mf-mono"
+      style={{
+        position: "relative",
+        zIndex: 2,
+        padding: "14px 18px",
+        textAlign: "center",
+        fontSize: 9.5,
+        letterSpacing: "0.14em",
+        color: "var(--ink-4)",
+        borderTop: "1px solid var(--line)",
+      }}
+    >
+      MIN WIDTH · 1024PX RECOMMENDED
+    </div>
+  </div>
+);
 
 
 

@@ -26,6 +26,25 @@ const useScrollY = (ref: RefObject<HTMLDivElement | null>) => {
   return y;
 };
 
+// Container-width based mobile detection. We measure the scroll container,
+// not the viewport — keeps the landing page responsive even when embedded
+// inside fixed-width artboards or split layouts.
+const useIsMobile = (ref: RefObject<HTMLDivElement | null>, threshold = 720) => {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = (w: number) => setM(w < threshold);
+    apply(el.clientWidth);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [ref, threshold]);
+  return m;
+};
+
 const FloatingCard = ({
   children,
   pos,
@@ -52,7 +71,7 @@ const FloatingCard = ({
 );
 
 /* ─────── HERO ─────── */
-const HeroStage = ({ f }: { f: number; onCta?: () => void }) => {
+const HeroStage = ({ f, m }: { f: number; m: boolean; onCta?: () => void }) => {
   const scenes = [
     { c: "linear-gradient(135deg, #1F2937, #06070A)", l: "01 · COLD OPEN" },
     { c: "linear-gradient(135deg, #5468FF, #2D3340)", l: "02 · LOGO REVEAL" },
@@ -61,12 +80,12 @@ const HeroStage = ({ f }: { f: number; onCta?: () => void }) => {
     { c: "linear-gradient(135deg, #67E8F9, #7AA2FF)", l: "05 · CTA" },
   ];
   return (
-    <div style={{ marginTop: 80, position: "relative" }}>
+    <div style={{ marginTop: m ? 40 : 80, position: "relative" }}>
       <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
-        <CinemaPreview aspect="2.4 / 1" frame={f} label="VIDELY · LIVE PREVIEW · 4K · 24FPS">
-          <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", textAlign: "center", color: "white" }}>
-            <div className="mf-mono" style={{ fontSize: 11, letterSpacing: "0.18em", color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>SCENE 03 · 00:04.21 → 00:07.80</div>
-            <div style={{ fontSize: 56, fontWeight: 500, letterSpacing: "-0.03em", textShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>Built for teams that ship.</div>
+        <CinemaPreview aspect={m ? "1.6 / 1" : "2.4 / 1"} frame={f} label="VIDELY · LIVE PREVIEW · 4K · 24FPS">
+          <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", textAlign: "center", color: "white", width: "90%" }}>
+            <div className="mf-mono" style={{ fontSize: m ? 9 : 11, letterSpacing: "0.18em", color: "rgba(255,255,255,0.55)", marginBottom: m ? 10 : 14 }}>{m ? "SCENE 03 · 00:04.21" : "SCENE 03 · 00:04.21 → 00:07.80"}</div>
+            <div style={{ fontSize: m ? 24 : 56, fontWeight: 500, letterSpacing: "-0.03em", textShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>Built for teams that ship.</div>
           </div>
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "20px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(0deg, rgba(0,0,0,0.6), transparent)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -91,54 +110,58 @@ const HeroStage = ({ f }: { f: number; onCta?: () => void }) => {
         </div>
       </div>
 
-      <FloatingCard pos={{ left: -10, top: 120 }} delay={0}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--grad-aurora)", display: "grid", placeItems: "center" }}>
-            <IconWand size={14} stroke={2} style={{ color: "white" }}/>
+      {!m && (
+        <FloatingCard pos={{ left: -10, top: 120 }} delay={0}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--grad-aurora)", display: "grid", placeItems: "center" }}>
+              <IconWand size={14} stroke={2} style={{ color: "white" }}/>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>Motion path · Easing</div>
+              <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.05em" }}>cubic-bezier(.2,.8,.2,1)</div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 500 }}>Motion path · Easing</div>
-            <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.05em" }}>cubic-bezier(.2,.8,.2,1)</div>
+          <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 24 }}>
+            {Array.from({ length: 28 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: 2, height: `${30 + Math.sin((f + i * 8) / 12) * 40 + 30}%`,
+                  background: i < 18 ? "linear-gradient(180deg, #7AA2FF, #A78BFA)" : "rgba(255,255,255,0.15)",
+                  borderRadius: 1,
+                }}
+              />
+            ))}
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 24 }}>
-          {Array.from({ length: 28 }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                width: 2, height: `${30 + Math.sin((f + i * 8) / 12) * 40 + 30}%`,
-                background: i < 18 ? "linear-gradient(180deg, #7AA2FF, #A78BFA)" : "rgba(255,255,255,0.15)",
-                borderRadius: 1,
-              }}
-            />
-          ))}
-        </div>
-      </FloatingCard>
+        </FloatingCard>
+      )}
 
-      <FloatingCard pos={{ right: -10, top: 200 }} delay={2}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <span className="mf-pill mf-pill-success" style={{ padding: "3px 8px" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#67E8F9", boxShadow: "0 0 10px #67E8F9" }}/>
-            LIVE
-          </span>
-          <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em" }}>RENDER · 4K</span>
-        </div>
-        <div style={{ fontSize: 13, marginBottom: 6 }}>Generating cinematic film…</div>
-        <div style={{ height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ width: `${(Math.sin(f / 30) * 0.4 + 0.6) * 100}%`, height: "100%", background: "var(--grad-aurora)" }}/>
-        </div>
-        <div className="mf-mono" style={{ marginTop: 8, fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.05em", display: "flex", justifyContent: "space-between" }}>
-          <span>FRAME 1,284 / 2,160</span><span>{(8 + Math.sin(f / 30) * 1.2).toFixed(1)}s</span>
-        </div>
-      </FloatingCard>
+      {!m && (
+        <FloatingCard pos={{ right: -10, top: 200 }} delay={2}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span className="mf-pill mf-pill-success" style={{ padding: "3px 8px" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#67E8F9", boxShadow: "0 0 10px #67E8F9" }}/>
+              LIVE
+            </span>
+            <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em" }}>RENDER · 4K</span>
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 6 }}>Generating cinematic film…</div>
+          <div style={{ height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ width: `${(Math.sin(f / 30) * 0.4 + 0.6) * 100}%`, height: "100%", background: "var(--grad-aurora)" }}/>
+          </div>
+          <div className="mf-mono" style={{ marginTop: 8, fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.05em", display: "flex", justifyContent: "space-between" }}>
+            <span>FRAME 1,284 / 2,160</span><span>{(8 + Math.sin(f / 30) * 1.2).toFixed(1)}s</span>
+          </div>
+        </FloatingCard>
+      )}
     </div>
   );
 };
 
-const Hero = ({ f, y, onCta }: { f: number; y: number; onCta?: () => void }) => {
+const Hero = ({ f, y, onCta, ctaLabel = "Start Creating Free", m }: { f: number; y: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => {
   const parallax = Math.min(y * 0.4, 200);
   return (
-    <section style={{ position: "relative", padding: "32px 56px 96px", overflow: "hidden", isolation: "isolate" }}>
+    <section style={{ position: "relative", padding: m ? "16px 20px 56px" : "32px 56px 96px", overflow: "hidden", isolation: "isolate" }}>
       <div className="mf-bg-bloom"/>
       <div className="mf-bg-grid" style={{ transform: `translateY(${parallax * 0.3}px)` }}/>
       <div className="mf-bg-noise"/>
@@ -146,72 +169,72 @@ const Hero = ({ f, y, onCta }: { f: number; y: number; onCta?: () => void }) => 
       <div style={{ position: "absolute", left: "8%", top: 200, width: 360, height: 360, borderRadius: "50%", background: "oklch(0.72 0.18 250 / 0.20)", filter: "blur(80px)", transform: `translate(${Math.sin(f / 80) * 30}px, ${Math.cos(f / 100) * 40 - parallax * 0.5}px)`, pointerEvents: "none", zIndex: 0 }}/>
       <div style={{ position: "absolute", right: "10%", top: 80, width: 280, height: 280, borderRadius: "50%", background: "oklch(0.68 0.20 295 / 0.20)", filter: "blur(80px)", transform: `translate(${Math.cos(f / 70) * 40}px, ${Math.sin(f / 90) * 30 - parallax * 0.4}px)`, pointerEvents: "none", zIndex: 0 }}/>
 
-      <div style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", paddingTop: 80 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 28 }}>
+      <div style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", paddingTop: m ? 36 : 80 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: m ? 18 : 28 }}>
           <Pill tone="glow" icon={<IconSparkle size={11}/>}>
-            <span className="mf-mono" style={{ fontSize: 11, letterSpacing: "0.08em" }}>NEW · MOTION ENGINE v2 · CINEMATIC RENDER</span>
+            <span className="mf-mono" style={{ fontSize: m ? 9.5 : 11, letterSpacing: "0.08em" }}>{m ? "NEW · MOTION ENGINE v2" : "NEW · MOTION ENGINE v2 · CINEMATIC RENDER"}</span>
           </Pill>
 
-          <h1 className="mf-display" style={{ margin: 0, maxWidth: 1100, fontSize: 96 }}>
+          <h1 className="mf-display" style={{ margin: 0, maxWidth: 1100, fontSize: m ? 42 : 96, lineHeight: m ? 1.05 : 1.0, letterSpacing: m ? "-0.03em" : "-0.04em" }}>
             You bring the product.<br/>
             <span className="mf-grad-text">We bring the cinema.</span>
           </h1>
 
-          <p className="mf-body" style={{ maxWidth: 640, fontSize: 19, color: "var(--ink-2)" }}>
+          <p className="mf-body" style={{ maxWidth: 640, fontSize: m ? 15 : 19, color: "var(--ink-2)" }}>
             Transform screenshots, launches, and product updates into cinematic motion stories
             designed to feel world-class.
           </p>
 
-          <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
-            <Button variant="primary" size="lg" onClick={onCta} iconRight={<IconArrowRight size={16}/>}>Start Creating Free</Button>
-            <Button variant="ghost" size="lg" icon={<IconPlay size={14}/>}>Watch Demo</Button>
+          <div style={{ display: "flex", flexDirection: m ? "column" : "row", width: m ? "100%" : "auto", gap: m ? 10 : 12, marginTop: 6 }}>
+            <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
+            <Button variant="ghost" size={m ? "md" : "lg"} icon={<IconPlay size={14}/>}>Watch Demo</Button>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14, color: "var(--ink-3)", fontSize: 13 }}>
-            <div style={{ display: "flex" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14, color: "var(--ink-3)", fontSize: m ? 11.5 : 13, textAlign: m ? "left" : "center" }}>
+            <div style={{ display: "flex", flexShrink: 0 }}>
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
                   style={{
-                    width: 24, height: 24, borderRadius: "50%",
+                    width: m ? 20 : 24, height: m ? 20 : 24, borderRadius: "50%",
                     background: `linear-gradient(135deg, oklch(0.72 0.18 ${230 + i * 30}), oklch(0.55 0.18 ${280 + i * 20}))`,
-                    border: "2px solid #06070A", marginLeft: i === 0 ? 0 : -8,
+                    border: "2px solid #06070A", marginLeft: i === 0 ? 0 : -7,
                   }}
                 />
               ))}
             </div>
-            Built for startups, founders, and product teams obsessed with taste.
+            {m ? "For startups & founders obsessed with taste." : "Built for startups, founders, and product teams obsessed with taste."}
           </div>
         </div>
 
-        <HeroStage f={f} onCta={onCta}/>
+        <HeroStage f={f} onCta={onCta} m={m}/>
       </div>
     </section>
   );
 };
 
 /* ─────── SCROLL REEL ─────── */
-const ScrollReel = ({ f, y }: { f: number; y: number }) => {
+const ScrollReel = ({ f, y, m }: { f: number; y: number; m: boolean }) => {
   const start = 700, span = 600;
   const t = Math.max(0, Math.min(1, (y - start) / span));
   const messages = ["screen recordings.", "generic trailers.", "rushed edits.", "low-quality motion."];
   const idx = Math.min(3, Math.floor(t * 4));
   return (
-    <section style={{ padding: "120px 56px", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)", background: "linear-gradient(180deg, #06070A, #0A0B14)", position: "relative", overflow: "hidden" }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center" }}>
+    <section style={{ padding: m ? "72px 20px" : "120px 56px", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)", background: "linear-gradient(180deg, #06070A, #0A0B14)", position: "relative", overflow: "hidden" }}>
+      <div style={{ maxWidth: 1320, margin: "0 auto", display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 40 : 80, alignItems: "center" }}>
         <div>
-          <div className="mf-eyebrow" style={{ marginBottom: 24 }}>THE STATUS QUO</div>
-          <h2 style={{ margin: 0, fontSize: 64, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.05 }}>
+          <div className="mf-eyebrow" style={{ marginBottom: m ? 16 : 24 }}>THE STATUS QUO</div>
+          <h2 style={{ margin: 0, fontSize: m ? 34 : 64, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.05 }}>
             Product launches deserve more than{" "}
             <span style={{ background: "linear-gradient(135deg, #FF6B6B, #FCA5A5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{messages[idx]}</span>
           </h2>
-          <p style={{ marginTop: 28, fontSize: 17, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 460 }}>
+          <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 14 : 17, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 460 }}>
             Most teams ship incredible products — then announce them with content that
             doesn't match the work that went in.
           </p>
         </div>
 
-        <div style={{ position: "relative", height: 480 }}>
+        <div style={{ position: "relative", height: m ? 280 : 480 }}>
           {[
             { l: "PNG · screen-rec-final-v3.mov", c: "linear-gradient(135deg, #2A2620, #1A1812)", off: 0 },
             { l: "MP4 · launch_cut_DRAFT.mp4",   c: "linear-gradient(135deg, #1F2A2A, #0F1818)", off: 1 },
@@ -222,8 +245,10 @@ const ScrollReel = ({ f, y }: { f: number; y: number }) => {
               key={i}
               style={{
                 position: "absolute",
-                top: 30 + i * 24, left: 30 + i * 24, right: 90 - i * 22,
-                height: 240,
+                top: (m ? 16 : 30) + i * (m ? 14 : 24),
+                left: (m ? 12 : 30) + i * (m ? 12 : 24),
+                right: (m ? 36 : 90) - i * (m ? 10 : 22),
+                height: m ? 140 : 240,
                 borderRadius: 18, overflow: "hidden",
                 background: v.c, border: "1px solid var(--line-2)",
                 boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)",
@@ -248,7 +273,7 @@ const ScrollReel = ({ f, y }: { f: number; y: number }) => {
           ))}
           <div
             style={{
-              position: "absolute", inset: "60px 30px 30px 100px",
+              position: "absolute", inset: m ? "30px 12px 12px 50px" : "60px 30px 30px 100px",
               opacity: t > 0.85 ? 1 : 0, transform: t > 0.85 ? "scale(1)" : "scale(0.92)",
               transition: "all 700ms cubic-bezier(.2,.8,.2,1)", zIndex: 20,
             }}
@@ -262,13 +287,13 @@ const ScrollReel = ({ f, y }: { f: number; y: number }) => {
 };
 
 /* ─────── PROBLEM BAND ─────── */
-const ProblemBand = () => {
+const ProblemBand = ({ m }: { m: boolean }) => {
   const items = ["LAUNCHES", "PRODUCT REVEALS", "SOCIAL CONTENT", "FEATURE DROPS", "DEMOS", "ANNOUNCEMENTS"];
   return (
-    <section style={{ padding: "120px 0", overflow: "hidden", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto 64px", padding: "0 56px", textAlign: "center" }}>
-        <div className="mf-eyebrow" style={{ marginBottom: 20 }}>THE PROBLEM</div>
-        <h2 style={{ margin: 0, fontSize: 72, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.02 }}>
+    <section style={{ padding: m ? "72px 0" : "120px 0", overflow: "hidden", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ maxWidth: 1100, margin: m ? "0 auto 40px" : "0 auto 64px", padding: m ? "0 20px" : "0 56px", textAlign: "center" }}>
+        <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>THE PROBLEM</div>
+        <h2 style={{ margin: 0, fontSize: m ? 38 : 72, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.02 }}>
           Great products are still <span className="mf-grad-text">presented badly.</span>
         </h2>
       </div>
@@ -278,9 +303,9 @@ const ProblemBand = () => {
           <span
             key={i}
             style={{
-              fontSize: 56, fontWeight: 500, letterSpacing: "-0.02em",
+              fontSize: m ? 30 : 56, fontWeight: 500, letterSpacing: "-0.02em",
               color: i % 3 === 0 ? "var(--ink-0)" : "var(--ink-4)",
-              padding: "0 32px",
+              padding: m ? "0 18px" : "0 32px",
             }}
           >
             {it}
@@ -288,21 +313,21 @@ const ProblemBand = () => {
         ))}
       </Marquee>
 
-      <div style={{ maxWidth: 1100, margin: "80px auto 0", padding: "0 56px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
+      <div style={{ maxWidth: 1100, margin: m ? "56px auto 0" : "80px auto 0", padding: m ? "0 20px" : "0 56px", display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: 0, border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
         {[
           { t: "Expensive",    d: "Premium motion design starts at $15K and rarely fits a launch cycle." },
           { t: "Slow",         d: "Two weeks of revisions before your launch can even ship." },
           { t: "Hard to scale", d: "Every feature needs its own brief, designer, and approval loop." },
         ].map((c, i) => (
-          <div key={i} style={{ padding: "32px 28px", background: "rgba(8,9,13,0.6)", borderRight: i < 2 ? "1px solid var(--line)" : "none" }}>
+          <div key={i} style={{ padding: m ? "22px 22px" : "32px 28px", background: "rgba(8,9,13,0.6)", borderRight: !m && i < 2 ? "1px solid var(--line)" : "none", borderBottom: m && i < 2 ? "1px solid var(--line)" : "none" }}>
             <div className="mf-mono" style={{ fontSize: 10, color: "#FF6B6B", letterSpacing: "0.16em" }}>0{i + 1}</div>
-            <div style={{ fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em", marginTop: 14 }}>{c.t}</div>
-            <div style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.5 }}>{c.d}</div>
+            <div style={{ fontSize: m ? 18 : 22, fontWeight: 500, letterSpacing: "-0.02em", marginTop: m ? 10 : 14 }}>{c.t}</div>
+            <div style={{ fontSize: m ? 13 : 14, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.5 }}>{c.d}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ maxWidth: 700, margin: "80px auto 0", padding: "0 56px", textAlign: "center", fontSize: 22, color: "var(--ink-2)", letterSpacing: "-0.015em" }}>
+      <div style={{ maxWidth: 700, margin: m ? "48px auto 0" : "80px auto 0", padding: m ? "0 20px" : "0 56px", textAlign: "center", fontSize: m ? 16 : 22, color: "var(--ink-2)", letterSpacing: "-0.015em" }}>
         So most companies settle for content that{" "}
         <span style={{ position: "relative" }}>
           looks forgettable.
@@ -314,7 +339,7 @@ const ProblemBand = () => {
 };
 
 /* ─────── SOLUTION PIPELINE ─────── */
-const SolutionPipeline = ({ f }: { f: number }) => {
+const SolutionPipeline = ({ f, m }: { f: number; m: boolean }) => {
   const stages = [
     { l: "Scene composition", c: "linear-gradient(135deg, #5468FF, #2D3340)" },
     { l: "Cinematic pacing",  c: "linear-gradient(135deg, #7AA2FF, #5468FF)" },
@@ -325,21 +350,21 @@ const SolutionPipeline = ({ f }: { f: number }) => {
     { l: "Storytelling flow", c: "linear-gradient(135deg, #F472B6, #FCD34D)" },
   ];
   return (
-    <section style={{ padding: "140px 56px", borderBottom: "1px solid var(--line)", position: "relative" }}>
+    <section style={{ padding: m ? "80px 20px" : "140px 56px", borderBottom: "1px solid var(--line)", position: "relative" }}>
       <div className="mf-bg-bloom"/>
       <div style={{ position: "relative", maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 36 : 80, alignItems: "center" }}>
           <div>
-            <div className="mf-eyebrow" style={{ marginBottom: 20 }}>THE SOLUTION</div>
-            <h2 style={{ margin: 0, fontSize: 72, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.02 }}>
+            <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>THE SOLUTION</div>
+            <h2 style={{ margin: 0, fontSize: m ? 38 : 72, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.02 }}>
               Your AI <span className="mf-grad-text">motion designer.</span>
             </h2>
-            <p style={{ marginTop: 28, fontSize: 18, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 480 }}>
+            <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 15 : 18, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 480 }}>
               Upload screenshots, paste a short script, and Videly AI creates launch-ready
               motion automatically.
             </p>
 
-            <div style={{ marginTop: 36, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ marginTop: m ? 24 : 36, display: "flex", flexDirection: "column", gap: 12 }}>
               {[
                 { l: "No editing timeline" },
                 { l: "No After Effects" },
@@ -464,7 +489,7 @@ const ExportVisual = () => (
   </div>
 );
 
-const HowItWorks = ({ f }: { f: number }) => {
+const HowItWorks = ({ f, m }: { f: number; m: boolean }) => {
   const steps = [
     { n: "01", t: "Upload your product",   d: "Drop screenshots, UI flows, or product URLs.",                                                        visual: <UploadVisual f={f}/> },
     { n: "02", t: "Tell the story",        d: "Add a short script, release notes, or feature bullets.",                                               visual: <ScriptVisual/> },
@@ -472,31 +497,34 @@ const HowItWorks = ({ f }: { f: number }) => {
     { n: "04", t: "Export everywhere",     d: "Publish launch-ready content for X, LinkedIn, Product Hunt, App Store, websites, and ads.",            visual: <ExportVisual/> },
   ];
   return (
-    <section style={{ padding: "140px 56px", borderBottom: "1px solid var(--line)" }}>
+    <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 80 }}>
-          <div className="mf-eyebrow" style={{ marginBottom: 20 }}>HOW IT WORKS</div>
-          <h2 style={{ margin: 0, fontSize: 64, fontWeight: 500, letterSpacing: "-0.035em" }}>
+        <div style={{ textAlign: "center", marginBottom: m ? 44 : 80 }}>
+          <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>HOW IT WORKS</div>
+          <h2 style={{ margin: 0, fontSize: m ? 34 : 64, fontWeight: 500, letterSpacing: "-0.035em" }}>
             From product to film in <span className="mf-grad-text">four moves.</span>
           </h2>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: m ? 14 : 16 }}>
           {steps.map((s, i) => (
             <div
               key={i}
               style={{
-                display: "grid", gridTemplateColumns: "120px 1fr 1fr", gap: 32, alignItems: "center",
-                padding: "32px 36px", borderRadius: 18,
+                display: "grid",
+                gridTemplateColumns: m ? "1fr" : "120px 1fr 1fr",
+                gap: m ? 16 : 32,
+                alignItems: m ? "flex-start" : "center",
+                padding: m ? "22px 22px" : "32px 36px", borderRadius: 18,
                 background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)",
               }}
             >
-              <div className="mf-mono" style={{ fontSize: 56, fontWeight: 500, color: "var(--ink-3)", letterSpacing: "-0.04em" }}>{s.n}</div>
+              <div className="mf-mono" style={{ fontSize: m ? 32 : 56, fontWeight: 500, color: "var(--ink-3)", letterSpacing: "-0.04em", lineHeight: 1 }}>{s.n}</div>
               <div>
-                <div style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.02em" }}>{s.t}</div>
-                <div style={{ marginTop: 10, fontSize: 15, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 420 }}>{s.d}</div>
+                <div style={{ fontSize: m ? 22 : 28, fontWeight: 500, letterSpacing: "-0.02em" }}>{s.t}</div>
+                <div style={{ marginTop: m ? 8 : 10, fontSize: m ? 13.5 : 15, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 420 }}>{s.d}</div>
               </div>
-              <div style={{ height: 160 }}>{s.visual}</div>
+              <div style={{ height: m ? 120 : 160 }}>{s.visual}</div>
             </div>
           ))}
         </div>
@@ -506,28 +534,28 @@ const HowItWorks = ({ f }: { f: number }) => {
 };
 
 /* ─────── TASTE ─────── */
-const TasteSection = () => (
-  <section style={{ padding: "160px 56px", borderBottom: "1px solid var(--line)", textAlign: "center", position: "relative", overflow: "hidden" }}>
+const TasteSection = ({ m }: { m: boolean }) => (
+  <section style={{ padding: m ? "100px 20px" : "160px 56px", borderBottom: "1px solid var(--line)", textAlign: "center", position: "relative", overflow: "hidden" }}>
     <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 80% at 50% 50%, rgba(122,162,255,0.10), transparent 70%)", pointerEvents: "none" }}/>
     <div style={{ position: "relative", maxWidth: 1100, margin: "0 auto" }}>
-      <div className="mf-eyebrow" style={{ marginBottom: 24 }}>THE DIFFERENCE</div>
-      <h2 style={{ margin: 0, fontSize: 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
+      <div className="mf-eyebrow" style={{ marginBottom: m ? 18 : 24 }}>THE DIFFERENCE</div>
+      <h2 style={{ margin: 0, fontSize: m ? 40 : 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
         Most AI tools generate <span style={{ color: "var(--ink-3)" }}>content.</span><br/>
         Videly generates <span className="mf-grad-text">taste.</span>
       </h2>
-      <p style={{ marginTop: 36, fontSize: 18, color: "var(--ink-2)", maxWidth: 620, margin: "36px auto 0", lineHeight: 1.55 }}>
+      <p style={{ marginTop: m ? 24 : 36, fontSize: m ? 15 : 18, color: "var(--ink-2)", maxWidth: 620, margin: m ? "24px auto 0" : "36px auto 0", lineHeight: 1.55 }}>
         Built around curated motion systems inspired by modern startup launches, cinematic
         product reveals, and premium UI storytelling.
       </p>
 
-      <div style={{ marginTop: 56, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ marginTop: m ? 36 : 56, display: "flex", justifyContent: "center", gap: m ? 8 : 12, flexWrap: "wrap" }}>
         {["Not AI slop", "Not random animations", "Not template videos"].map((l, i) => (
           <div
             key={i}
             style={{
-              padding: "12px 22px", borderRadius: 999,
+              padding: m ? "9px 14px" : "12px 22px", borderRadius: 999,
               background: "rgba(255,255,255,0.025)", border: "1px solid var(--line)",
-              fontSize: 14, color: "var(--ink-2)",
+              fontSize: m ? 12.5 : 14, color: "var(--ink-2)",
               display: "inline-flex", alignItems: "center", gap: 10,
             }}
           >
@@ -600,7 +628,7 @@ const NoirMotion = ({ f }: { f: number }) => (
   <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${f % 360}deg, rgba(252,211,77,0) 40%, rgba(252,211,77,0.5) 50%, rgba(252,211,77,0) 60%)` }}/>
 );
 
-const PresetGallery = ({ f }: { f: number }) => {
+const PresetGallery = ({ f, m }: { f: number; m: boolean }) => {
   const presets = [
     { n: "Linear", d: "Minimal, sharp, technical motion.",     c: "linear-gradient(135deg, #5468FF, #1F2937)", accent: "#7AA2FF" },
     { n: "Apple",  d: "Elegant pacing with cinematic reveals.", c: "linear-gradient(135deg, #1F2937, #000)",     accent: "#FAFAFC" },
@@ -609,19 +637,19 @@ const PresetGallery = ({ f }: { f: number }) => {
     { n: "Noir",   d: "Dark, dramatic, contrast-heavy.",         c: "linear-gradient(135deg, #1A1A1A, #000)",     accent: "#FCD34D" },
   ];
   return (
-    <section style={{ padding: "140px 56px", borderBottom: "1px solid var(--line)" }}>
+    <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 56 }}>
+        <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "space-between", alignItems: m ? "flex-start" : "flex-end", gap: m ? 12 : 0, marginBottom: m ? 32 : 56 }}>
           <div>
-            <div className="mf-eyebrow" style={{ marginBottom: 20 }}>MOTION PRESETS</div>
-            <h2 style={{ margin: 0, fontSize: 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
+            <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>MOTION PRESETS</div>
+            <h2 style={{ margin: 0, fontSize: m ? 32 : 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
               Designed like <span className="mf-grad-text">creative identities.</span>
             </h2>
           </div>
           <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>05 · STYLE SYSTEMS</div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: m ? 10 : 14 }}>
           {presets.map((p, i) => (
             <div
               key={i}
@@ -665,7 +693,7 @@ const PresetGallery = ({ f }: { f: number }) => {
 };
 
 /* ─────── USE CASES ─────── */
-const UseCaseGrid = () => {
+const UseCaseGrid = ({ m }: { m: boolean }) => {
   const cases = [
     { t: "Launch Videos",      d: "Turn feature launches into cinematic reveals." },
     { t: "Product Updates",    d: "Transform release notes into engaging motion content." },
@@ -675,31 +703,31 @@ const UseCaseGrid = () => {
     { t: "Onboarding Visuals", d: "Welcome new users with motion that feels considered." },
   ];
   return (
-    <section style={{ padding: "140px 56px", borderBottom: "1px solid var(--line)" }}>
+    <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 56 }}>
-          <h2 style={{ margin: 0, fontSize: 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05, maxWidth: 600 }}>
+        <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "space-between", alignItems: m ? "flex-start" : "flex-end", gap: m ? 12 : 0, marginBottom: m ? 32 : 56 }}>
+          <h2 style={{ margin: 0, fontSize: m ? 32 : 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05, maxWidth: 600 }}>
             One tool. Every <span className="mf-grad-text">launch surface.</span>
           </h2>
           <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>USE CASES</div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
           {cases.map((c, i) => (
             <div
               key={i}
               style={{
-                padding: "36px 32px", background: "rgba(8,9,13,0.6)",
+                padding: m ? "24px 22px" : "36px 32px", background: "rgba(8,9,13,0.6)",
                 display: "flex", flexDirection: "column", gap: 12,
-                minHeight: 220, position: "relative", cursor: "pointer", transition: "background 200ms",
+                minHeight: m ? 140 : 220, position: "relative", cursor: "pointer", transition: "background 200ms",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(122,162,255,0.04)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(8,9,13,0.6)"; }}
             >
               <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em" }}>0{i + 1}</div>
-              <div style={{ fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em" }}>{c.t}</div>
-              <div className="mf-body" style={{ fontSize: 14, color: "var(--ink-3)", marginTop: "auto" }}>{c.d}</div>
-              <IconArrowRight size={14} style={{ position: "absolute", right: 28, bottom: 32, color: "var(--ink-3)" }}/>
+              <div style={{ fontSize: m ? 18 : 22, fontWeight: 500, letterSpacing: "-0.02em" }}>{c.t}</div>
+              <div className="mf-body" style={{ fontSize: m ? 13 : 14, color: "var(--ink-3)", marginTop: "auto" }}>{c.d}</div>
+              <IconArrowRight size={14} style={{ position: "absolute", right: m ? 22 : 28, bottom: m ? 22 : 32, color: "var(--ink-3)" }}/>
             </div>
           ))}
         </div>
@@ -709,27 +737,27 @@ const UseCaseGrid = () => {
 };
 
 /* ─────── WHY NOW ─────── */
-const WhyNow = ({ f }: { f: number }) => {
+const WhyNow = ({ f, m }: { f: number; m: boolean }) => {
   const beats = ["narratives", "reveals", "moments", "motion", "atmosphere"];
   const demand = ["launch videos", "social clips", "product storytelling", "feature demos", "ads", "onboarding visuals"];
   return (
-    <section style={{ padding: "140px 56px", borderBottom: "1px solid var(--line)", position: "relative", overflow: "hidden" }}>
+    <section style={{ padding: m ? "80px 20px" : "140px 56px", borderBottom: "1px solid var(--line)", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 80% 50% at 50% 50%, rgba(167,139,250,0.08), transparent 70%)" }}/>
       <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
-        <div className="mf-eyebrow" style={{ marginBottom: 20 }}>WHY NOW</div>
-        <h2 style={{ margin: 0, fontSize: 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
+        <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>WHY NOW</div>
+        <h2 style={{ margin: 0, fontSize: m ? 44 : 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
           Software became <span className="mf-grad-text">visual.</span>
         </h2>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, marginTop: 80 }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 40 : 80, marginTop: m ? 40 : 80 }}>
           <div>
-            <div style={{ fontSize: 16, color: "var(--ink-3)", marginBottom: 24, letterSpacing: "-0.005em" }}>The best startups no longer just ship features. They ship:</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: m ? 14 : 16, color: "var(--ink-3)", marginBottom: m ? 18 : 24, letterSpacing: "-0.005em" }}>The best startups no longer just ship features. They ship:</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: m ? 4 : 6 }}>
               {beats.map((b, i) => (
                 <div
                   key={i}
                   style={{
-                    fontSize: 36, fontWeight: 500, letterSpacing: "-0.025em",
+                    fontSize: m ? 24 : 36, fontWeight: 500, letterSpacing: "-0.025em",
                     color: i === Math.floor(f / 40) % beats.length ? "var(--ink-0)" : "var(--ink-3)",
                     transition: "color 400ms",
                   }}
@@ -740,25 +768,25 @@ const WhyNow = ({ f }: { f: number }) => {
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 16, color: "var(--ink-3)", marginBottom: 24, letterSpacing: "-0.005em" }}>And content demand exploded. Teams now need:</div>
+            <div style={{ fontSize: m ? 14 : 16, color: "var(--ink-3)", marginBottom: m ? 18 : 24, letterSpacing: "-0.005em" }}>And content demand exploded. Teams now need:</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {demand.map((d, i) => (
                 <span
                   key={i}
                   style={{
-                    padding: "10px 16px", borderRadius: 999,
+                    padding: m ? "8px 13px" : "10px 16px", borderRadius: 999,
                     background: "rgba(255,255,255,0.025)", border: "1px solid var(--line)",
-                    fontSize: 14, color: "var(--ink-1)",
+                    fontSize: m ? 12.5 : 14, color: "var(--ink-1)",
                   }}
                 >
                   {d}
                 </span>
               ))}
             </div>
-            <div style={{ marginTop: 32, fontSize: 16, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            <div style={{ marginTop: m ? 24 : 32, fontSize: m ? 14 : 16, color: "var(--ink-2)", lineHeight: 1.6 }}>
               Every single week.
             </div>
-            <div style={{ marginTop: 12, fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em" }}>
+            <div style={{ marginTop: 12, fontSize: m ? 17 : 22, fontWeight: 500, letterSpacing: "-0.02em" }}>
               Videly makes cinematic startup storytelling <span className="mf-grad-text">scalable.</span>
             </div>
           </div>
@@ -769,13 +797,13 @@ const WhyNow = ({ f }: { f: number }) => {
 };
 
 /* ─────── BUILT FOR ─────── */
-const BuiltFor = () => {
+const BuiltFor = ({ m }: { m: boolean }) => {
   const groups = ["founders", "indie hackers", "SaaS teams", "product marketers", "agencies", "launch-obsessed startups"];
   return (
-    <section style={{ padding: "120px 0", borderBottom: "1px solid var(--line)", overflow: "hidden", textAlign: "center" }}>
-      <div style={{ maxWidth: 900, margin: "0 auto 56px", padding: "0 56px" }}>
-        <div className="mf-eyebrow" style={{ marginBottom: 20 }}>SOCIAL PROOF</div>
-        <h2 style={{ margin: 0, fontSize: 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
+    <section style={{ padding: m ? "72px 0" : "120px 0", borderBottom: "1px solid var(--line)", overflow: "hidden", textAlign: "center" }}>
+      <div style={{ maxWidth: 900, margin: m ? "0 auto 36px" : "0 auto 56px", padding: m ? "0 20px" : "0 56px" }}>
+        <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>SOCIAL PROOF</div>
+        <h2 style={{ margin: 0, fontSize: m ? 30 : 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
           Built for the new generation of <span className="mf-grad-text">startup marketing.</span>
         </h2>
       </div>
@@ -784,9 +812,9 @@ const BuiltFor = () => {
           <span
             key={i}
             style={{
-              fontSize: 36, fontWeight: 500, letterSpacing: "-0.02em",
+              fontSize: m ? 22 : 36, fontWeight: 500, letterSpacing: "-0.02em",
               color: i % 2 === 0 ? "var(--ink-1)" : "var(--ink-3)",
-              padding: "0 28px",
+              padding: m ? "0 18px" : "0 28px",
             }}
           >
             {g} <span style={{ color: "var(--ink-4)", margin: "0 4px" }}>·</span>
@@ -815,21 +843,29 @@ type Tier = {
 };
 
 const PricingTable = () => {
-  const cols = ["Free", "Pro", "Studio", "Enterprise"];
+  // Columns must stay aligned with the four real plan keys in
+  // app/motionflow/screens/pricing.tsx (free / starter / pro / studio) and
+  // the monthly USD + monthlyGrant in app/lib/billing/paddle.ts. If a plan
+  // is added or renamed, update all three places together.
+  const cols = ["Free", "Starter", "Pro", "Studio"];
   const rows: [string, string[]][] = [
-    ["AI Scene Generation",      ["✓", "✓", "✓", "✓"]],
-    ["Cinematic Motion Systems", ["Basic", "Premium", "Advanced", "Custom"]],
-    ["Watermark-Free Export",    ["—", "✓", "✓", "✓"]],
-    ["HD Export",                ["—", "✓", "✓", "✓"]],
-    ["AI Storyboard Engine",     ["—", "✓", "✓", "✓"]],
-    ["Smart Pacing",             ["—", "✓", "✓", "✓"]],
-    ["Brand Kit",                ["—", "✓", "✓", "✓"]],
-    ["Team Collaboration",       ["—", "—", "✓", "✓"]],
-    ["Custom Motion Identity",   ["—", "—", "✓", "✓"]],
-    ["API Access",               ["—", "—", "—", "✓"]],
-    ["White-Label",              ["—", "—", "—", "✓"]],
+    ["Monthly credits",          ["3,100", "8,000", "20,000", "60,000"]],
+    ["Scenes per film",          ["2", "10", "14", "14"]],
+    ["Concurrent jobs",          ["1", "2", "5", "10"]],
+    ["Watermark-free export",    ["—", "✓", "✓", "✓"]],
+    ["Commercial use",           ["—", "✓", "✓", "✓"]],
+    ["Voiceover · music · SFX",  ["—", "✓", "✓", "✓"]],
+    ["Vision critique",          ["—", "✓", "✓", "✓"]],
+    ["Brand kit (logo + colors)",["—", "✓", "✓", "✓"]],
+    ["4K export",                ["—", "—", "✓", "✓"]],
+    ["One-click polish",         ["—", "—", "✓", "✓"]],
+    ["Team seats",               ["—", "—", "—", "3"]],
+    ["Programmatic API access",  ["—", "—", "—", "✓"]],
   ];
+  // Index 2 (Pro) is the featured column — matches the popular plan in
+  // PLANS and the featured/badge tier card above the table.
   const accents = ["rgba(255,255,255,0.4)", "#7AA2FF", "#A78BFA", "#67E8F9"];
+  const FEATURED_COL = 2;
 
   const Cell = ({ v, accent, featured }: { v: string; accent: string; featured?: boolean }) => {
     const isCheck = v === "✓";
@@ -867,7 +903,7 @@ const PricingTable = () => {
           style={{
             padding: "20px 16px", textAlign: "center",
             borderBottom: "1px solid var(--line)",
-            background: i === 1 ? "rgba(122,162,255,0.06)" : "transparent",
+            background: i === FEATURED_COL ? "rgba(122,162,255,0.06)" : "transparent",
             borderLeft: "1px solid var(--line)",
           }}
         >
@@ -897,7 +933,7 @@ const PricingTable = () => {
                 borderLeft: "1px solid var(--line)",
               }}
             >
-              <Cell v={v} accent={accents[cIdx]} featured={cIdx === 1}/>
+              <Cell v={v} accent={accents[cIdx]} featured={cIdx === FEATURED_COL}/>
             </div>
           ))}
         </Fragment>
@@ -906,62 +942,91 @@ const PricingTable = () => {
   );
 };
 
-const Pricing = ({ f, onCta }: { f: number; onCta?: () => void }) => {
+const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const mult = billing === "annual" ? 0.8 : 1;
+  // Tier cards mirror the real PLANS in app/motionflow/screens/pricing.tsx.
+  // Keep monthlyUsd / baseCredits / perks in sync across this file, that
+  // one, and the Paddle catalog in app/lib/billing/paddle.ts.
   const tiers: Tier[] = [
     {
-      n: "Free", price: 0, sub: "Perfect for exploring Videly AI",
-      desc: "Create your first cinematic launch videos in minutes.",
+      n: "Free", price: 0, sub: "Try Videly with a starter grant — no card.",
+      desc: "Generate your first cinematic launch videos in minutes, on us.",
       cta: "Start Free", variant: "ghost",
       accent: "rgba(255,255,255,0.4)",
       bg: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))",
-      features: ["3 video exports / month", "Videly watermark", "720p export", "Basic cinematic styles", "AI scene generation", "Auto captions", "Social export presets", "Community templates"],
+      features: [
+        "3,100 credits / month",
+        "Up to 2 scenes per film",
+        "Videly watermark",
+        "Community templates",
+        "1 concurrent job",
+      ],
     },
     {
-      n: "Pro", price: 39, sub: "For founders and startups moving fast",
+      n: "Starter", price: 19, sub: "For founders shipping launch films solo.",
       desc: "Premium launch videos, product reveals, and social content — without a motion team.",
-      cta: "Start Pro", variant: "primary",
-      accent: "#7AA2FF", featured: true, badge: "MOST POPULAR",
-      bg: "linear-gradient(180deg, oklch(0.30 0.13 250 / 0.55), oklch(0.18 0.10 290 / 0.35))",
-      features: ["Unlimited exports", "No watermark", "Full HD cinematic export", "Premium motion systems", "AI storyboard engine", "Smart pacing & transitions", "Brand kit", "Auto captions & sync", "Social aspect ratios", "Faster rendering", "Commercial usage", "Priority generation queue"],
+      cta: "Start Starter", variant: "ghost",
+      accent: "#7AA2FF",
+      bg: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
+      features: [
+        "8,000 credits / month",
+        "Up to 10 scenes per film",
+        "Voiceover · music · SFX",
+        "Vision critique on every scene",
+        "Brand kit (logo + colors)",
+        "No watermark · commercial use",
+        "2 concurrent jobs",
+      ],
     },
     {
-      n: "Studio", price: 99, sub: "Your startup's cinematic content engine",
-      desc: "Built for teams producing launch content every week.",
+      n: "Pro", price: 49, sub: "For teams iterating on launches every week.",
+      desc: "Cinematic films at scale: 4K export, vision critique, one-click polish, and priority renders.",
+      cta: "Start Pro", variant: "primary",
+      accent: "#A78BFA", featured: true, badge: "MOST POPULAR",
+      bg: "linear-gradient(180deg, oklch(0.30 0.13 280 / 0.55), oklch(0.18 0.10 290 / 0.35))",
+      heading: "Everything in Starter, plus",
+      features: [
+        "20,000 credits / month",
+        "Up to 14 scenes per film",
+        "One-click polish from comments",
+        "4K export",
+        "5 concurrent jobs",
+      ],
+    },
+    {
+      n: "Studio", price: 149, sub: "For agencies and in-house content engines.",
+      desc: "Team seats, programmatic API, and the headroom to run multiple launches at once.",
       cta: "Start Studio", variant: "ghost",
-      accent: "#A78BFA",
+      accent: "#67E8F9",
       bg: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
       heading: "Everything in Pro, plus",
-      features: ["Team collaboration", "Shared brand workspace", "Advanced cinematic styles", "Reusable launch templates", "AI creative direction", "Audio-reactive motion", "Advanced pacing control", "Premium typography systems", "Custom motion identity", "Priority rendering", "Unlimited brand presets", "Private projects"],
-    },
-    {
-      n: "Enterprise", price: null, priceLabel: "Custom", sub: "Motion infrastructure for modern brands",
-      desc: "Custom cinematic systems for high-scale product marketing teams.",
-      cta: "Contact Sales", variant: "ghost",
-      accent: "#67E8F9",
-      bg: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))",
-      features: ["Dedicated rendering infrastructure", "API access", "White-label workflows", "Custom motion systems", "Brand-trained creative engine", "Internal creative automation", "Multi-team workspaces", "Enterprise onboarding", "Dedicated support"],
+      features: [
+        "60,000 credits / month",
+        "3 team seats included",
+        "Programmatic API access",
+        "10 concurrent jobs",
+      ],
     },
   ];
 
   return (
-    <section style={{ padding: "160px 56px", borderBottom: "1px solid var(--line)", position: "relative", overflow: "hidden" }}>
+    <section style={{ padding: m ? "80px 20px" : "160px 56px", borderBottom: "1px solid var(--line)", position: "relative", overflow: "hidden" }}>
       <div className="mf-bg-bloom"/>
       <div style={{ position: "absolute", left: "10%", top: 200, width: 400, height: 400, borderRadius: "50%", background: "oklch(0.72 0.18 250 / 0.12)", filter: "blur(100px)", transform: `translate(${Math.sin(f / 80) * 30}px, ${Math.cos(f / 100) * 40}px)`, pointerEvents: "none" }}/>
       <div style={{ position: "absolute", right: "8%", top: 600, width: 320, height: 320, borderRadius: "50%", background: "oklch(0.68 0.20 295 / 0.12)", filter: "blur(100px)", transform: `translate(${Math.cos(f / 70) * 40}px, ${Math.sin(f / 90) * 30}px)`, pointerEvents: "none" }}/>
 
       <div style={{ position: "relative", maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 64 }}>
-          <div className="mf-eyebrow" style={{ marginBottom: 20 }}>PRICING</div>
-          <h2 style={{ margin: 0, fontSize: 80, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
+        <div style={{ textAlign: "center", marginBottom: m ? 40 : 64 }}>
+          <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>PRICING</div>
+          <h2 style={{ margin: 0, fontSize: m ? 40 : 80, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
             Pricing built for <span className="mf-grad-text">teams that ship.</span>
           </h2>
-          <p style={{ marginTop: 24, fontSize: 18, color: "var(--ink-2)", maxWidth: 580, margin: "24px auto 0", lineHeight: 1.55 }}>
+          <p style={{ marginTop: m ? 18 : 24, fontSize: m ? 14.5 : 18, color: "var(--ink-2)", maxWidth: 580, margin: m ? "18px auto 0" : "24px auto 0", lineHeight: 1.55 }}>
             From first launch videos to full-scale cinematic product storytelling.
           </p>
 
-          <div style={{ marginTop: 40, display: "inline-flex", padding: 4, borderRadius: 999, background: "rgba(8,9,13,0.6)", border: "1px solid var(--line)", backdropFilter: "blur(20px)" }}>
+          <div style={{ marginTop: m ? 28 : 40, display: "inline-flex", padding: 4, borderRadius: 999, background: "rgba(8,9,13,0.6)", border: "1px solid var(--line)", backdropFilter: "blur(20px)" }}>
             {([
               { k: "monthly" as const, l: "Monthly" },
               { k: "annual" as const,  l: "Annual", hint: "−20%" },
@@ -986,7 +1051,7 @@ const Pricing = ({ f, onCta }: { f: number; onCta?: () => void }) => {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(4, 1fr)", gap: m ? 14 : 16 }}>
           {tiers.map((t, i) => (
             <div
               key={i}
@@ -997,7 +1062,7 @@ const Pricing = ({ f, onCta }: { f: number; onCta?: () => void }) => {
                 background: t.featured
                   ? "linear-gradient(180deg, rgba(122,162,255,0.5), rgba(167,139,250,0.2) 60%, rgba(122,162,255,0.05))"
                   : "var(--line)",
-                transform: t.featured ? "translateY(-8px)" : "none",
+                transform: !m && t.featured ? "translateY(-8px)" : "none",
               }}
             >
               {t.badge && (
@@ -1022,10 +1087,10 @@ const Pricing = ({ f, onCta }: { f: number; onCta?: () => void }) => {
                   borderRadius: 21,
                   background: t.bg,
                   backdropFilter: "blur(40px)",
-                  padding: "36px 28px 32px",
+                  padding: m ? "28px 22px 26px" : "36px 28px 32px",
                   display: "flex", flexDirection: "column", height: "100%",
                   overflow: "hidden",
-                  minHeight: 720,
+                  minHeight: m ? 0 : 720,
                 }}
               >
                 {t.featured && (
@@ -1093,28 +1158,31 @@ const Pricing = ({ f, onCta }: { f: number; onCta?: () => void }) => {
           ))}
         </div>
 
-        <div style={{ marginTop: 96 }}>
-          <div style={{ textAlign: "center", marginBottom: 40 }}>
-            <div className="mf-eyebrow" style={{ marginBottom: 16 }}>COMPARE</div>
-            <h3 style={{ margin: 0, fontSize: 36, fontWeight: 500, letterSpacing: "-0.025em" }}>Every feature, side by side.</h3>
+        <div style={{ marginTop: m ? 56 : 96 }}>
+          <div style={{ textAlign: "center", marginBottom: m ? 24 : 40 }}>
+            <div className="mf-eyebrow" style={{ marginBottom: m ? 12 : 16 }}>COMPARE</div>
+            <h3 style={{ margin: 0, fontSize: m ? 24 : 36, fontWeight: 500, letterSpacing: "-0.025em" }}>Every feature, side by side.</h3>
           </div>
 
-          <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid var(--line)", background: "rgba(8,9,13,0.55)", backdropFilter: "blur(40px)" }}>
-            <PricingTable/>
+          <div style={{ borderRadius: 20, overflow: m ? "auto" : "hidden", border: "1px solid var(--line)", background: "rgba(8,9,13,0.55)", backdropFilter: "blur(40px)", WebkitOverflowScrolling: "touch" }}>
+            <div style={{ minWidth: m ? 640 : "auto" }}>
+              <PricingTable/>
+            </div>
           </div>
+          {m && <div className="mf-mono" style={{ marginTop: 8, fontSize: 9.5, color: "var(--ink-4)", letterSpacing: "0.12em", textAlign: "center" }}>→ SWIPE TO COMPARE</div>}
         </div>
 
-        <div style={{ marginTop: 96, textAlign: "center", padding: "72px 56px", borderRadius: 24, background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)" }}>
-          <h3 style={{ margin: "0 auto", fontSize: 48, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05, maxWidth: 720 }}>
+        <div style={{ marginTop: m ? 56 : 96, textAlign: "center", padding: m ? "40px 24px" : "72px 56px", borderRadius: 24, background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)" }}>
+          <h3 style={{ margin: "0 auto", fontSize: m ? 28 : 48, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05, maxWidth: 720 }}>
             Your product already deserves <span className="mf-grad-text">world-class storytelling.</span>
           </h3>
-          <p style={{ marginTop: 20, fontSize: 16, color: "var(--ink-2)", maxWidth: 560, margin: "20px auto 0", lineHeight: 1.55 }}>
+          <p style={{ marginTop: m ? 14 : 20, fontSize: m ? 14 : 16, color: "var(--ink-2)", maxWidth: 560, margin: m ? "14px auto 0" : "20px auto 0", lineHeight: 1.55 }}>
             Videly AI helps startups create cinematic launch content without agencies, editors, or motion designers.
           </p>
-          <div style={{ marginTop: 32 }}>
-            <Button variant="primary" size="lg" onClick={onCta} iconRight={<IconArrowRight size={16}/>}>Start Creating Free</Button>
+          <div style={{ marginTop: m ? 22 : 32 }}>
+            <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
           </div>
-          <div className="mf-mono" style={{ marginTop: 28, fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>
+          <div className="mf-mono" style={{ marginTop: m ? 20 : 28, fontSize: m ? 9.5 : 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>
             YOU BRING THE PRODUCT · WE BRING THE CINEMA
           </div>
         </div>
@@ -1124,16 +1192,16 @@ const Pricing = ({ f, onCta }: { f: number; onCta?: () => void }) => {
 };
 
 /* ─────── FINAL CTA ─────── */
-const FinalCta = ({ f, onCta }: { f: number; onCta?: () => void }) => (
-  <section style={{ padding: "160px 56px", position: "relative", overflow: "hidden" }}>
+const FinalCta = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => (
+  <section style={{ padding: m ? "80px 16px" : "160px 56px", position: "relative", overflow: "hidden" }}>
     <div className="mf-bg-bloom"/>
     <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
       <div
         style={{
-          position: "relative", borderRadius: 32, overflow: "hidden",
+          position: "relative", borderRadius: m ? 22 : 32, overflow: "hidden",
           background: "linear-gradient(135deg, oklch(0.30 0.12 250), oklch(0.18 0.10 290))",
           border: "1px solid rgba(122,162,255,0.30)",
-          padding: "96px 64px",
+          padding: m ? "56px 24px" : "96px 64px",
           boxShadow: "0 60px 140px -40px rgba(122,162,255,0.5)",
         }}
       >
@@ -1141,17 +1209,17 @@ const FinalCta = ({ f, onCta }: { f: number; onCta?: () => void }) => (
         <div style={{ position: "absolute", right: "-15%", top: "-20%", width: "60%", height: "120%", borderRadius: "50%", filter: "blur(80px)", background: "oklch(0.68 0.20 295 / 0.5)", transform: `translate(${Math.cos(f / 70) * 40}px, ${Math.sin(f / 90) * 30}px)` }}/>
 
         <div style={{ position: "relative", textAlign: "center" }}>
-          <div className="mf-mono" style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", letterSpacing: "0.18em", marginBottom: 20 }}>FINAL · 00:60</div>
-          <h2 style={{ margin: 0, fontSize: 80, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0, color: "white" }}>
+          <div className="mf-mono" style={{ fontSize: m ? 10 : 11, color: "rgba(255,255,255,0.55)", letterSpacing: "0.18em", marginBottom: m ? 14 : 20 }}>FINAL · 00:60</div>
+          <h2 style={{ margin: 0, fontSize: m ? 36 : 80, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0, color: "white" }}>
             Your product already looks good.<br/>
             <span style={{ background: "linear-gradient(135deg, #FFFFFF, rgba(255,255,255,0.5))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Now make it unforgettable.</span>
           </h2>
-          <p style={{ marginTop: 28, fontSize: 19, color: "rgba(255,255,255,0.70)", maxWidth: 560, margin: "28px auto 0" }}>
+          <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 15 : 19, color: "rgba(255,255,255,0.70)", maxWidth: 560, margin: m ? "18px auto 0" : "28px auto 0" }}>
             Create cinematic launch videos in minutes.
           </p>
-          <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 40 }}>
-            <Button variant="primary" size="lg" onClick={onCta} iconRight={<IconArrowRight size={16}/>}>Start Creating Free</Button>
-            <Button variant="ghost" size="lg" icon={<IconPlay size={14}/>}>See Videly in Action</Button>
+          <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "center", gap: m ? 10 : 12, marginTop: m ? 28 : 40 }}>
+            <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
+            <Button variant="ghost" size={m ? "md" : "lg"} icon={<IconPlay size={14}/>}>See Videly in Action</Button>
           </div>
         </div>
       </div>
@@ -1159,13 +1227,13 @@ const FinalCta = ({ f, onCta }: { f: number; onCta?: () => void }) => (
   </section>
 );
 
-const FootRule = () => (
-  <footer style={{ padding: "56px 56px 80px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 1320, margin: "0 auto", color: "var(--ink-3)", fontSize: 13 }}>
+const FootRule = ({ m }: { m: boolean }) => (
+  <footer style={{ padding: m ? "32px 20px 48px" : "56px 56px 80px", borderTop: "1px solid var(--line)", display: "flex", flexDirection: m ? "column" : "row", gap: m ? 16 : 0, justifyContent: "space-between", alignItems: m ? "flex-start" : "center", maxWidth: 1320, margin: "0 auto", color: "var(--ink-3)", fontSize: m ? 12 : 13 }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ fontSize: 16, fontWeight: 600 }}>M<span style={{ color: "#7AA2FF" }}>•</span></span>
       <span>Videly AI · 2026</span>
     </div>
-    <div style={{ display: "flex", gap: 28 }}>
+    <div style={{ display: "flex", gap: m ? 18 : 28, flexWrap: "wrap" }}>
       <span>Pricing</span><span>Docs</span><span>Changelog</span><span>Privacy</span>
     </div>
   </footer>
@@ -1174,13 +1242,20 @@ const FootRule = () => (
 export const LandingScreen = ({
   onCta,
   onSignIn,
+  isAuthed = false,
 }: {
   onCta?: () => void;
   onSignIn?: () => void;
+  // Soft-auth signal from the route loader. When true the page swaps the
+  // "Start Creating Free" copy for "Open the app" and the TopNav's Sign in
+  // button is replaced with a Signed-in indicator.
+  isAuthed?: boolean;
 }) => {
   const f = useFrame();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const y = useScrollY(scrollRef);
+  const m = useIsMobile(scrollRef, 720);
+  const ctaLabel = isAuthed ? "Open the app" : "Start Creating Free";
 
   return (
     <div
@@ -1192,21 +1267,21 @@ export const LandingScreen = ({
         position: "relative",
       }}
     >
-      <TopNav onCta={onCta} onSignIn={onSignIn}/>
+      <TopNav onCta={onCta} onSignIn={onSignIn} isAuthed={isAuthed} mobile={m}/>
 
-      <Hero f={f} y={y} onCta={onCta}/>
-      <ScrollReel f={f} y={y}/>
-      <ProblemBand/>
-      <SolutionPipeline f={f}/>
-      <HowItWorks f={f}/>
-      <TasteSection/>
-      <PresetGallery f={f}/>
-      <UseCaseGrid/>
-      <WhyNow f={f}/>
-      <BuiltFor/>
-      <Pricing f={f} onCta={onCta}/>
-      <FinalCta f={f} onCta={onCta}/>
-      <FootRule/>
+      <Hero f={f} y={y} onCta={onCta} ctaLabel={ctaLabel} m={m}/>
+      <ScrollReel f={f} y={y} m={m}/>
+      <ProblemBand m={m}/>
+      <SolutionPipeline f={f} m={m}/>
+      <HowItWorks f={f} m={m}/>
+      <TasteSection m={m}/>
+      <PresetGallery f={f} m={m}/>
+      <UseCaseGrid m={m}/>
+      <WhyNow f={f} m={m}/>
+      <BuiltFor m={m}/>
+      <Pricing f={f} onCta={onCta} ctaLabel={ctaLabel} m={m}/>
+      <FinalCta f={f} onCta={onCta} ctaLabel={ctaLabel} m={m}/>
+      <FootRule m={m}/>
     </div>
   );
 };

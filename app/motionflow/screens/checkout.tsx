@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   IconArrowRight,
   IconCheck,
@@ -7,6 +7,25 @@ import {
   IconPlus,
   IconSparkle,
 } from "../primitives";
+
+// Container-width based mobile detection — same pattern as landing.tsx /
+// pricing.tsx. We watch the scroll container so the layout reacts to its
+// actual size, not the viewport.
+function useIsMobile(ref: RefObject<HTMLDivElement | null>, threshold = 720) {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = (w: number) => setM(w < threshold);
+    apply(el.clientWidth);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [ref, threshold]);
+  return m;
+}
 
 export type CheckoutTier = "starter" | "pro" | "studio";
 export type CheckoutPack = "small" | "medium" | "large";
@@ -106,9 +125,12 @@ export function CheckoutScreen({
   // so any estimate we render in-page would diverge from the actual invoice.
   const packPrice = pack ? PACK_PRICE_USD[pack] : 0;
   const dueToday = monthlyUsd + packPrice;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const m = useIsMobile(scrollRef, 720);
 
   return (
     <div
+      ref={scrollRef}
       style={{
         width: "100%",
         minHeight: "100%",
@@ -152,25 +174,45 @@ export function CheckoutScreen({
         style={{
           position: "relative",
           zIndex: 2,
-          padding: "20px 40px",
+          padding: m ? "14px 16px" : "20px 40px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           borderBottom: "1px solid var(--line)",
+          gap: m ? 8 : 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <IconLogo size={26} />
+        <div style={{ display: "flex", alignItems: "center", gap: m ? 8 : 12 }}>
+          <IconLogo size={m ? 22 : 26} />
           <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly</span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "var(--ink-3)" }}>
-          <CoStep n={1} active label="Account" />
-          <CoSep />
-          <CoStep n={2} label="Payment" />
-          <CoSep />
-          <CoStep n={3} label="Done" />
-        </div>
+        {/* Step indicator: full version on desktop, compact 1/3 chip on
+            mobile so the header still fits at 390px. */}
+        {m ? (
+          <div
+            className="mf-mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.10em",
+              color: "var(--ink-3)",
+              padding: "5px 9px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid var(--line)",
+            }}
+          >
+            1 / 3 · ACCOUNT
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "var(--ink-3)" }}>
+            <CoStep n={1} active label="Account" />
+            <CoSep />
+            <CoStep n={2} label="Payment" />
+            <CoSep />
+            <CoStep n={3} label="Done" />
+          </div>
+        )}
 
         <button
           onClick={onBack}
@@ -184,11 +226,11 @@ export function CheckoutScreen({
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            padding: "6px 10px",
+            padding: m ? "6px 6px" : "6px 10px",
             borderRadius: 6,
           }}
         >
-          <IconClose size={12} /> Cancel
+          <IconClose size={12} /> {m ? "" : "Cancel"}
         </button>
       </header>
 
@@ -198,16 +240,16 @@ export function CheckoutScreen({
           zIndex: 2,
           maxWidth: 1180,
           margin: "0 auto",
-          padding: "40px 40px 80px",
+          padding: m ? "28px 16px 56px" : "40px 40px 80px",
           display: "grid",
-          gridTemplateColumns: "1.15fr 1fr",
-          gap: 40,
+          gridTemplateColumns: m ? "1fr" : "1.15fr 1fr",
+          gap: m ? 24 : 40,
           alignItems: "start",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: m ? 20 : 28 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 500, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
+            <h1 style={{ margin: 0, fontSize: m ? 24 : 34, fontWeight: 500, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
               Complete your{" "}
               <span
                 style={{
@@ -290,8 +332,8 @@ export function CheckoutScreen({
                   padding: 0,
                   listStyle: "none",
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "9px 18px",
+                  gridTemplateColumns: m ? "1fr" : "1fr 1fr",
+                  gap: m ? "8px 14px" : "9px 18px",
                 }}
               >
                 {TIER_PERKS[tier].map((perk) => (
@@ -333,7 +375,7 @@ export function CheckoutScreen({
             <CoField label="Email">
               <CoInput placeholder="you@company.com" type="email" defaultValue={email ?? ""} />
             </CoField>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: 10 }}>
               <CoField label="First name">
                 <CoInput placeholder="Alex" defaultValue={firstName ?? ""} />
               </CoField>
@@ -363,7 +405,17 @@ export function CheckoutScreen({
 
         </div>
 
-        <aside style={{ position: "sticky", top: 30, display: "flex", flexDirection: "column", gap: 14 }}>
+        <aside
+          style={{
+            // On mobile the aside is part of the natural document flow so
+            // the summary lands beneath the account form, not floating.
+            position: m ? "relative" : "sticky",
+            top: m ? 0 : 30,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
           <div
             style={{
               position: "relative",
