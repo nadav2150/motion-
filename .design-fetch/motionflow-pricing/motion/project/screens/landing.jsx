@@ -1,4 +1,4 @@
-/* MotionFlow AI — Landing v2 (cinematic long-scroll) */
+/* Videly AI — Landing v2 (cinematic long-scroll) */
 
 const useScrollY = (ref) => {
   const [y, setY] = useState(0);
@@ -110,7 +110,7 @@ const HeroStage = ({ f, onCta }) => {
     <div style={{ marginTop: 80, position: "relative" }}>
       {/* Big main reel */}
       <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
-        <CinemaPreview aspect="2.4 / 1" frame={f} label="MOTIONFLOW · LIVE PREVIEW · 4K · 24FPS">
+        <CinemaPreview aspect="2.4 / 1" frame={f} label="VIDELY · LIVE PREVIEW · 4K · 24FPS">
           <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", textAlign: "center", color: "white" }}>
             <div className="mf-mono" style={{ fontSize: 11, letterSpacing: "0.18em", color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>SCENE 03 · 00:04.21 → 00:07.80</div>
             <div style={{ fontSize: 56, fontWeight: 500, letterSpacing: "-0.03em", textShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>Built for teams that ship.</div>
@@ -251,7 +251,7 @@ const ScrollReel = ({ f, y }) => {
             opacity: t > 0.85 ? 1 : 0, transform: t > 0.85 ? "scale(1)" : "scale(0.92)",
             transition: "all 700ms cubic-bezier(.2,.8,.2,1)", zIndex: 20
           }}>
-            <CinemaPreview aspect="16 / 10" frame={f} label="MOTIONFLOW · CINEMATIC FILM"/>
+            <CinemaPreview aspect="16 / 10" frame={f} label="VIDELY · CINEMATIC FILM"/>
           </div>
         </div>
       </div>
@@ -327,7 +327,7 @@ const SolutionPipeline = ({ f }) => {
               Your AI <span className="mf-grad-text">motion designer.</span>
             </h2>
             <p style={{ marginTop: 28, fontSize: 18, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 480 }}>
-              Upload screenshots, paste a short script, and MotionFlow AI creates launch-ready
+              Upload screenshots, paste a short script, and Videly AI creates launch-ready
               motion automatically.
             </p>
 
@@ -349,7 +349,7 @@ const SolutionPipeline = ({ f }) => {
 
           {/* Pipeline visualization */}
           <div style={{ position: "relative", padding: "32px 28px", borderRadius: 24, background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)", backdropFilter: "blur(40px)", overflow: "hidden" }}>
-            <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em", marginBottom: 18 }}>MOTIONFLOW PIPELINE · LIVE</div>
+            <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em", marginBottom: 18 }}>VIDELY PIPELINE · LIVE</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {stages.map((s, i) => {
                 const phase = (f / 6 + i * 0.5) % stages.length;
@@ -396,7 +396,7 @@ const HowItWorks = ({ f }) => {
     },
     {
       n: "03", t: "Generate cinematic motion",
-      d: "MotionFlow AI builds scenes, transitions, pacing, and animations automatically.",
+      d: "Videly AI builds scenes, transitions, pacing, and animations automatically.",
       visual: <GenerateVisual f={f}/>
     },
     {
@@ -503,7 +503,7 @@ const TasteSection = ({ f }) => (
       <div className="mf-eyebrow" style={{ marginBottom: 24 }}>THE DIFFERENCE</div>
       <h2 style={{ margin: 0, fontSize: 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
         Most AI tools generate <span style={{ color: "var(--ink-3)" }}>content.</span><br/>
-        MotionFlow generates <span className="mf-grad-text">taste.</span>
+        Videly generates <span className="mf-grad-text">taste.</span>
       </h2>
       <p style={{ marginTop: 36, fontSize: 18, color: "var(--ink-2)", maxWidth: 620, margin: "36px auto 0", lineHeight: 1.55 }}>
         Built around curated motion systems inspired by modern startup launches, cinematic
@@ -710,7 +710,7 @@ const WhyNow = ({ f }) => {
               Every single week.
             </div>
             <div style={{ marginTop: 12, fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em" }}>
-              MotionFlow makes cinematic startup storytelling <span className="mf-grad-text">scalable.</span>
+              Videly makes cinematic startup storytelling <span className="mf-grad-text">scalable.</span>
             </div>
           </div>
         </div>
@@ -747,12 +747,12 @@ const Pricing = ({ f, onCta }) => {
   const mult = billing === "annual" ? 0.8 : 1;
   const tiers = [
     {
-      n: "Free", price: 0, sub: "Perfect for exploring MotionFlow AI",
+      n: "Free", price: 0, sub: "Perfect for exploring Videly AI",
       desc: "Create your first cinematic launch videos in minutes.",
       cta: "Start Free", variant: "ghost",
       accent: "rgba(255,255,255,0.4)",
       bg: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))",
-      features: ["3 video exports / month", "MotionFlow watermark", "720p export", "Basic cinematic styles", "AI scene generation", "Auto captions", "Social export presets", "Community templates"]
+      features: ["3 video exports / month", "Videly watermark", "720p export", "Basic cinematic styles", "AI scene generation", "Auto captions", "Social export presets", "Community templates"]
     },
     {
       n: "Pro", price: 39, sub: "For founders and startups moving fast",
@@ -948,7 +948,7 @@ const Pricing = ({ f, onCta }) => {
             Your product already deserves <span className="mf-grad-text">world-class storytelling.</span>
           </h3>
           <p style={{ marginTop: 20, fontSize: 16, color: "var(--ink-2)", maxWidth: 560, margin: "20px auto 0", lineHeight: 1.55 }}>
-            MotionFlow AI helps startups create cinematic launch content without agencies, editors, or motion designers.
+            Videly AI helps startups create cinematic launch content without agencies, editors, or motion designers.
           </p>
           <div style={{ marginTop: 32 }}>
             <Button variant="primary" size="lg" onClick={onCta} iconRight={<IconArrowRight size={16}/>}>Try It Free — No Signup</Button>
@@ -1078,7 +1078,7 @@ const FinalCta = ({ f, onCta }) => (
           </p>
           <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 40 }}>
             <Button variant="primary" size="lg" onClick={onCta} iconRight={<IconArrowRight size={16}/>}>Try It Free — No Signup</Button>
-            <Button variant="ghost" size="lg" icon={<IconPlay size={14}/>}>See MotionFlow in Action</Button>
+            <Button variant="ghost" size="lg" icon={<IconPlay size={14}/>}>See Videly in Action</Button>
           </div>
         </div>
       </div>
@@ -1090,7 +1090,7 @@ const FootRule = () => (
   <footer style={{ padding: "56px 56px 80px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 1320, margin: "0 auto", color: "var(--ink-3)", fontSize: 13 }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ fontSize: 16, fontWeight: 600 }}>M<span style={{ color: "#7AA2FF" }}>•</span></span>
-      <span>MotionFlow AI · 2026</span>
+      <span>Videly AI · 2026</span>
     </div>
     <div style={{ display: "flex", gap: 28 }}>
       <span>Pricing</span><span>Docs</span><span>Changelog</span><span>Privacy</span>

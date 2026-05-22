@@ -1,8 +1,8 @@
-# MotionFlow AI — Investor One-Pager
+# Videly AI — Investor One-Pager
 
 **Cinematic launch videos for the new generation of startups.**
 
-Contact: nadav2150@gmail.com · motionflow.ai
+Contact: nadav2150@gmail.com · videly.io
 
 ---
 
@@ -20,7 +20,7 @@ So most companies ship incredible products and announce them with screen recordi
 
 ## The Solution
 
-MotionFlow AI is the **AI motion designer** for modern startups. Upload screenshots, paste a short script, and get a cinematic, launch-ready video in minutes.
+Videly AI is the **AI motion designer** for modern startups. Upload screenshots, paste a short script, and get a cinematic, launch-ready video in minutes.
 
 **4-step workflow:**
 
@@ -68,7 +68,7 @@ Self-serve SaaS subscriptions:
 
 ## Differentiation
 
-> Most AI tools generate **content**. MotionFlow generates **taste**.
+> Most AI tools generate **content**. Videly generates **taste**.
 
 Built on curated motion systems inspired by modern startup launches, cinematic product reveals, and premium UI storytelling. Not template videos. Not AI slop. Not random animation.
 
@@ -95,4 +95,4 @@ Built on curated motion systems inspired by modern startup launches, cinematic p
 
 ---
 
-*MotionFlow AI · cinematic motion for teams that ship.*
+*Videly AI · cinematic motion for teams that ship.*

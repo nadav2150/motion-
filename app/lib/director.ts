@@ -402,11 +402,21 @@ export const ShotRecipeSchema = z.object({
 });
 export type ShotRecipe = z.infer<typeof ShotRecipeSchema>;
 
-export const StoryboardSchema = z.object({
-  title: z.string().min(1),
-  continuity: ContinuitySchema,
-  shots: z.array(ShotRecipeSchema).min(MIN_SHOTS).max(MAX_SHOTS),
-});
+// Per-call factory so the Director can be told plan-specific scene caps
+// (Free wants 1–2 shots, paid plans 5–14). The schema is constructed at
+// generateStoryboard() time using the plan's minScenes/maxScenes. The
+// module-level MIN_SHOTS/MAX_SHOTS still act as global floor/ceiling for
+// safety so a bad caller can't request 0 or 100 shots.
+export function buildStoryboardSchema(min: number, max: number) {
+  const lo = Math.max(1, Math.min(min, MAX_SHOTS));
+  const hi = Math.max(lo, Math.min(max, MAX_SHOTS));
+  return z.object({
+    title: z.string().min(1),
+    continuity: ContinuitySchema,
+    shots: z.array(ShotRecipeSchema).min(lo).max(hi),
+  });
+}
+export const StoryboardSchema = buildStoryboardSchema(MIN_SHOTS, MAX_SHOTS);
 export type Storyboard = z.infer<typeof StoryboardSchema>;
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -627,6 +637,21 @@ const STORYBOARD_JSON_SCHEMA = {
     },
   },
 } as const;
+
+// JSON-schema variant used when calling Anthropic structured outputs. Same
+// per-call min/max bounds as buildStoryboardSchema.
+function buildStoryboardJsonSchema(min: number, max: number): Record<string, unknown> {
+  const lo = Math.max(1, Math.min(min, MAX_SHOTS));
+  const hi = Math.max(lo, Math.min(max, MAX_SHOTS));
+  // Deep-ish clone via JSON so we don't mutate the const. The schema is
+  // not huge and this runs once per job, not per scene.
+  const clone = JSON.parse(JSON.stringify(STORYBOARD_JSON_SCHEMA)) as {
+    properties: { shots: { minItems: number; maxItems: number } };
+  };
+  clone.properties.shots.minItems = lo;
+  clone.properties.shots.maxItems = hi;
+  return clone as Record<string, unknown>;
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
  * System prompt — walks the LLM through stages 1→7 in order, with the
@@ -1092,6 +1117,12 @@ export type DirectorInput = {
   productDescription?: string;
   brandStyle?: string;
   filmMode?: FilmMode;
+  // Per-plan scene bounds. Both default to module-level MIN_SHOTS/MAX_SHOTS
+  // when omitted. Set these to the user's plan's minScenes/maxScenes
+  // (from plan-features.ts) to keep Free trials short and paid plans
+  // cinematic.
+  minScenes?: number;
+  maxScenes?: number;
 };
 
 export type DirectorResult = {
@@ -1122,6 +1153,7 @@ function buildUserPrompt(input: DirectorInput): string {
 async function callDirector(
   systemPrompt: string,
   messages: { role: "user" | "assistant"; content: string }[],
+  schema: Record<string, unknown>,
 ): Promise<{ raw: unknown; text: string }> {
   const response = await getClient().messages.create({
     model: DIRECTOR_MODEL,
@@ -1139,7 +1171,7 @@ async function callDirector(
     thinking: { type: "adaptive" },
     output_config: {
       effort: "high",
-      format: { type: "json_schema", schema: ANTHROPIC_STORYBOARD_SCHEMA },
+      format: { type: "json_schema", schema },
     },
   });
 
@@ -1184,12 +1216,22 @@ export async function generateStoryboard(
     { role: "user", content: buildUserPrompt(input) },
   ];
 
+  // Build per-plan schemas. Both the JSON schema (sent to the model) and
+  // the Zod schema (used to validate the response) get the same bounds so
+  // the model's output and our validator agree.
+  const minScenes = input.minScenes ?? MIN_SHOTS;
+  const maxScenes = input.maxScenes ?? MAX_SHOTS;
+  const jsonSchema = stripAnthropicUnsupported(
+    buildStoryboardJsonSchema(minScenes, maxScenes),
+  ) as Record<string, unknown>;
+  const zodSchema = buildStoryboardSchema(minScenes, maxScenes);
+
   let lastRaw: unknown = null;
   let lastErrors = "";
   for (let attempt = 0; attempt <= maxRepairs; attempt++) {
-    const { raw, text } = await callDirector(systemPrompt, messages);
+    const { raw, text } = await callDirector(systemPrompt, messages, jsonSchema);
     lastRaw = raw;
-    const parsed = StoryboardSchema.safeParse(raw);
+    const parsed = zodSchema.safeParse(raw);
     if (parsed.success) {
       return { storyboard: parsed.data, raw, repairs: attempt };
     }

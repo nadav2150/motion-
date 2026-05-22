@@ -11,8 +11,8 @@ import { openPaddleCheckout, priceIdForPack, priceIdForTier } from "../lib/paddl
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Checkout — MotionFlow AI" },
-    { name: "description", content: "Complete your MotionFlow upgrade." },
+    { title: "Checkout — Videly AI" },
+    { name: "description", content: "Complete your Videly upgrade." },
   ];
 }
 

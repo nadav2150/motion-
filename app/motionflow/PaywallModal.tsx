@@ -19,6 +19,7 @@
 //   audio_locked          → starter
 //   critique_locked       → starter
 //   polish_locked         → pro
+//   comments_locked       → starter
 //   insufficient_credits  → primary CTA routes to /pricing instead of
 //                           /checkout?plan=...  so the user can also pick a
 //                           credit pack rather than only a subscription.
@@ -40,6 +41,7 @@ export type PaywallTrigger =
   | "audio_locked"
   | "critique_locked"
   | "polish_locked"
+  | "comments_locked"
   | "insufficient_credits"
   | "generate";
 
@@ -86,6 +88,12 @@ const COPY: Record<PaywallTrigger, CopyBlock> = {
     title: "Polish your final cut",
     sub: "Generate a director's-cut pass that rewrites pacing and visuals from comments. Pro unlocks polish, 4K export, and 20,000 monthly credits.",
     targetPlan: "pro",
+  },
+  comments_locked: {
+    eyebrow: "COLLABORATIVE SCENE NOTES",
+    title: "Comment on every scene",
+    sub: "Leave per-scene notes, iterate with your team, and feed them back into the Director on the next pass. Starter unlocks comments and 8,000 monthly credits.",
+    targetPlan: "starter",
   },
   insufficient_credits: {
     eyebrow: "OUT OF CREDITS",
@@ -384,7 +392,7 @@ export function PaywallModal({
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, color: "white" }}>
-                  MotionFlow {plan.name}
+                  Videly {plan.name}
                 </span>
                 {plan.popular && (
                   <span

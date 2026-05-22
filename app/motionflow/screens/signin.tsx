@@ -37,11 +37,11 @@ export const SignInScreen = ({
       <header className="mf-auth-top">
         <button className="mf-auth-brand" onClick={onBack} aria-label="Back to landing">
           <IconLogo size={22} />
-          <span>MotionFlow</span>
+          <span>Videly</span>
           <span className="mf-nav-badge">AI</span>
         </button>
         <div className="mf-auth-top-right">
-          <span className="mf-auth-top-muted">New to MotionFlow?</span>
+          <span className="mf-auth-top-muted">New to Videly?</span>
           <button className="mf-nav-link" onClick={onGoRegister}>
             Create account
           </button>
@@ -53,7 +53,7 @@ export const SignInScreen = ({
         <section className="mf-auth-stage">
           <div className="mf-auth-stage-inner">
             <Pill tone="glow" icon={<IconSparkle size={12} />}>
-              MOTIONFLOW · v2.4
+              VIDELY · v2.4
             </Pill>
             <h1 className="mf-display mf-auth-display">
               Welcome back to <span className="mf-grad-text">cinema-grade</span> motion.

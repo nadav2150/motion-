@@ -12,9 +12,9 @@ export type CheckoutTier = "starter" | "pro" | "studio";
 export type CheckoutPack = "small" | "medium" | "large";
 
 const TIER_LABEL: Record<CheckoutTier, string> = {
-  starter: "MotionFlow Starter",
-  pro: "MotionFlow Pro",
-  studio: "MotionFlow Studio",
+  starter: "Videly Starter",
+  pro: "Videly Pro",
+  studio: "Videly Studio",
 };
 const TIER_MONTHLY_USD: Record<CheckoutTier, number> = {
   starter: 19,
@@ -161,7 +161,7 @@ export function CheckoutScreen({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <IconLogo size={26} />
-          <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.01em" }}>MotionFlow</span>
+          <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "var(--ink-3)" }}>

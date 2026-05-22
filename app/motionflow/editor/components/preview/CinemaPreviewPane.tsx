@@ -7,9 +7,27 @@ import {
 import { EmptyState, TransportBtn } from "../shared";
 import { HtmlScenePane } from "../HtmlScenePane";
 import { PreviewMasterVideo } from "./PreviewMasterVideo";
+import { GenerationLoader } from "./GenerationLoader";
 import { fmtTime, readDraggedAsset } from "../../utils";
 import type { JobStatus, ShotRow } from "../../types";
 import type { SceneTiming } from "../../hooks/use-playback";
+
+// Statuses that should show the full-pipeline GenerationLoader instead of
+// the storyboard preview. scenes_ready is intentionally absent — that's
+// the user-facing review pause before clicking Export. completed is also
+// absent because we want to render the actual video then.
+const LOADING_STATUSES: JobStatus[] = [
+  "pending",
+  "directing",
+  "asset_planning",
+  "audio_direction",
+  "generating_scenes",
+  "vision_critique",
+  "refining_scenes",
+  "rendering",
+  "rendering_scenes",
+  "stitching",
+];
 
 export const CinemaPreviewPane = ({
   f,
@@ -28,6 +46,8 @@ export const CinemaPreviewPane = ({
   previewDragOver,
   setPreviewDragOver,
   onAssetDropToPreview,
+  jobCreatedAt,
+  expectedSceneCount,
 }: {
   f: number;
   status: JobStatus;
@@ -47,29 +67,25 @@ export const CinemaPreviewPane = ({
   previewDragOver: boolean;
   setPreviewDragOver: (v: boolean) => void;
   onAssetDropToPreview: (shotId: string, asset: ReturnType<typeof readDraggedAsset>) => void;
+  /** ISO timestamp of jobs.created_at. Powers the live "~N min remaining"
+   *  countdown in the GenerationLoader. */
+  jobCreatedAt: string | null;
+  /** Best-known scene count for the loader's ETA. shots.length once they
+   *  exist, planFeatures.maxScenes as the upfront estimate. */
+  expectedSceneCount: number;
 }) => (
   <section style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, position: "relative" }}>
     <div className="mf-bg-bloom"/>
     {!showStoryboard ? (
       <EmptyState f={f} />
-    ) : shots.length === 0 ? (
-      <div style={{ flex: 1, display: "grid", placeItems: "center", padding: "40px 28px" }}>
-        <div
-          style={{
-            padding: "60px 32px", borderRadius: 14,
-            border: "1px dashed var(--line-2)",
-            background: "rgba(255,255,255,0.015)",
-            textAlign: "center", maxWidth: 460,
-          }}
-        >
-          <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.18em", marginBottom: 8 }}>
-            {status === "directing" ? "DIRECTING SHOTS…" : "WAITING FOR DIRECTOR…"}
-          </div>
-          <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55 }}>
-            The director is splitting your script into cinematic beats and writing image prompts.
-          </div>
-        </div>
-      </div>
+    ) : LOADING_STATUSES.includes(status) ? (
+      <GenerationLoader
+        status={status}
+        jobCreatedAt={jobCreatedAt}
+        expectedSceneCount={
+          shots.length > 0 ? shots.length : expectedSceneCount
+        }
+      />
     ) : (
       <div style={{ padding: "28px 36px", display: "flex", flexDirection: "column", gap: 20, position: "relative", minHeight: 0, flex: 1 }}>
         <div

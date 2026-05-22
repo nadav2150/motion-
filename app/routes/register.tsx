@@ -4,15 +4,21 @@ import { RegisterScreen } from "../motionflow/screens/register";
 import { AuthError, registerWithEmail, setSessionCookies } from "../lib/auth";
 import { getOrCreateBilling, grantCredits } from "../lib/billing/credits";
 
-// Matches Free plan's published 1,500 credits/month grant in
-// app/motionflow/screens/pricing.tsx and the user_billing.monthly_grant
-// default in supabase/migrations/20260602_billing.sql.
-const SIGNUP_GRANT_CREDITS = 1_500;
+// Free plan's monthly grant. Sized to exactly cover one worst-case 2-scene
+// Free generation (1,100 base + 2 × 1,000 per-scene = 3,100). After the
+// reservation refund settles, the user is left with whatever credits the
+// generation didn't use (~1,200 on average) — not enough to start another
+// 3,100-credit reservation, so the trial naturally caps at one render.
+// Kept in sync with:
+//  - app/motionflow/screens/pricing.tsx (Free perks copy + baseCredits)
+//  - supabase/migrations/20260607_free_grant_3100.sql (column default
+//    + existing free monthly_grant rows)
+const SIGNUP_GRANT_CREDITS = 3_100;
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Create account — MotionFlow AI" },
-    { name: "description", content: "Start free with MotionFlow AI — no credit card required." },
+    { title: "Create account — Videly AI" },
+    { name: "description", content: "Start free with Videly AI — no credit card required." },
   ];
 }
 

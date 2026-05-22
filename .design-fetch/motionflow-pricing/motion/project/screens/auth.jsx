@@ -81,7 +81,7 @@ const AuthScreen = ({ mode = "login", onSwitch, onSubmit, onBack }) => {
         {/* Top brand row */}
         <div style={{ position: "absolute", top: 28, left: 32, display: "flex", alignItems: "center", gap: 10, zIndex: 3 }}>
           <IconLogo size={26}/>
-          <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>MotionFlow AI</span>
+          <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly AI</span>
         </div>
 
         {/* Bottom quote */}
@@ -124,7 +124,7 @@ const AuthScreen = ({ mode = "login", onSwitch, onSubmit, onBack }) => {
         {/* Form */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 420, margin: "0 auto", width: "100%", paddingTop: 24, paddingBottom: 24 }}>
           <div className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.18em", color: "#7AA2FF", marginBottom: 12 }}>
-            {isLogin ? "WELCOME BACK" : "JOIN MOTIONFLOW"}
+            {isLogin ? "WELCOME BACK" : "JOIN VIDELY"}
           </div>
           <h1 style={{ margin: 0, fontSize: 36, fontWeight: 500, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
             {isLogin

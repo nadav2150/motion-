@@ -4,8 +4,8 @@ import { ResetPasswordScreen } from "../motionflow/screens/reset-password";
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Set a new password — MotionFlow AI" },
-    { name: "description", content: "Set a new password for your MotionFlow AI account." },
+    { title: "Set a new password — Videly AI" },
+    { name: "description", content: "Set a new password for your Videly AI account." },
   ];
 }
 

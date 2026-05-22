@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useRevalidator } from "react-router";
+import { FaCrown } from "react-icons/fa";
 import {
   AppChrome,
   Button,
@@ -41,18 +42,6 @@ import { SfxSection } from "../editor/components/sidebar/SfxSection";
 import { VoiceoverSection } from "../editor/components/sidebar/VoiceoverSection";
 import { CinemaPreviewPane } from "../editor/components/preview/CinemaPreviewPane";
 import { ClockDebugOverlay } from "../editor/components/ClockDebugOverlay";
-
-// Cheap line-based scene estimate, clamped to plan max. Pure UI heuristic
-// for the live cost preview — the real director picks the actual count, so
-// under-estimating here is safe (the server still reserves against the
-// worst case via MAX_SHOTS in estimate.ts).
-function guessSceneCount(script: string, maxScenes: number): number {
-  const parts = script
-    .split(/\n\s*\n/)
-    .map((s) => s.trim())
-    .filter(Boolean).length;
-  return Math.max(1, Math.min(maxScenes, parts || 1));
-}
 
 export const EditorScreen = ({
   onNav,
@@ -196,22 +185,6 @@ export const EditorScreen = ({
   // audio_*_enabled from the row and acting on them later would mislead.
   const audioLocked = generating || jobId !== null;
 
-  // Wall-clock seconds from job creation ("Direct storyboard" click) until
-  // status first flipped to scenes_ready. Persisted as `scenes_ready_at`, so
-  // re-opening a finished project shows the same number.
-  const directDurationLabel = useMemo(() => {
-    if (!job?.scenes_ready_at || !job?.created_at) return null;
-    const start = new Date(job.created_at).getTime();
-    const end = new Date(job.scenes_ready_at).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
-    const sec = Math.round((end - start) / 1000);
-    if (sec <= 0) return null;
-    if (sec < 60) return `Directed in ${sec}s`;
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return s === 0 ? `Directed in ${m}m` : `Directed in ${m}m ${s}s`;
-  }, [job?.scenes_ready_at, job?.created_at]);
-
   const {
     time,
     currentFrame,
@@ -252,26 +225,57 @@ export const EditorScreen = ({
   // toggles render as crowns instead of switches.
   const planFeatures = useMemo(() => getPlanFeatures(planTier ?? null), [planTier]);
 
-  // Live cost estimate — recomputes as the user types or flips toggles.
-  // sceneCountGuess is a cheap heuristic for the preview number; the server
-  // still reserves against MAX_SHOTS, so under-estimating here is safe.
-  const estimate = useMemo(() => {
-    const sceneCountGuess = guessSceneCount(script, planFeatures.maxScenes);
-    return estimateJobCostBreakdown({
-      sceneCountGuess,
-      video: false,
-      // If the plan blocks audio we never include audio costs in the preview,
-      // even if the toggle state was carried over from a higher-tier session.
-      audioVoiceover: planFeatures.audio && audioTracks.voiceover,
-      audioMusic:     planFeatures.audio && audioTracks.music,
-      audioSfx:       planFeatures.audio && audioTracks.sfx,
-    });
-  }, [script, planFeatures.maxScenes, planFeatures.audio, audioTracks]);
+  // Live cost estimate — recomputes as the user flips toggles. We pass
+  // planFeatures.maxScenes (not a script-length heuristic) so the displayed
+  // number matches the worst-case reservation the server will actually do
+  // at job creation. Unused credits refund after generation.
+  const estimate = useMemo(
+    () =>
+      estimateJobCostBreakdown({
+        sceneCountGuess: planFeatures.maxScenes,
+        video: false,
+        // If the plan blocks audio we never include audio costs in the preview,
+        // even if the toggle state was carried over from a higher-tier session.
+        audioVoiceover: planFeatures.audio && audioTracks.voiceover,
+        audioMusic:     planFeatures.audio && audioTracks.music,
+        audioSfx:       planFeatures.audio && audioTracks.sfx,
+      }),
+    [planFeatures.maxScenes, planFeatures.audio, audioTracks],
+  );
 
   const insufficientCredits =
     typeof credits === "number" && credits < estimate.total;
 
   const [paywall, setPaywall] = useState<PaywallTrigger | null>(null);
+
+  // Refresh route loader data (credits + planTier) whenever the job hits a
+  // terminal state. The reservation refund + actual consumption have just
+  // settled on the server, so the in-page balance is stale until we
+  // revalidate. Without this the credits pill keeps showing the pre-job
+  // balance and the helper line never flips to the "out of credits" state.
+  const revalidator = useRevalidator();
+  const prevTerminalRef = useRef(false);
+  useEffect(() => {
+    if (!jobId || !job) return;
+    const isTerminal = TERMINAL.includes(job.status as JobStatus);
+    if (isTerminal && !prevTerminalRef.current) {
+      revalidator.revalidate();
+    }
+    prevTerminalRef.current = isTerminal;
+  }, [jobId, job, revalidator]);
+
+  // Auto-open the paywall the first time the balance drops below the
+  // worst-case reservation. Fires once per page life — once the user
+  // closes it, we don't keep popping it back up until the next
+  // false→true transition (e.g., a credit pack purchase, then another job
+  // that exhausts the new balance).
+  const prevInsufficientRef = useRef(insufficientCredits);
+  useEffect(() => {
+    if (insufficientCredits && !prevInsufficientRef.current && paywall === null) {
+      setPaywall("insufficient_credits");
+    }
+    prevInsufficientRef.current = insufficientCredits;
+  }, [insufficientCredits, paywall]);
 
   // Wraps handleGenerate so the paywall fires instead of the API when the
   // user doesn't have enough credits. Plan-locked toggles are blocked at
@@ -294,102 +298,16 @@ export const EditorScreen = ({
       credits={credits}
       right={
         <>
-          {showStoryboard ? (
-            <>
-              <StatusPill status={status} />
-              {directDurationLabel && (
-                <span
-                  className="mf-mono"
-                  title="Time from clicking Bring it to life until scenes were ready"
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: "0.08em",
-                    color: "var(--ink-3)",
-                    padding: "3px 8px",
-                    borderRadius: 6,
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid var(--line)",
-                  }}
-                >
-                  {directDurationLabel.toUpperCase()}
-                </span>
-              )}
-            </>
-          ) : (
+          {!showStoryboard && (
             <Pill icon={<span style={{ width: 6, height: 6, borderRadius: "50%", background: "#7AA2FF" }} />}>
               <span className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.08em" }}>NEW PROJECT · DRAFT</span>
             </Pill>
           )}
-          <Button variant="ghost" size="sm" icon={<IconShare size={12}/>}>Share preview</Button>
           <GenerateButton
-            onClick={handleGenerate}
+            onClick={handlePrimaryAction}
             loading={generating || (showStoryboard && !TERMINAL.includes(status))}
             disabled={!script.trim()}
           />
-          {(status === "scenes_ready" || status === "vision_critique" || status === "refining_scenes") && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<IconWand size={12}/>}
-              disabled={
-                !jobId ||
-                status === "vision_critique" ||
-                status === "refining_scenes" ||
-                !!job?.polished_at
-              }
-              onClick={async () => {
-                if (!jobId) return;
-                try {
-                  const res = await fetch(`/api/jobs/${jobId}/critique`, { method: "POST" });
-                  const data = (await res.json()) as { error?: string };
-                  if (!res.ok) {
-                    setError(data.error ?? `Critique failed (${res.status})`);
-                    return;
-                  }
-                  setPollNonce((n) => n + 1);
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "Network error");
-                }
-              }}
-            >
-              {job?.polished_at
-                ? "Polished"
-                : status === "vision_critique" || status === "refining_scenes"
-                  ? "Polishing…"
-                  : "Critique & polish"}
-            </Button>
-          )}
-          {(status === "scenes_ready" || status === "refining_scenes") && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<IconWand size={12}/>}
-              disabled={
-                !jobId ||
-                status === "refining_scenes" ||
-                !shots.some((s) => {
-                  const c = (s as { comments?: unknown }).comments;
-                  return Array.isArray(c) && c.length > 0;
-                })
-              }
-              onClick={async () => {
-                if (!jobId) return;
-                try {
-                  const res = await fetch(`/api/jobs/${jobId}/improve`, { method: "POST" });
-                  const data = (await res.json()) as { error?: string };
-                  if (!res.ok) {
-                    setError(data.error ?? `Improve failed (${res.status})`);
-                    return;
-                  }
-                  setPollNonce((n) => n + 1);
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "Network error");
-                }
-              }}
-            >
-              {status === "refining_scenes" ? "Improving…" : "Improve from comments"}
-            </Button>
-          )}
           {status === "completed" && finalVideoUrl ? (
             <>
               <a
@@ -445,7 +363,7 @@ export const EditorScreen = ({
               }}
               iconRight={status === "scenes_ready" ? <IconArrowRight size={12} /> : undefined}
             >
-              {status === "scenes_ready" ? "Export · render video" : "Export"}
+              Export
             </Button>
           )}
         </>
@@ -474,7 +392,11 @@ export const EditorScreen = ({
           <div style={{ display: "flex", flexDirection: "column" }}>
             <AccordionSection
               label="SCRIPT"
-              badge={`${script.trim().length} CHARS`}
+              badge={
+                planFeatures.maxScriptChars !== null
+                  ? `${script.length} / ${planFeatures.maxScriptChars} CHARS`
+                  : `${script.trim().length} CHARS`
+              }
               open={openSections.has("script")}
               onToggle={() => toggleSection("script")}
             >
@@ -482,8 +404,23 @@ export const EditorScreen = ({
                 value={script}
                 onChange={(e) => setScript(e.target.value)}
                 placeholder="Paste your script — release notes, a feature list, or a paragraph about your launch…"
+                maxLength={planFeatures.maxScriptChars ?? undefined}
                 style={{ ...inputStyle, minHeight: 200, resize: "vertical" }}
               />
+              {planFeatures.maxScriptChars !== null &&
+                script.length >= planFeatures.maxScriptChars && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      color: "#A78BFA",
+                    }}
+                  >
+                    You've hit the {planFeatures.maxScriptChars}-character free-plan
+                    limit. Upgrade for unlimited script length.
+                  </div>
+                )}
             </AccordionSection>
 
             <AccordionSection
@@ -672,7 +609,7 @@ export const EditorScreen = ({
                 `). Unused credits are refunded after generation.`
               }
             >
-              {insufficientCredits ? "NEEDS " : "≈ "}
+              {insufficientCredits ? "NEEDS " : "UP TO "}
               {estimate.total.toLocaleString()} CREDITS
               {typeof credits === "number" && (
                 <> · BALANCE {credits.toLocaleString()}</>
@@ -741,6 +678,8 @@ export const EditorScreen = ({
             if (!asset) return;
             void handleAssetDrop(shotId, "video", asset);
           }}
+          jobCreatedAt={job?.created_at ?? null}
+          expectedSceneCount={planFeatures.maxScenes}
         />
 
         {/* Right: scene panel (assets + comments tabs) — only when generated */}
@@ -758,6 +697,137 @@ export const EditorScreen = ({
                 prev.map((s) => (s.id === shotId ? { ...s, assets } : s)),
               );
             }}
+            commentsLocked={!planFeatures.comments}
+            onUpsell={() => setPaywall("comments_locked")}
+            actions={
+              status === "scenes_ready" ||
+              status === "vision_critique" ||
+              status === "refining_scenes" ? (
+                <>
+                  <div
+                    className="mf-mono"
+                    style={{
+                      fontSize: 9.5,
+                      letterSpacing: "0.16em",
+                      color: "var(--ink-3)",
+                    }}
+                  >
+                    REFINE
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={
+                      planFeatures.critique ? (
+                        <IconWand size={12} />
+                      ) : (
+                        <FaCrown size={11} color="#A78BFA" />
+                      )
+                    }
+                    disabled={
+                      planFeatures.critique &&
+                      (!jobId ||
+                        status === "vision_critique" ||
+                        status === "refining_scenes" ||
+                        !!job?.polished_at)
+                    }
+                    onClick={
+                      !planFeatures.critique
+                        ? () => setPaywall("critique_locked")
+                        : async () => {
+                            if (!jobId) return;
+                            try {
+                              const res = await fetch(
+                                `/api/jobs/${jobId}/critique`,
+                                { method: "POST" },
+                              );
+                              const data = (await res.json()) as {
+                                error?: string;
+                              };
+                              if (!res.ok) {
+                                setError(
+                                  data.error ?? `Critique failed (${res.status})`,
+                                );
+                                return;
+                              }
+                              setPollNonce((n) => n + 1);
+                            } catch (e) {
+                              setError(
+                                e instanceof Error ? e.message : "Network error",
+                              );
+                            }
+                          }
+                    }
+                  >
+                    {!planFeatures.critique
+                      ? "Critique & polish"
+                      : job?.polished_at
+                        ? "Polished"
+                        : status === "vision_critique" ||
+                            status === "refining_scenes"
+                          ? "Polishing…"
+                          : "Critique & polish"}
+                  </Button>
+                  {(status === "scenes_ready" ||
+                    status === "refining_scenes") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={
+                        planFeatures.polish ? (
+                          <IconWand size={12} />
+                        ) : (
+                          <FaCrown size={11} color="#A78BFA" />
+                        )
+                      }
+                      disabled={
+                        planFeatures.polish &&
+                        (!jobId ||
+                          status === "refining_scenes" ||
+                          !shots.some((s) => {
+                            const c = (s as { comments?: unknown }).comments;
+                            return Array.isArray(c) && c.length > 0;
+                          }))
+                      }
+                      onClick={
+                        !planFeatures.polish
+                          ? () => setPaywall("polish_locked")
+                          : async () => {
+                              if (!jobId) return;
+                              try {
+                                const res = await fetch(
+                                  `/api/jobs/${jobId}/improve`,
+                                  { method: "POST" },
+                                );
+                                const data = (await res.json()) as {
+                                  error?: string;
+                                };
+                                if (!res.ok) {
+                                  setError(
+                                    data.error ??
+                                      `Improve failed (${res.status})`,
+                                  );
+                                  return;
+                                }
+                                setPollNonce((n) => n + 1);
+                              } catch (e) {
+                                setError(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Network error",
+                                );
+                              }
+                            }
+                      }
+                    >
+                      {status === "refining_scenes"
+                        ? "Improving…"
+                        : "Improve from comments"}
+                    </Button>
+                  )}
+                </>
+              ) : null
+            }
           />
         )}
 

@@ -43,10 +43,10 @@ const SettingsScreen = ({ onNav }) => {
             <Glass style={{ padding: 28 }}>
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 17, fontWeight: 500, letterSpacing: "-0.015em" }}>Workspace</div>
-                <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>How your team appears across MotionFlow.</div>
+                <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>How your team appears across Videly.</div>
               </div>
               <Field label="Workspace name" value="Lattice"/>
-              <Field label="Workspace URL" value="motionflow.ai/lattice"/>
+              <Field label="Workspace URL" value="videly.io/lattice"/>
               <Row label="Default style preset" value="Linear · 4K · 24fps"/>
             </Glass>
 

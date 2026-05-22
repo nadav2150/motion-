@@ -3,6 +3,7 @@ import { IconMic, IconPause, IconPlay, Switch } from "../../../primitives";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { ShotRow } from "../../types";
 import { PlanLockedBadge } from "./PlanLockedBadge";
+import { PlanLockedUpsell } from "./PlanLockedUpsell";
 
 // Per-scene voiceover viewer. Reads each shot's voiceover_url + voiceover_text
 // (written by the auto-audio pipeline in app/lib/jobs.ts:persistResolvedAudio)
@@ -95,6 +96,14 @@ export const VoiceoverSection = ({
         )
       }
     >
+      {planLocked ? (
+        <PlanLockedUpsell
+          title="Voiceover is a"
+          description="Synthesize per-scene ElevenLabs narration on every render. Unlock voiceover, music, and SFX on a paid plan."
+          onUpsell={onUpsell}
+        />
+      ) : (
+        <>
       <audio ref={audioRef} onEnded={() => setPlayingShotId(null)} preload="none" />
 
       {count === 0 ? (
@@ -178,6 +187,8 @@ export const VoiceoverSection = ({
             );
           })}
         </div>
+      )}
+        </>
       )}
     </AccordionSection>
   );

@@ -3,6 +3,7 @@ import { MusicPicker, type CurrentMusic } from "../../../MusicPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
 import { PlanLockedBadge } from "./PlanLockedBadge";
+import { PlanLockedUpsell } from "./PlanLockedUpsell";
 
 // audio_direction column holds { plan, resolved } when the auto-audio
 // pipeline ran on this job. We use resolved.bgMusic.trackId to detect
@@ -68,7 +69,13 @@ export const MusicSection = ({
       )
     }
   >
-    {jobId ? (
+    {planLocked ? (
+      <PlanLockedUpsell
+        title="Background music is a"
+        description="Auto-pick a Jamendo track that fits the film, or browse the licensed library yourself. Unlock the full audio stack on a paid plan."
+        onUpsell={onUpsell}
+      />
+    ) : jobId ? (
       <MusicPicker
         jobId={jobId}
         current={

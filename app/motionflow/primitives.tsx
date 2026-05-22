@@ -119,17 +119,7 @@ export const IconSettings = (p: IconProps) => (
 );
 
 export const IconLogo = ({ size = 24 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-    <defs>
-      <linearGradient id="mf-logo-gradient" x1="0" y1="0" x2="32" y2="32">
-        <stop offset="0" stopColor="#7AA2FF"/>
-        <stop offset="0.5" stopColor="#A78BFA"/>
-        <stop offset="1" stopColor="#67E8F9"/>
-      </linearGradient>
-    </defs>
-    <path d="M6 22 L6 10 L12 16 L18 10 L18 22" stroke="url(#mf-logo-gradient)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx="24" cy="16" r="2.5" fill="url(#mf-logo-gradient)"/>
-  </svg>
+  <img src="/logo.svg" width={size} height={size} alt="Videly" style={{ display: "block" }} />
 );
 
 /* ───────── Surfaces & Buttons ───────── */
@@ -276,7 +266,7 @@ export const TopNav = ({
   <nav className="mf-nav">
     <div className="mf-nav-brand">
       <IconLogo size={22}/>
-      <span>MotionFlow</span>
+      <span>Videly</span>
       <span className="mf-nav-badge">AI</span>
     </div>
     <div className="mf-nav-links">

@@ -1,5 +1,10 @@
 import type { Route } from "./+types/api.jobs";
-import { createJob, InsufficientCreditsError, runJob } from "../lib/jobs";
+import {
+  createJob,
+  InsufficientCreditsError,
+  ScriptTooLongError,
+  runJob,
+} from "../lib/jobs";
 import { requireUserApi } from "../lib/auth";
 
 export async function action({ request }: Route.ActionArgs) {
@@ -91,6 +96,18 @@ export async function action({ request }: Route.ActionArgs) {
           shortfall_credits: err.shortfallCredits,
         },
         { status: 402, headers },
+      );
+    }
+    if (err instanceof ScriptTooLongError) {
+      return Response.json(
+        {
+          error: "script_too_long",
+          message: `Your script is ${err.actualChars} characters. The ${err.tier} plan is limited to ${err.maxChars} characters per script — trim it down or upgrade for unlimited length.`,
+          max_chars: err.maxChars,
+          actual_chars: err.actualChars,
+          tier: err.tier,
+        },
+        { status: 400, headers },
       );
     }
     const message = err instanceof Error ? err.message : String(err);

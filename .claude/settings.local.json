@@ -146,7 +146,13 @@
       "Bash(exist \".env.local\" type .env.local)",
       "Bash(gzip -dc \"C:/Users/User/.claude/projects/C--Users-User-Desktop-motionglass/b4034fbd-c05b-4d57-b43f-16a97dbef6d1/tool-results/webfetch-1779370849801-in8keu.bin\")",
       "Bash(mkdir -p /tmp/mf-design)",
-      "Bash(tar -xzf \"C:/Users/User/.claude/projects/C--Users-User-Desktop-motionglass/b4034fbd-c05b-4d57-b43f-16a97dbef6d1/tool-results/webfetch-1779370849801-in8keu.bin\" -C /tmp/mf-design)"
+      "Bash(tar -xzf \"C:/Users/User/.claude/projects/C--Users-User-Desktop-motionglass/b4034fbd-c05b-4d57-b43f-16a97dbef6d1/tool-results/webfetch-1779370849801-in8keu.bin\" -C /tmp/mf-design)",
+      "Bash(copy *)",
+      "PowerShell(if \\(Test-Path \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\\\\public\\\\logo.svg\"\\) { $size = \\(Get-Item \"C:\\\\Users\\\\User\\\\Desktop\\\\motionglass\\\\public\\\\logo.svg\"\\).Length; Write-Output \"public/logo.svg present \\($size bytes\\)\" } else { Write-Output \"MISSING\" })",
+      "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 60)",
+      "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 80)",
+      "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 40)",
+      "PowerShell(npx --yes tsc --noEmit 2>&1 | Select-Object -First 20)"
     ]
   },
   "enabledPlugins": {

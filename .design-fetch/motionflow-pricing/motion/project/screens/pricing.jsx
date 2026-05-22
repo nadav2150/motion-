@@ -123,7 +123,7 @@ const PricingScreen = ({ onBack, onChoose }) => {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <IconLogo size={24}/>
-          <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>MotionFlow</span>
+          <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly</span>
           <span className="mf-nav-badge">AI</span>
         </div>
         <div style={{ display: "flex", gap: 32 }}>

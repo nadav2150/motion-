@@ -5,8 +5,8 @@ import { AuthError, requestPasswordReset } from "../lib/auth";
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Forgot password — MotionFlow AI" },
-    { name: "description", content: "Reset your MotionFlow AI password." },
+    { title: "Forgot password — Videly AI" },
+    { name: "description", content: "Reset your Videly AI password." },
   ];
 }
 

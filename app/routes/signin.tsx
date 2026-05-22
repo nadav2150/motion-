@@ -10,8 +10,8 @@ import {
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Sign in — MotionFlow AI" },
-    { name: "description", content: "Sign in to MotionFlow AI to continue editing your cinematic launch videos." },
+    { title: "Sign in — Videly AI" },
+    { name: "description", content: "Sign in to Videly AI to continue editing your cinematic launch videos." },
   ];
 }
 

@@ -4,7 +4,7 @@ const ExportScreen = ({ onNav }) => {
   const [copied, setCopied] = useState(false);
   const [format, setFormat] = useState("mp4-4k");
 
-  const link = "motionflow.ai/v/lattice-q4-launch";
+  const link = "videly.io/v/lattice-q4-launch";
 
   return (
     <AppChrome
@@ -182,13 +182,13 @@ const ExportScreen = ({ onNav }) => {
                 }}>
                   <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 70% 30%, rgba(255,255,255,0.4), transparent 50%)" }}/>
                   <div style={{ position: "absolute", left: 16, bottom: 14, color: "white" }}>
-                    <div className="mf-mono" style={{ fontSize: 9, letterSpacing: "0.16em", opacity: 0.7 }}>MOTIONFLOW · LATTICE</div>
+                    <div className="mf-mono" style={{ fontSize: 9, letterSpacing: "0.16em", opacity: 0.7 }}>VIDELY · LATTICE</div>
                     <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.015em", marginTop: 4 }}>Built for teams that ship.</div>
                   </div>
                 </div>
                 <div style={{ padding: "10px 14px", background: "rgba(255,255,255,0.02)" }}>
                   <div style={{ fontSize: 12, fontWeight: 500 }}>Lattice — Q4 launch film</div>
-                  <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em", marginTop: 2 }}>MOTIONFLOW.AI</div>
+                  <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em", marginTop: 2 }}>VIDELY.IO</div>
                 </div>
               </div>
             </Glass>

@@ -48,7 +48,7 @@ const CheckoutScreen = ({ onBack, onComplete, initialPlan = "annual" }) => {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <IconLogo size={26}/>
-          <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.01em" }}>MotionFlow</span>
+          <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly</span>
         </div>
 
         {/* Stepper */}

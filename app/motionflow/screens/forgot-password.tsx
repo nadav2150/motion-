@@ -34,7 +34,7 @@ export const ForgotPasswordScreen = ({
       <header className="mf-auth-top">
         <button className="mf-auth-brand" onClick={onBack} aria-label="Back to landing">
           <IconLogo size={22} />
-          <span>MotionFlow</span>
+          <span>Videly</span>
           <span className="mf-nav-badge">AI</span>
         </button>
         <div className="mf-auth-top-right">

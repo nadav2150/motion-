@@ -10,7 +10,7 @@ _Started 2026-05-07 06:54 UTC_
 
 ## Assistant
 
-I'll design MotionFlow AI as a cinematic, premium AI motion design tool. Let me start by laying out a clear plan and then build all 5 screens as an interactive prototype with the design_canvas component so they can be viewed side-by-side.
+I'll design Videly AI as a cinematic, premium AI motion design tool. Let me start by laying out a clear plan and then build all 5 screens as an interactive prototype with the design_canvas component so they can be viewed side-by-side.
 
 _[tool: update_todos]_
 
@@ -67,7 +67,7 @@ _[tool: snip]_
 
 _[tool: fork_verifier_agent]_
 
-MotionFlow AI is built — five connected screens (landing, create, generating, editor, export) wrapped in a design canvas plus a live click-through prototype. Pure black, glass surfaces, electric blue/violet/cyan accents, Geist + Geist Mono.
+Videly AI is built — five connected screens (landing, create, generating, editor, export) wrapped in a design canvas plus a live click-through prototype. Pure black, glass surfaces, electric blue/violet/cyan accents, Geist + Geist Mono.
 
 ## User
 

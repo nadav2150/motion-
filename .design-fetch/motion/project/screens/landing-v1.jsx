@@ -23,7 +23,7 @@ const LandingScreen = ({ onCta }) => {
           </h1>
 
           <p className="mf-body" style={{ maxWidth: 580, fontSize: 18, color: "var(--ink-2)" }}>
-            MotionFlow generates broadcast-grade product films from your UI, script and brand —
+            Videly generates broadcast-grade product films from your UI, script and brand —
             in under sixty seconds. No editor required.
           </p>
 
@@ -94,7 +94,7 @@ const LandingScreen = ({ onCta }) => {
 
           {/* Main cinema preview with drop zone overlay */}
           <div style={{ position: "relative", maxWidth: 980, margin: "0 auto" }}>
-            <CinemaPreview aspect="16 / 9" frame={f} label="MOTIONFLOW · PREVIEW · 4K · 24FPS">
+            <CinemaPreview aspect="16 / 9" frame={f} label="VIDELY · PREVIEW · 4K · 24FPS">
               {/* Centered drop zone */}
               <div
                 onDragOver={(e)=>{e.preventDefault(); setDrag(true);}}

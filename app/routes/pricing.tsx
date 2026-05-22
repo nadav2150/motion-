@@ -8,11 +8,11 @@ import {
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Pricing — MotionFlow AI" },
+    { title: "Pricing — Videly AI" },
     {
       name: "description",
       content:
-        "Plans and credits for MotionFlow AI. Start free with 1,500 credits or scale to 60,000 credits/month on Studio. Cancel anytime.",
+        "Plans and credits for Videly AI. Start free with 3,100 credits or scale to 60,000 credits/month on Studio. Cancel anytime.",
     },
   ];
 }

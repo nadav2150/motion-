@@ -7,7 +7,7 @@ import { listProjectsForUser, type ProjectSummary } from "../lib/jobs";
 import { loadCreditsForUI } from "../lib/billing/loader";
 
 export function meta(_: Route.MetaArgs) {
-  return [{ title: "Projects — MotionFlow AI" }];
+  return [{ title: "Projects — Videly AI" }];
 }
 
 const navPath: Record<NavKey, string> = {

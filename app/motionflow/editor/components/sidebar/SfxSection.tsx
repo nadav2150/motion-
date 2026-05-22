@@ -4,6 +4,7 @@ import { SfxPicker, type CurrentSfx } from "../../../SfxPicker";
 import { AccordionSection, ComingSoonPanel } from "../shared";
 import type { JobRow, ShotRow } from "../../types";
 import { PlanLockedBadge } from "./PlanLockedBadge";
+import { PlanLockedUpsell } from "./PlanLockedUpsell";
 
 // Per-scene SFX cue shape (as written by persistResolvedAudio in jobs.ts).
 type SfxCueRow = {
@@ -131,6 +132,14 @@ export const SfxSection = ({
         )
       }
     >
+      {planLocked ? (
+        <PlanLockedUpsell
+          title="Per-scene SFX is a"
+          description="Auto-pick Freesound cues that punctuate the impact moments in every scene. Unlock SFX, voiceover, and music on a paid plan."
+          onUpsell={onUpsell}
+        />
+      ) : (
+        <>
       <audio ref={audioRef} onEnded={() => setPlayingKey(null)} preload="none" />
 
       {jobId ? (
@@ -281,6 +290,8 @@ export const SfxSection = ({
               : "Toggle on before Generate to add per-scene sound effects."
           }
         />
+      )}
+        </>
       )}
     </AccordionSection>
   );

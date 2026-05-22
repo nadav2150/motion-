@@ -6,7 +6,7 @@ import { requireUserOrRedirect } from "../lib/auth";
 import { loadCreditsForUI } from "../lib/billing/loader";
 
 export function meta(_: Route.MetaArgs) {
-  return [{ title: "Export — MotionFlow AI" }];
+  return [{ title: "Export — Videly AI" }];
 }
 
 type LoaderData = { credits: number | null; planTier: string | null };

@@ -7,12 +7,21 @@
 export type PlanTier = "free" | "starter" | "pro" | "studio";
 
 export type PlanFeatures = {
+  // Per-plan lower bound passed to the Director's storyboard schema. Free
+  // sits below the cinematic floor (MIN_SHOTS=5) so its trial films can be
+  // short and cheap; paid plans keep the 5-shot floor for cinematic feel.
+  minScenes: number;
   maxScenes: number;
   audio: boolean;          // voiceover/music/sfx (gated together — audio_*_enabled flags)
   critique: boolean;       // POST /api/jobs/:id/critique
   polish: boolean;         // POST /api/jobs/:id/improve
+  comments: boolean;       // per-scene comment threads in the right panel
+  // Max raw character length of the script input. Free is capped at 700 so a
+  // trial user can't paste a novella and force the Director to churn through
+  // 30K input tokens on the first call. null = unlimited.
+  maxScriptChars: number | null;
   brandKit: boolean;       // POST /api/brand/logo
-  watermark: boolean;      // append "Made with MotionFlow" to export
+  watermark: boolean;      // append "Made with Videly" to export
   export4k: boolean;       // 4K export option in /export
   concurrentJobs: number;  // max in-flight (non-terminal) jobs per user
   commercialUse: boolean;  // TOS-only — surfaced in UI, not enforced server-side
@@ -22,10 +31,13 @@ export type PlanFeatures = {
 
 export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
   free: {
-    maxScenes: 6,
+    minScenes: 1,
+    maxScenes: 2,
     audio: false,
     critique: false,
     polish: false,
+    comments: false,
+    maxScriptChars: 700,
     brandKit: false,
     watermark: true,
     export4k: false,
@@ -35,6 +47,7 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     teamSeats: 1,
   },
   starter: {
+    minScenes: 5,
     maxScenes: 10,
     audio: true,
     // Starter can run vision critique to iterate on drafts (~1,200 credits/run,
@@ -42,6 +55,8 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     // re-fires the expensive Opus refinement pipeline.
     critique: true,
     polish: false,
+    comments: true,
+    maxScriptChars: null,
     brandKit: true,
     watermark: false,
     export4k: false,
@@ -51,10 +66,13 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     teamSeats: 1,
   },
   pro: {
+    minScenes: 5,
     maxScenes: 14,
     audio: true,
     critique: true,
     polish: true,
+    comments: true,
+    maxScriptChars: null,
     brandKit: true,
     watermark: false,
     export4k: true,
@@ -64,10 +82,13 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     teamSeats: 1,
   },
   studio: {
+    minScenes: 5,
     maxScenes: 14,
     audio: true,
     critique: true,
     polish: true,
+    comments: true,
+    maxScriptChars: null,
     brandKit: true,
     watermark: false,
     export4k: true,

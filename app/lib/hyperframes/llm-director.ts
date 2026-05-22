@@ -499,6 +499,13 @@ export type BrandHints = {
   logoUrl?: string | null;
   /** Free-text brand style direction the user typed (optional). */
   brandStyle?: string | null;
+  /** Per-plan minimum scene count for the storyboard. Defaults to 4. */
+  minScenes?: number;
+  /** Per-plan maximum scene count for the storyboard. Defaults to 8.
+   *  If the LLM returns more scenes than this, the extras are dropped
+   *  (we keep the first N) since the structured-output schema can't
+   *  enforce array bounds for this director. */
+  maxScenes?: number;
 };
 
 export type Storyboard = {
@@ -1321,6 +1328,12 @@ export async function generateStoryboard(
   const trimmed = script.trim();
   if (!trimmed) throw new Error("generateStoryboard: script is empty");
 
+  // Resolve per-plan scene bounds. The system prompt's default range is
+  // "4–8 scenes"; when the caller overrides we honor their bounds AND
+  // post-clamp to maxScenes since the structured-output schema can't.
+  const minScenes = Math.max(1, brand?.minScenes ?? 4);
+  const maxScenes = Math.max(minScenes, brand?.maxScenes ?? 8);
+
   const cleanColors = (brand?.colors ?? [])
     .map((c) => c.trim().toLowerCase())
     .filter((c) => /^#[0-9a-f]{6}$/.test(c));
@@ -1328,6 +1341,8 @@ export async function generateStoryboard(
     colors: cleanColors,
     logoUrl: brand?.logoUrl ?? null,
     brandStyle: brand?.brandStyle ?? null,
+    minScenes,
+    maxScenes,
   });
 
   // First attempt. If normalizeVisualIdentity throws IdentityIncompleteError,
@@ -1348,12 +1363,25 @@ export async function generateStoryboard(
     identity = normalizeVisualIdentity(parsed.visualIdentity, detected);
   }
 
+  // Per-plan scene cap. Anthropic's structured-output schema can't enforce
+  // array length for this director, so we post-clamp here. If the LLM
+  // returned more scenes than the plan allows (e.g. Free user got 9 scenes
+  // when capped at 2), we keep the first maxScenes and log loudly so the
+  // drift is visible in dashboards.
+  const rawScenes = parsed.scenes ?? [];
+  if (rawScenes.length > maxScenes) {
+    console.warn(
+      `[storyboard] LLM returned ${rawScenes.length} scenes; plan cap is ${maxScenes}. Truncating to first ${maxScenes}.`,
+    );
+  }
+  const clampedScenes = rawScenes.slice(0, maxScenes);
+
   // Light normalization: ensure ids follow scene_NN, durations are within
   // the [1.5, 12] bracket (relaxed from [3, 10] in v2 to make pacing part of
   // the storytelling — see principle #2), and every scene has an assigned
   // sceneConcept + motionHook (rotate through the concept list as a fallback
   // so two adjacent scenes never share a default).
-  const scenes = (parsed.scenes ?? []).map((s, i) => {
+  const scenes = clampedScenes.map((s, i) => {
     const dur = Math.max(1.5, Math.min(12, Number(s.durationSeconds) || 4));
     const pacing: PacingIntent =
       s.pacingIntent && (PACING_INTENTS as readonly string[]).includes(s.pacingIntent)
@@ -1483,9 +1511,29 @@ function pickAestheticSeed(script: string): readonly string[] {
 /** Render the script + brand hints into the storyboard-call user message. */
 function renderStoryboardUserPrompt(
   script: string,
-  brand: { colors: string[]; logoUrl: string | null; brandStyle: string | null },
+  brand: {
+    colors: string[];
+    logoUrl: string | null;
+    brandStyle: string | null;
+    minScenes?: number;
+    maxScenes?: number;
+  },
 ): string {
   const lines: string[] = [];
+
+  // Per-plan scene cap. Overrides the system-prompt's "4–8 scenes" default
+  // when the caller is on a non-default plan (e.g. Free should produce 1–2
+  // scenes so the trial is short). Phrased as a HARD instruction so the
+  // model doesn't ignore it — we still post-clamp in TS as a safety net.
+  if (typeof brand.minScenes === "number" && typeof brand.maxScenes === "number") {
+    lines.push(
+      `HARD SCENE COUNT — produce exactly ${brand.minScenes}${
+        brand.minScenes === brand.maxScenes ? "" : ` to ${brand.maxScenes}`
+      } scene${brand.maxScenes === 1 ? "" : "s"} for this film. This OVERRIDES the system prompt's 4–8 default. Do not produce more than ${brand.maxScenes}. Do not produce fewer than ${brand.minScenes}.`,
+    );
+    lines.push("");
+  }
+
   if (brand.colors.length > 0 || brand.logoUrl || brand.brandStyle) {
     lines.push("BRAND ANCHOR (the user provided these — honor them):");
     if (brand.colors.length > 0) {
@@ -2400,7 +2448,7 @@ export function buildFilmSkeleton(
 <html lang="${escapeHtml(lang)}" dir="${dir}" data-composition-variables='[]'>
 <head>
 <meta charset="UTF-8">
-<title>${escapeHtml(storyboard.title || "MotionFlow Film")}</title>
+<title>${escapeHtml(storyboard.title || "Videly Film")}</title>
 <style>
   :root {
 ${rootVarsCss}

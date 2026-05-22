@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { IconClose } from "../../primitives";
+import { useMemo, useState, type ReactNode } from "react";
+import { IconArrowRight, IconClose, IconLogo } from "../../primitives";
 import { ASSET_KINDS } from "../constants";
 import {
   isSceneAssetArray,
@@ -196,6 +196,9 @@ export const ScenesPanel = ({
   onShotPatched,
   onAssetDrop,
   onAssetsChanged,
+  commentsLocked = false,
+  onUpsell,
+  actions,
 }: {
   shot: ShotRow | null;
   onShotPatched: (patch: { id: string; comments: SceneComment[] }) => void;
@@ -205,6 +208,12 @@ export const ScenesPanel = ({
     asset: JobAsset,
   ) => void;
   onAssetsChanged?: (shotId: string, assets: SceneAsset[]) => void;
+  commentsLocked?: boolean;
+  onUpsell?: () => void;
+  // Job-level action buttons rendered above the scene tabs. Built by the
+  // editor screen since the gating logic depends on status + plan + comment
+  // counts that live there.
+  actions?: ReactNode;
 }) => {
   const [tab, setTab] = useState<ScenesPanelTab>("comments");
   const [draft, setDraft] = useState("");
@@ -308,6 +317,20 @@ export const ScenesPanel = ({
         transition: "background 120ms",
       }}
     >
+      {actions && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            paddingBottom: 14,
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          {actions}
+        </div>
+      )}
+
       <div
         className="mf-mono"
         style={{
@@ -379,6 +402,136 @@ export const ScenesPanel = ({
         </div>
       ) : tab === "assets" ? (
         <ScenesAssetsTab shot={shot} onAssetsChanged={onAssetsChanged} />
+      ) : commentsLocked ? (
+        <div
+          style={{
+            position: "relative",
+            padding: "26px 20px 22px",
+            borderRadius: 14,
+            border: "1px solid rgba(122,162,255,0.22)",
+            background:
+              "linear-gradient(180deg, rgba(122,162,255,0.06) 0%, rgba(167,139,250,0.04) 60%, rgba(8,9,13,0.4) 100%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: 14,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: -60,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 220,
+              height: 220,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle, rgba(122,162,255,0.22), transparent 65%)",
+              filter: "blur(28px)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+              width: 56,
+              height: 56,
+              borderRadius: 14,
+              display: "grid",
+              placeItems: "center",
+              background:
+                "linear-gradient(180deg, rgba(122,162,255,0.18), rgba(167,139,250,0.10))",
+              border: "1px solid rgba(122,162,255,0.35)",
+              boxShadow:
+                "0 8px 28px -8px rgba(122,162,255,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
+          >
+            <IconLogo size={30} />
+          </div>
+
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 500,
+                color: "var(--ink-1)",
+                letterSpacing: "-0.01em",
+                lineHeight: 1.3,
+              }}
+            >
+              Comments are a{" "}
+              <span
+                style={{
+                  background:
+                    "linear-gradient(90deg, #7AA2FF, #A78BFA, #67E8F9)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                Videly
+              </span>{" "}
+              paid feature
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12.5,
+                lineHeight: 1.55,
+                color: "var(--ink-3)",
+                maxWidth: 240,
+              }}
+            >
+              Leave per-scene notes, iterate with your team, and feed them
+              back into the Director on the next pass.
+            </div>
+          </div>
+
+          <button
+            onClick={() => onUpsell?.()}
+            style={{
+              position: "relative",
+              zIndex: 1,
+              marginTop: 4,
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "1px solid rgba(122,162,255,0.55)",
+              background:
+                "linear-gradient(180deg, rgba(122,162,255,0.28), rgba(167,139,250,0.20))",
+              color: "white",
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow:
+                "0 6px 20px -6px rgba(122,162,255,0.55), inset 0 1px 0 rgba(255,255,255,0.10)",
+            }}
+          >
+            <span>Upgrade to unlock</span>
+            <IconArrowRight size={13} />
+          </button>
+
+          <span
+            className="mf-mono"
+            style={{
+              position: "relative",
+              zIndex: 1,
+              fontSize: 9.5,
+              letterSpacing: "0.16em",
+              color: "var(--ink-4)",
+            }}
+          >
+            FROM $19 / MONTH
+          </span>
+        </div>
       ) : (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>

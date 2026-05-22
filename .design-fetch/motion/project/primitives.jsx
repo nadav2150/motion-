@@ -1,4 +1,4 @@
-/* MotionFlow AI — shared primitives & icons */
+/* Videly AI — shared primitives & icons */
 const { useState: _useState, useEffect: _useEffect, useRef: _useRef, useMemo: _useMemo } = React;
 // re-bind via let to avoid top-level const collision across babel scripts
 var useState = _useState, useEffect = _useEffect, useRef = _useRef, useMemo = _useMemo;
@@ -78,7 +78,7 @@ const TopNav = ({ onCta }) => (
   <nav className="mf-nav">
     <div className="mf-nav-brand">
       <IconLogo size={22}/>
-      <span>MotionFlow</span>
+      <span>Videly</span>
       <span className="mf-nav-badge">AI</span>
     </div>
     <div className="mf-nav-links">

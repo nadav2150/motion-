@@ -39,11 +39,11 @@ export const RegisterScreen = ({
       <header className="mf-auth-top">
         <button className="mf-auth-brand" onClick={onBack} aria-label="Back to landing">
           <IconLogo size={22} />
-          <span>MotionFlow</span>
+          <span>Videly</span>
           <span className="mf-nav-badge">AI</span>
         </button>
         <div className="mf-auth-top-right">
-          <span className="mf-auth-top-muted">Already on MotionFlow?</span>
+          <span className="mf-auth-top-muted">Already on Videly?</span>
           <button className="mf-nav-link" onClick={onGoSignIn}>
             Sign in
           </button>

@@ -593,7 +593,7 @@ const EmptyPreview = ({ f, onAdd }) => {
             Your <span className="mf-grad-text">cinematic story</span><br/>starts here.
           </h2>
           <p style={{ marginTop: 14, fontSize: 14, color: "var(--ink-2)", lineHeight: 1.55 }}>
-            Drop screenshots, paste your script, and MotionFlow AI builds the scenes, pacing, and motion.
+            Drop screenshots, paste your script, and Videly AI builds the scenes, pacing, and motion.
           </p>
 
           <div style={{ marginTop: 24, display: "flex", justifyContent: "center", gap: 8 }}>

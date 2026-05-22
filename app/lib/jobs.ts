@@ -1,10 +1,11 @@
 import {
   attachReservationToJob,
-  isBillingEnabled,
+  getOrCreateBilling,
   reconcileJob,
   reserveCredits,
 } from "./billing/credits";
 import { estimateJobCost } from "./billing/estimate";
+import { getPlanFeatures } from "./billing/plan-features";
 import { withMeterContext } from "./billing/meter";
 import { flushPostHog } from "./posthog";
 import {
@@ -193,18 +194,56 @@ export class InsufficientCreditsError extends Error {
   }
 }
 
+// Thrown by createJob when the submitted script exceeds the plan's
+// maxScriptChars cap. The api.jobs route maps this to a 400 response so
+// the UI can show a clear "script too long" message instead of a generic
+// 500. Defensive — the editor textarea already enforces maxLength, this
+// guards the API against direct callers / scripted clients.
+export class ScriptTooLongError extends Error {
+  constructor(
+    public readonly maxChars: number,
+    public readonly actualChars: number,
+    public readonly tier: string,
+  ) {
+    super(
+      `Script length ${actualChars} exceeds ${maxChars}-character limit on the ${tier} plan`,
+    );
+    this.name = "ScriptTooLongError";
+  }
+}
+
 export async function createJob(input: CreateJobInput): Promise<{ jobId: string }> {
   const script = input.script.trim();
   if (!script) throw new Error("Script is required");
 
-  // Worst-case reservation BEFORE we insert the job. The estimator falls back
-  // to MAX_SHOTS when sceneCountGuess is null; reconcileJob() refunds the
-  // unused portion if the LLM picks fewer scenes. video=false because
-  // per-shot clips are opt-in via /api/shots/:id/clip and reserve their own
-  // credits at that endpoint. autoCritique mirrors the env flag so the
-  // inline critique pass is covered when HYPERFRAMES_AUTO_CRITIQUE=true.
+  // Worst-case reservation BEFORE we insert the job. Scene count is capped
+  // at the user's plan max (NOT the global MAX_SHOTS) so Free users aren't
+  // gated against a 14-scene reservation they could never run. The
+  // Director enforces the same cap when picking scenes, so we won't
+  // under-reserve. reconcileJob() refunds the unused portion if the LLM
+  // picks fewer scenes. video=false because per-shot clips are opt-in via
+  // /api/shots/:id/clip and reserve their own credits at that endpoint.
+  // autoCritique mirrors the env flag so the inline critique pass is
+  // covered when HYPERFRAMES_AUTO_CRITIQUE=true.
+  const billing = input.userId ? await getOrCreateBilling(input.userId) : null;
+  const planFeatures = getPlanFeatures(billing?.plan_tier ?? null);
+
+  // Per-plan script length cap. Free is 700 chars so a trial user can't
+  // paste a novella and force a 30K-input-token Director call before the
+  // 2-scene trim limits per-scene fill. Paid plans get null (unlimited).
+  if (
+    planFeatures.maxScriptChars !== null &&
+    script.length > planFeatures.maxScriptChars
+  ) {
+    throw new ScriptTooLongError(
+      planFeatures.maxScriptChars,
+      script.length,
+      billing?.plan_tier ?? "free",
+    );
+  }
+
   const estimate = estimateJobCost({
-    sceneCountGuess: null,
+    sceneCountGuess: planFeatures.maxScenes,
     video: false,
     audioVoiceover: input.audioVoiceoverEnabled ?? false,
     audioMusic: input.audioMusicEnabled ?? false,
@@ -216,10 +255,13 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string 
   // Reserve credits first; throw without inserting if the balance is short
   // so we don't leave an orphan job row. Idempotency key uses a fresh UUID
   // (no jobId yet); attachReservationToJob() links it after the insert.
-  // Dev environments without Paddle keys skip the reservation step so the
-  // dev loop stays unblocked — telemetry still flows via recordConsumption.
+  // Reservation runs for every signed-in user — Paddle (isBillingEnabled())
+  // controls *incoming payments*, not balance accounting. The credit ledger
+  // is the source of truth regardless of payment-provider configuration, so
+  // dev environments deduct real balance and the trial flow can be tested
+  // end-to-end without a Paddle key.
   let reservationKey: string | null = null;
-  if (input.userId && isBillingEnabled()) {
+  if (input.userId) {
     reservationKey = `reserve:${crypto.randomUUID()}`;
     const reserve = await reserveCredits(input.userId, estimate, null, reservationKey);
     if (!reserve.ok) {
@@ -1037,15 +1079,39 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   // Stage 1 — directing: LLM splits script into scenes + locks identity.
   // Brand hints from the job row anchor the LLM's identity choices and
   // post-parse override the accent palette / inject the logo URL.
+  // Plan-driven scene bounds are derived from the job owner's tier so
+  // Free trials produce 1–2 short scenes instead of the system prompt's
+  // default 4–8.
   const jobStart = Date.now();
   await setJobStatus(jobId, { status: "directing" });
+  const ownerBilling = job.user_id ? await getOrCreateBilling(job.user_id) : null;
+  const ownerPlan = getPlanFeatures(ownerBilling?.plan_tier ?? null);
   const storyboard = await timed(jobId, "storyboard", () =>
     generateStoryboard(job.script, {
       colors: job.brand_colors ?? null,
       logoUrl: job.brand_logo_url ?? null,
       brandStyle: job.brand_style ?? null,
+      minScenes: ownerPlan.minScenes,
+      maxScenes: ownerPlan.maxScenes,
     }),
   );
+
+  // Hard cap to the plan's scene budget. The schema + prompt ask the LLM
+  // for at most ownerPlan.maxScenes, but Anthropic structured-output is a
+  // hint, not a guarantee — we've observed Free jobs come back with 9
+  // scenes despite maxScenes=2. createJob() only reserved credits for the
+  // plan cap, so anything beyond it would be unbilled overrun. The
+  // dominant per-scene cost is opus_scene_fill (called once per inserted
+  // scene downstream); trimming before insertHyperframesScenes caps that
+  // loop. The director call itself is fixed-cost — we eat its tokens
+  // regardless.
+  if (storyboard.scenes.length > ownerPlan.maxScenes) {
+    console.warn(
+      `[hyperframes ${jobId}] director returned ${storyboard.scenes.length} scenes, over plan cap ${ownerPlan.maxScenes} — trimming.`,
+    );
+    storyboard.scenes = storyboard.scenes.slice(0, ownerPlan.maxScenes);
+  }
+
   console.log(
     `[hyperframes ${jobId}] storyboard: "${storyboard.title}" — ${storyboard.scenes.length} scenes` +
       (job.brand_colors?.length
@@ -1900,14 +1966,25 @@ async function runLegacyAiMediaJob(jobId: string, job: JobRow): Promise<void> {
 
   const filmMode = resolveFilmMode(job);
 
+  const ownerBilling = job.user_id ? await getOrCreateBilling(job.user_id) : null;
+  const ownerPlan = getPlanFeatures(ownerBilling?.plan_tier ?? null);
   const directorResult = await generateLegacyStoryboard({
     script: job.script,
     productDescription: job.product_description ?? undefined,
     brandStyle: job.brand_style ?? undefined,
     filmMode,
+    minScenes: ownerPlan.minScenes,
+    maxScenes: ownerPlan.maxScenes,
   });
 
-  const trimmedRecipes = directorResult.storyboard.shots.slice(0, MAX_SHOTS_PER_JOB);
+  // Trim to the per-plan cap (NOT the global MAX_SHOTS_PER_JOB) so legacy
+  // jobs honor the same scene budget that createJob reserved against.
+  if (directorResult.storyboard.shots.length > ownerPlan.maxScenes) {
+    console.warn(
+      `[legacy ${jobId}] director returned ${directorResult.storyboard.shots.length} shots, over plan cap ${ownerPlan.maxScenes} — trimming.`,
+    );
+  }
+  const trimmedRecipes = directorResult.storyboard.shots.slice(0, ownerPlan.maxScenes);
   const continuity = directorResult.storyboard.continuity;
 
   const lint = lintStoryboard(trimmedRecipes);
