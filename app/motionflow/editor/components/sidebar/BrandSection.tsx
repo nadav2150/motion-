@@ -78,7 +78,7 @@ export const BrandSection = ({
                 void handleScrapeFromUrl();
               }
             }}
-            placeholder="https://artlist.io"
+            placeholder="https://yourbrand.com"
             disabled={brandScraping}
             style={{
               flex: 1, padding: "8px 10px",

@@ -14,7 +14,6 @@ import {
 } from "../primitives";
 
 type Template = { t: string; d: string; c: string; tag?: string; time: string };
-type Community = { by: string; team: string; title: string; c: string; views: string };
 
 export const HomeScreen = ({
   onNav,
@@ -46,12 +45,6 @@ export const HomeScreen = ({
     { t: "Quarterly recap",       d: "Linear · 90s", c: "linear-gradient(135deg, #1F2937, #5468FF)", time: "4 min" },
     { t: "Feature deep-dive",     d: "Apple · 75s",  c: "linear-gradient(135deg, #2D3340, #7AA2FF)", time: "3 min" },
     { t: "Customer story",        d: "Soft · 60s",   c: "linear-gradient(135deg, #7AA2FF, #F472B6)", time: "2 min" },
-  ];
-
-  const community: Community[] = [
-    { by: "@aria",   team: "Notion", title: "Q4 launch teaser",   c: "linear-gradient(135deg, #1F2937, #5468FF)", views: "12.4k" },
-    { by: "@daniel", team: "Vercel", title: "Edge runtime intro", c: "linear-gradient(135deg, #A78BFA, #5468FF)", views: "8.1k" },
-    { by: "@maya",   team: "Linear", title: "Cycle 21 recap",     c: "linear-gradient(135deg, #67E8F9, #7AA2FF)", views: "6.7k" },
   ];
 
   return (
@@ -125,7 +118,7 @@ export const HomeScreen = ({
         </div>
 
         <div onClick={onPickTemplate} style={{ position: "relative", marginBottom: 48, cursor: "pointer" }}>
-          <CinemaPreview aspect="2.4 / 1" frame={f} label="FEATURED · LINEAR-STYLE LAUNCH · LIVE PREVIEW">
+          <CinemaPreview aspect="2.4 / 1" frame={f} label="FEATURED · LAUNCH FILM · LIVE PREVIEW">
             <div
               style={{
                 position: "absolute", left: 36, bottom: 36, right: 36,
@@ -193,25 +186,6 @@ export const HomeScreen = ({
         >
           {templates.map((tp, i) => (
             <TemplateCard key={i} tp={tp} onClick={onPickTemplate} />
-          ))}
-        </div>
-
-        {/* Made with motion */}
-        <div style={{ marginBottom: 18 }}>
-          <div className="mf-eyebrow">MADE WITH MOTION</div>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 6 }}>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 500, letterSpacing: "-0.015em" }}>
-              Real launches, this week.
-            </h2>
-            <span className="mf-mono" style={{ fontSize: 10.5, color: "var(--ink-3)", letterSpacing: "0.10em" }}>
-              4,820 VIDEOS RENDERED · LAST 7 DAYS
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: m ? 12 : 14 }}>
-          {community.map((c, i) => (
-            <CommunityCard key={i} c={c} onClick={onPickTemplate} />
           ))}
         </div>
 
@@ -460,96 +434,3 @@ const TemplateCard = ({ tp, onClick }: { tp: Template; onClick?: () => void }) =
   );
 };
 
-const CommunityCard = ({ c, onClick }: { c: Community; onClick?: () => void }) => {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        padding: 0, borderRadius: 14, overflow: "hidden",
-        background: "rgba(255,255,255,0.02)", border: "1px solid var(--line)",
-        cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-        transition: "all 240ms cubic-bezier(.2,.8,.2,1)",
-        transform: hover ? "translateY(-3px)" : "",
-        boxShadow: hover ? "0 20px 40px -16px rgba(0,0,0,0.6)" : "",
-      }}
-    >
-      <div style={{ aspectRatio: "16/10", background: c.c, position: "relative", overflow: "hidden" }}>
-        <div
-          style={{
-            position: "absolute", inset: 0,
-            background: "radial-gradient(circle at 70% 30%, rgba(255,255,255,0.18), transparent 60%)",
-          }}
-        />
-        <div style={{ position: "absolute", top: 12, left: 12, display: "flex", gap: 6 }}>
-          <span
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              padding: "3px 8px", borderRadius: 5,
-              background: "rgba(0,0,0,0.4)", backdropFilter: "blur(10px)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              fontSize: 10, color: "rgba(255,255,255,0.85)",
-            }}
-          >
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#A6F0BD" }} />
-            <span className="mf-mono" style={{ letterSpacing: "0.08em" }}>{c.views}</span>
-          </span>
-        </div>
-        <div
-          style={{
-            position: "absolute", inset: 0, display: "grid", placeItems: "center",
-            opacity: hover ? 1 : 0.85, transition: "opacity 200ms",
-          }}
-        >
-          <div
-            style={{
-              width: 48, height: 48, borderRadius: "50%",
-              background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.25)",
-              backdropFilter: "blur(10px)",
-              display: "grid", placeItems: "center", paddingLeft: 3, color: "white",
-              transform: hover ? "scale(1.06)" : "scale(1)",
-              transition: "transform 240ms",
-            }}
-          >
-            <IconPlay size={17} />
-          </div>
-        </div>
-      </div>
-      <div
-        style={{
-          padding: "14px 16px", display: "flex", justifyContent: "space-between",
-          alignItems: "center", gap: 10,
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13.5, fontWeight: 500, letterSpacing: "-0.015em",
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}
-          >
-            {c.title}
-          </div>
-          <div
-            className="mf-mono"
-            style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em", marginTop: 4 }}
-          >
-            BY {c.by.toUpperCase()} · {c.team.toUpperCase()}
-          </div>
-        </div>
-        <span
-          style={{
-            flexShrink: 0, fontSize: 11.5,
-            color: hover ? "#7AA2FF" : "var(--ink-3)",
-            display: "inline-flex", alignItems: "center", gap: 3,
-            transition: "color 200ms",
-          }}
-        >
-          Remix <IconArrowRight size={11} />
-        </span>
-      </div>
-    </button>
-  );
-};

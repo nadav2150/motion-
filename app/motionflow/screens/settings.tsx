@@ -88,9 +88,9 @@ export const SettingsScreen = ({
                 <div style={{ fontSize: 17, fontWeight: 500, letterSpacing: "-0.015em" }}>Workspace</div>
                 <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>How your team appears across Videly.</div>
               </div>
-              <Field label="Workspace name" value="Lattice"/>
-              <Field label="Workspace URL" value="videly.io/lattice"/>
-              <Row label="Default style preset" value="Linear · 4K · 24fps"/>
+              <Field label="Workspace name" value=""/>
+              <Field label="Workspace URL" value=""/>
+              <Row label="Default style preset" value="4K · 24fps"/>
             </Glass>
 
             <Glass style={{ padding: 28 }}>
@@ -127,28 +127,12 @@ export const SettingsScreen = ({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div>
                   <div style={{ fontSize: 17, fontWeight: 500, letterSpacing: "-0.015em" }}>Members</div>
-                  <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>4 active · Pro plan</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4 }}>Invite your team to collaborate.</div>
                 </div>
                 <Button variant="ghost" size="sm" icon={<IconPlus size={12}/>}>Invite</Button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {[
-                  { n: "Eden Lavi", e: "eden@lattice.com",  r: "Owner" },
-                  { n: "Maya Kim",  e: "maya@lattice.com",  r: "Editor" },
-                  { n: "Nadav Ben", e: "nadav@lattice.com", r: "Editor" },
-                  { n: "Roi Cohen", e: "roi@lattice.com",   r: "Viewer" },
-                ].map((m, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
-                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, oklch(0.72 0.18 ${230 + i * 30}), oklch(0.55 0.18 ${280 + i * 20}))`, display: "grid", placeItems: "center", color: "white", fontSize: 11, fontWeight: 600 }}>
-                      {m.n.split(" ").map((x) => x[0]).join("")}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{m.n}</div>
-                      <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.04em", marginTop: 2 }}>{m.e}</div>
-                    </div>
-                    <span className="mf-pill" style={{ padding: "3px 10px", fontSize: 11 }}>{m.r}</span>
-                  </div>
-                ))}
+              <div style={{ fontSize: 13, color: "var(--ink-3)", padding: "20px 0" }}>
+                No teammates yet. Invite someone to get started.
               </div>
             </Glass>
           </div>

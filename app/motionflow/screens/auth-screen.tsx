@@ -1,9 +1,4 @@
-import {
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Form, useNavigation } from "react-router";
 import {
   IconArrowRight,
@@ -161,11 +156,11 @@ export const AuthScreen = ({
               >
                 {isLogin ? (
                   <>
-                    Direct your next <span className="mf-grad-text">cinematic</span> launch.
+                    Direct your next <span className="mf-grad-text">motion</span> launch.
                   </>
                 ) : (
                   <>
-                    Make a launch film <span className="mf-grad-text">in hours</span>, not weeks.
+                    Make a launch motion <span className="mf-grad-text">in hours</span>, not weeks.
                   </>
                 )}
               </h1>
@@ -190,14 +185,14 @@ export const AuthScreen = ({
                 <AuthField
                   name="name"
                   label="Full name"
-                  placeholder="Maya Okonkwo"
+                  placeholder="Your full name"
                   autoComplete="name"
                 />
               )}
               <AuthField
                 name="email"
                 label="Work email"
-                placeholder="you@studio.com"
+                placeholder="you@example.com"
                 type="email"
                 autoComplete="email"
                 required
@@ -549,60 +544,6 @@ const CinematicStage = ({ f }: { f: number }) => (
       <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly AI</span>
     </div>
 
-    <div
-      style={{
-        position: "absolute",
-        left: 32,
-        right: 32,
-        bottom: 32,
-        zIndex: 3,
-        padding: "22px 24px",
-        borderRadius: 16,
-        background: "rgba(8,9,13,0.55)",
-        backdropFilter: "blur(20px)",
-        border: "1px solid var(--line)",
-      }}
-    >
-      <div
-        className="mf-mono"
-        style={{ fontSize: 10, letterSpacing: "0.18em", color: "#7AA2FF", marginBottom: 10 }}
-      >
-        WHAT TEAMS BUILD HERE
-      </div>
-      <div
-        style={{
-          fontSize: 22,
-          lineHeight: 1.35,
-          fontWeight: 500,
-          letterSpacing: "-0.015em",
-          textWrap: "pretty" as CSSProperties["textWrap"],
-        }}
-      >
-        “We shipped our launch film in{" "}
-        <span className="mf-grad-text">3 hours</span>, not 3 weeks. No agency, no Premiere, no
-        compromise.”
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #7AA2FF, #A78BFA)",
-            border: "1px solid rgba(255,255,255,0.15)",
-          }}
-        />
-        <div>
-          <div style={{ fontSize: 12.5, fontWeight: 500 }}>Maya Okonkwo</div>
-          <div
-            className="mf-mono"
-            style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em" }}
-          >
-            HEAD OF BRAND · LATTICE
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 );
 
@@ -691,11 +632,11 @@ const MobileBanner = ({
       >
         {isLogin ? (
           <>
-            Direct your next <span className="mf-grad-text">cinematic</span> launch.
+            Direct your next <span className="mf-grad-text">motion</span> launch.
           </>
         ) : (
           <>
-            Make a launch film <span className="mf-grad-text">in hours</span>, not weeks.
+            Make a launch motion <span className="mf-grad-text">in hours</span>, not weeks.
           </>
         )}
       </div>

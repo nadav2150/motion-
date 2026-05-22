@@ -373,14 +373,14 @@ export function CheckoutScreen({
 
           <CoSection title="02 · Account">
             <CoField label="Email">
-              <CoInput placeholder="you@company.com" type="email" defaultValue={email ?? ""} />
+              <CoInput placeholder="you@example.com" type="email" defaultValue={email ?? ""} />
             </CoField>
             <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: 10 }}>
               <CoField label="First name">
-                <CoInput placeholder="Alex" defaultValue={firstName ?? ""} />
+                <CoInput placeholder="First name" defaultValue={firstName ?? ""} />
               </CoField>
               <CoField label="Last name">
-                <CoInput placeholder="Morgan" defaultValue={lastName ?? ""} />
+                <CoInput placeholder="Last name" defaultValue={lastName ?? ""} />
               </CoField>
             </div>
             <div
@@ -656,45 +656,6 @@ export function CheckoutScreen({
                 {it.t}
               </div>
             ))}
-          </div>
-
-          <div
-            style={{
-              padding: "14px 18px",
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-              background: "rgba(255,255,255,0.02)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <div style={{ display: "flex" }}>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: "50%",
-                      background: `linear-gradient(135deg, oklch(0.72 0.18 ${230 + i * 30}), oklch(0.55 0.18 ${280 + i * 20}))`,
-                      border: "2px solid var(--bg-0)",
-                      marginLeft: i === 0 ? 0 : -7,
-                    }}
-                  />
-                ))}
-              </div>
-              <span style={{ fontSize: 11.5, color: "var(--ink-2)" }}>
-                Joined by <strong style={{ color: "white" }}>12,400+</strong> founders &amp; teams
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.45, fontStyle: "italic" }}>
-              &ldquo;Replaced our entire launch-video workflow. We ship in hours, not weeks.&rdquo;
-            </div>
-            <div
-              className="mf-mono"
-              style={{ fontSize: 10, color: "var(--ink-4)", letterSpacing: "0.08em", marginTop: 6 }}
-            >
-              — DANIEL R. · HEAD OF GROWTH @ VERCEL
-            </div>
           </div>
 
           <div style={{ fontSize: 11, color: "var(--ink-4)", textAlign: "center", lineHeight: 1.5, paddingTop: 6 }}>

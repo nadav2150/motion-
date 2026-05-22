@@ -72,7 +72,7 @@ export const ForgotPasswordScreen = ({
                       name="email"
                       className="mf-input"
                       type="email"
-                      placeholder="you@studio.com"
+                      placeholder="you@example.com"
                       autoComplete="email"
                       required
                       autoFocus

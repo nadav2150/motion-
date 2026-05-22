@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { JobRow } from "../types";
 
-const DEFAULT_SCRIPT = `Meet Lattice — the OS for high-performing teams.
-Built for teams that ship.
-From goals to growth, every conversation lives here.
-Start free. Ship faster.`;
+const DEFAULT_SCRIPT = `Introduce your product in one line.
+Show the feature that matters most.
+Give viewers the reason to care.
+End with a clear call to action.`;
 
 export type AudioTracksState = {
   voiceover: boolean;

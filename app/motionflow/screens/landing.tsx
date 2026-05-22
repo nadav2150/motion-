@@ -85,7 +85,7 @@ const HeroStage = ({ f, m }: { f: number; m: boolean; onCta?: () => void }) => {
         <CinemaPreview aspect={m ? "1.6 / 1" : "2.4 / 1"} frame={f} label="VIDELY · LIVE PREVIEW · 4K · 24FPS">
           <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", textAlign: "center", color: "white", width: "90%" }}>
             <div className="mf-mono" style={{ fontSize: m ? 9 : 11, letterSpacing: "0.18em", color: "rgba(255,255,255,0.55)", marginBottom: m ? 10 : 14 }}>{m ? "SCENE 03 · 00:04.21" : "SCENE 03 · 00:04.21 → 00:07.80"}</div>
-            <div style={{ fontSize: m ? 24 : 56, fontWeight: 500, letterSpacing: "-0.03em", textShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>Built for teams that ship.</div>
+            <div style={{ fontSize: m ? 24 : 56, fontWeight: 500, letterSpacing: "-0.03em", textShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>Your launch, in motion.</div>
           </div>
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "20px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(0deg, rgba(0,0,0,0.6), transparent)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -145,7 +145,7 @@ const HeroStage = ({ f, m }: { f: number; m: boolean; onCta?: () => void }) => {
             </span>
             <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em" }}>RENDER · 4K</span>
           </div>
-          <div style={{ fontSize: 13, marginBottom: 6 }}>Generating cinematic film…</div>
+          <div style={{ fontSize: 13, marginBottom: 6 }}>Generating motion…</div>
           <div style={{ height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
             <div style={{ width: `${(Math.sin(f / 30) * 0.4 + 0.6) * 100}%`, height: "100%", background: "var(--grad-aurora)" }}/>
           </div>
@@ -172,16 +172,16 @@ const Hero = ({ f, y, onCta, ctaLabel = "Start Creating Free", m }: { f: number;
       <div style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", paddingTop: m ? 36 : 80 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: m ? 18 : 28 }}>
           <Pill tone="glow" icon={<IconSparkle size={11}/>}>
-            <span className="mf-mono" style={{ fontSize: m ? 9.5 : 11, letterSpacing: "0.08em" }}>{m ? "NEW · MOTION ENGINE v2" : "NEW · MOTION ENGINE v2 · CINEMATIC RENDER"}</span>
+            <span className="mf-mono" style={{ fontSize: m ? 9.5 : 11, letterSpacing: "0.08em" }}>{m ? "NEW · MOTION ENGINE v2" : "NEW · MOTION ENGINE v2 · 4K RENDER"}</span>
           </Pill>
 
           <h1 className="mf-display" style={{ margin: 0, maxWidth: 1100, fontSize: m ? 42 : 96, lineHeight: m ? 1.05 : 1.0, letterSpacing: m ? "-0.03em" : "-0.04em" }}>
             You bring the product.<br/>
-            <span className="mf-grad-text">We bring the cinema.</span>
+            <span className="mf-grad-text">We bring the motion.</span>
           </h1>
 
           <p className="mf-body" style={{ maxWidth: 640, fontSize: m ? 15 : 19, color: "var(--ink-2)" }}>
-            Transform screenshots, launches, and product updates into cinematic motion stories
+            Transform screenshots, launches, and product updates into motion stories
             designed to feel world-class.
           </p>
 
@@ -278,7 +278,7 @@ const ScrollReel = ({ f, y, m }: { f: number; y: number; m: boolean }) => {
               transition: "all 700ms cubic-bezier(.2,.8,.2,1)", zIndex: 20,
             }}
           >
-            <CinemaPreview aspect="16 / 10" frame={f} label="VIDELY · CINEMATIC FILM"/>
+            <CinemaPreview aspect="16 / 10" frame={f} label="VIDELY · LAUNCH MOTION"/>
           </div>
         </div>
       </div>
@@ -342,7 +342,7 @@ const ProblemBand = ({ m }: { m: boolean }) => {
 const SolutionPipeline = ({ f, m }: { f: number; m: boolean }) => {
   const stages = [
     { l: "Scene composition", c: "linear-gradient(135deg, #5468FF, #2D3340)" },
-    { l: "Cinematic pacing",  c: "linear-gradient(135deg, #7AA2FF, #5468FF)" },
+    { l: "Motion pacing",     c: "linear-gradient(135deg, #7AA2FF, #5468FF)" },
     { l: "Transitions",       c: "linear-gradient(135deg, #A78BFA, #7AA2FF)" },
     { l: "Motion systems",    c: "linear-gradient(135deg, #67E8F9, #A78BFA)" },
     { l: "Captions",          c: "linear-gradient(135deg, #67E8F9, #34D399)" },
@@ -441,12 +441,12 @@ const UploadVisual = ({ f }: { f: number }) => (
 const ScriptVisual = () => (
   <div style={{ height: "100%", padding: "16px 18px", borderRadius: 12, background: "rgba(0,0,0,0.35)", border: "1px solid var(--line)", fontFamily: "'Geist Mono', monospace", fontSize: 11, color: "var(--ink-2)", lineHeight: 1.7, overflow: "hidden" }}>
     <div style={{ color: "var(--ink-3)" }}>// release-notes.md</div>
-    <div><span style={{ color: "#7AA2FF" }}>#</span> Lattice 4.0</div>
-    <div><span style={{ color: "#A78BFA" }}>-</span> Goals that update themselves</div>
-    <div><span style={{ color: "#A78BFA" }}>-</span> AI 1:1 prep, in seconds</div>
-    <div><span style={{ color: "#A78BFA" }}>-</span> Real-time pulse signals</div>
+    <div><span style={{ color: "#7AA2FF" }}>#</span> Your product launch</div>
+    <div><span style={{ color: "#A78BFA" }}>-</span> Headline feature one</div>
+    <div><span style={{ color: "#A78BFA" }}>-</span> The big improvement</div>
+    <div><span style={{ color: "#A78BFA" }}>-</span> One more delight</div>
     <div style={{ marginTop: 8, color: "var(--ink-3)" }}># cta</div>
-    <div>Built for teams that ship.</div>
+    <div>Ship the moment, not just the build.</div>
   </div>
 );
 
@@ -493,7 +493,7 @@ const HowItWorks = ({ f, m }: { f: number; m: boolean }) => {
   const steps = [
     { n: "01", t: "Upload your product",   d: "Drop screenshots, UI flows, or product URLs.",                                                        visual: <UploadVisual f={f}/> },
     { n: "02", t: "Tell the story",        d: "Add a short script, release notes, or feature bullets.",                                               visual: <ScriptVisual/> },
-    { n: "03", t: "Generate cinematic motion", d: "Videly AI builds scenes, transitions, pacing, and animations automatically.",                  visual: <GenerateVisual f={f}/> },
+    { n: "03", t: "Generate the motion",       d: "Videly AI builds scenes, transitions, pacing, and animations automatically.",                  visual: <GenerateVisual f={f}/> },
     { n: "04", t: "Export everywhere",     d: "Publish launch-ready content for X, LinkedIn, Product Hunt, App Store, websites, and ads.",            visual: <ExportVisual/> },
   ];
   return (
@@ -502,7 +502,7 @@ const HowItWorks = ({ f, m }: { f: number; m: boolean }) => {
         <div style={{ textAlign: "center", marginBottom: m ? 44 : 80 }}>
           <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>HOW IT WORKS</div>
           <h2 style={{ margin: 0, fontSize: m ? 34 : 64, fontWeight: 500, letterSpacing: "-0.035em" }}>
-            From product to film in <span className="mf-grad-text">four moves.</span>
+            From product to motion in <span className="mf-grad-text">four moves.</span>
           </h2>
         </div>
 
@@ -544,8 +544,8 @@ const TasteSection = ({ m }: { m: boolean }) => (
         Videly generates <span className="mf-grad-text">taste.</span>
       </h2>
       <p style={{ marginTop: m ? 24 : 36, fontSize: m ? 15 : 18, color: "var(--ink-2)", maxWidth: 620, margin: m ? "24px auto 0" : "36px auto 0", lineHeight: 1.55 }}>
-        Built around curated motion systems inspired by modern startup launches, cinematic
-        product reveals, and premium UI storytelling.
+        Built around curated motion systems inspired by modern startup launches, premium
+        product reveals, and refined UI storytelling.
       </p>
 
       <div style={{ marginTop: m ? 36 : 56, display: "flex", justifyContent: "center", gap: m ? 8 : 12, flexWrap: "wrap" }}>
@@ -631,7 +631,7 @@ const NoirMotion = ({ f }: { f: number }) => (
 const PresetGallery = ({ f, m }: { f: number; m: boolean }) => {
   const presets = [
     { n: "Linear", d: "Minimal, sharp, technical motion.",     c: "linear-gradient(135deg, #5468FF, #1F2937)", accent: "#7AA2FF" },
-    { n: "Apple",  d: "Elegant pacing with cinematic reveals.", c: "linear-gradient(135deg, #1F2937, #000)",     accent: "#FAFAFC" },
+    { n: "Apple",  d: "Elegant pacing with refined reveals.",   c: "linear-gradient(135deg, #1F2937, #000)",     accent: "#FAFAFC" },
     { n: "Hyper",  d: "Fast, energetic, launch-first motion.",  c: "linear-gradient(135deg, #F472B6, #7AA2FF)",  accent: "#F472B6" },
     { n: "Glass",  d: "Soft gradients, layered depth.",          c: "linear-gradient(135deg, #67E8F9, #A78BFA)",  accent: "#67E8F9" },
     { n: "Noir",   d: "Dark, dramatic, contrast-heavy.",         c: "linear-gradient(135deg, #1A1A1A, #000)",     accent: "#FCD34D" },
@@ -695,7 +695,7 @@ const PresetGallery = ({ f, m }: { f: number; m: boolean }) => {
 /* ─────── USE CASES ─────── */
 const UseCaseGrid = ({ m }: { m: boolean }) => {
   const cases = [
-    { t: "Launch Videos",      d: "Turn feature launches into cinematic reveals." },
+    { t: "Launch Videos",      d: "Turn feature launches into premium reveals." },
     { t: "Product Updates",    d: "Transform release notes into engaging motion content." },
     { t: "Founder Marketing",  d: "Create premium social content without a creative team." },
     { t: "SaaS Storytelling",  d: "Show your product like world-class companies do." },
@@ -787,7 +787,7 @@ const WhyNow = ({ f, m }: { f: number; m: boolean }) => {
               Every single week.
             </div>
             <div style={{ marginTop: 12, fontSize: m ? 17 : 22, fontWeight: 500, letterSpacing: "-0.02em" }}>
-              Videly makes cinematic startup storytelling <span className="mf-grad-text">scalable.</span>
+              Videly makes premium startup storytelling <span className="mf-grad-text">scalable.</span>
             </div>
           </div>
         </div>
@@ -850,7 +850,7 @@ const PricingTable = () => {
   const cols = ["Free", "Starter", "Pro", "Studio"];
   const rows: [string, string[]][] = [
     ["Monthly credits",          ["3,100", "8,000", "20,000", "60,000"]],
-    ["Scenes per film",          ["2", "10", "14", "14"]],
+    ["Scenes per video",         ["2", "10", "14", "14"]],
     ["Concurrent jobs",          ["1", "2", "5", "10"]],
     ["Watermark-free export",    ["—", "✓", "✓", "✓"]],
     ["Commercial use",           ["—", "✓", "✓", "✓"]],
@@ -943,35 +943,33 @@ const PricingTable = () => {
 };
 
 const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => {
-  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
-  const mult = billing === "annual" ? 0.8 : 1;
   // Tier cards mirror the real PLANS in app/motionflow/screens/pricing.tsx.
   // Keep monthlyUsd / baseCredits / perks in sync across this file, that
   // one, and the Paddle catalog in app/lib/billing/paddle.ts.
   const tiers: Tier[] = [
     {
       n: "Free", price: 0, sub: "Try Videly with a starter grant — no card.",
-      desc: "Generate your first cinematic launch videos in minutes, on us.",
+      desc: "Generate your first launch videos in minutes, on us.",
       cta: "Start Free", variant: "ghost",
       accent: "rgba(255,255,255,0.4)",
       bg: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))",
       features: [
         "3,100 credits / month",
-        "Up to 2 scenes per film",
+        "Up to 2 scenes per video",
         "Videly watermark",
         "Community templates",
         "1 concurrent job",
       ],
     },
     {
-      n: "Starter", price: 19, sub: "For founders shipping launch films solo.",
+      n: "Starter", price: 19, sub: "For founders shipping launch videos solo.",
       desc: "Premium launch videos, product reveals, and social content — without a motion team.",
       cta: "Start Starter", variant: "ghost",
       accent: "#7AA2FF",
       bg: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
       features: [
         "8,000 credits / month",
-        "Up to 10 scenes per film",
+        "Up to 10 scenes per video",
         "Voiceover · music · SFX",
         "Vision critique on every scene",
         "Brand kit (logo + colors)",
@@ -981,14 +979,14 @@ const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number;
     },
     {
       n: "Pro", price: 49, sub: "For teams iterating on launches every week.",
-      desc: "Cinematic films at scale: 4K export, vision critique, one-click polish, and priority renders.",
+      desc: "Premium motion at scale: 4K export, vision critique, one-click polish, and priority renders.",
       cta: "Start Pro", variant: "primary",
       accent: "#A78BFA", featured: true, badge: "MOST POPULAR",
       bg: "linear-gradient(180deg, oklch(0.30 0.13 280 / 0.55), oklch(0.18 0.10 290 / 0.35))",
       heading: "Everything in Starter, plus",
       features: [
         "20,000 credits / month",
-        "Up to 14 scenes per film",
+        "Up to 14 scenes per video",
         "One-click polish from comments",
         "4K export",
         "5 concurrent jobs",
@@ -1023,32 +1021,9 @@ const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number;
             Pricing built for <span className="mf-grad-text">teams that ship.</span>
           </h2>
           <p style={{ marginTop: m ? 18 : 24, fontSize: m ? 14.5 : 18, color: "var(--ink-2)", maxWidth: 580, margin: m ? "18px auto 0" : "24px auto 0", lineHeight: 1.55 }}>
-            From first launch videos to full-scale cinematic product storytelling.
+            From first launch videos to full-scale product storytelling.
           </p>
 
-          <div style={{ marginTop: m ? 28 : 40, display: "inline-flex", padding: 4, borderRadius: 999, background: "rgba(8,9,13,0.6)", border: "1px solid var(--line)", backdropFilter: "blur(20px)" }}>
-            {([
-              { k: "monthly" as const, l: "Monthly" },
-              { k: "annual" as const,  l: "Annual", hint: "−20%" },
-            ]).map((b) => (
-              <button
-                key={b.k}
-                onClick={() => setBilling(b.k)}
-                style={{
-                  padding: "10px 22px", borderRadius: 999, border: "none", cursor: "pointer",
-                  background: billing === b.k ? "var(--grad-aurora)" : "transparent",
-                  color: billing === b.k ? "white" : "var(--ink-2)",
-                  fontSize: 13, fontWeight: 500, letterSpacing: "-0.005em",
-                  fontFamily: "inherit",
-                  display: "inline-flex", alignItems: "center", gap: 8,
-                  transition: "all 200ms",
-                }}
-              >
-                {b.l}
-                {b.hint && <span className="mf-mono" style={{ fontSize: 10, opacity: billing === b.k ? 0.85 : 0.5, letterSpacing: "0.06em" }}>{b.hint}</span>}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(4, 1fr)", gap: m ? 14 : 16 }}>
@@ -1108,7 +1083,7 @@ const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number;
                   ) : (
                     <>
                       <span style={{ fontSize: 56, fontWeight: 500, letterSpacing: "-0.04em", color: "var(--ink-0)" }}>
-                        ${Math.round(t.price * mult)}
+                        ${t.price}
                       </span>
                       {t.price > 0 && <span style={{ fontSize: 14, color: "var(--ink-3)" }}>/mo</span>}
                     </>
@@ -1177,13 +1152,13 @@ const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number;
             Your product already deserves <span className="mf-grad-text">world-class storytelling.</span>
           </h3>
           <p style={{ marginTop: m ? 14 : 20, fontSize: m ? 14 : 16, color: "var(--ink-2)", maxWidth: 560, margin: m ? "14px auto 0" : "20px auto 0", lineHeight: 1.55 }}>
-            Videly AI helps startups create cinematic launch content without agencies, editors, or motion designers.
+            Videly AI helps startups create premium launch content without agencies, editors, or motion designers.
           </p>
           <div style={{ marginTop: m ? 22 : 32 }}>
             <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
           </div>
           <div className="mf-mono" style={{ marginTop: m ? 20 : 28, fontSize: m ? 9.5 : 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>
-            YOU BRING THE PRODUCT · WE BRING THE CINEMA
+            YOU BRING THE PRODUCT · WE BRING THE MOTION
           </div>
         </div>
       </div>
@@ -1215,7 +1190,7 @@ const FinalCta = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number
             <span style={{ background: "linear-gradient(135deg, #FFFFFF, rgba(255,255,255,0.5))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Now make it unforgettable.</span>
           </h2>
           <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 15 : 19, color: "rgba(255,255,255,0.70)", maxWidth: 560, margin: m ? "18px auto 0" : "28px auto 0" }}>
-            Create cinematic launch videos in minutes.
+            Create launch videos in minutes.
           </p>
           <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "center", gap: m ? 10 : 12, marginTop: m ? 28 : 40 }}>
             <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
