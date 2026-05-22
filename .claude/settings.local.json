@@ -179,7 +179,10 @@
       "Bash(wait)",
       "Bash(docker rm *)",
       "mcp__supabase__get_project",
-      "Bash(grep -oE \"sitemap[^\\\\\"]{0,40}\" build/server/index.js)"
+      "Bash(grep -oE \"sitemap[^\\\\\"]{0,40}\" build/server/index.js)",
+      "mcp__supabase__list_organizations",
+      "mcp__supabase__get_organization",
+      "Bash(docker info *)"
     ]
   },
   "enabledPlugins": {

@@ -39,5 +39,5 @@ export default [
   route("api/billing/customer", "routes/api.billing.customer.tsx"),
   route("api/billing/cancel-subscription", "routes/api.billing.cancel-subscription.tsx"),
   route("api/webhooks/paddle", "routes/api.webhooks.paddle.tsx"),
-  route("sitemap.xml", "routes/sitemap[.]xml.tsx"),
+  route("sitemap.xml", "routes/sitemap.tsx"),
 ] satisfies RouteConfig;
