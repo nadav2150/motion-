@@ -28,7 +28,12 @@
         "VITE_PADDLE_LIVE_PRICE_STUDIO": "pri_01ks3rsrkns56txergpsy57sb3",
         "VITE_PADDLE_LIVE_PRICE_PACK_SMALL": "pri_01ks3rsrycjymd14dc8spt60mk",
         "VITE_PADDLE_LIVE_PRICE_PACK_MEDIUM": "pri_01ks3rss8h4gtca93ccp4v445d",
-        "VITE_PADDLE_LIVE_PRICE_PACK_LARGE": "pri_01ks3rssk5qg4f0wr6ce7ftxy0"
+        "VITE_PADDLE_LIVE_PRICE_PACK_LARGE": "pri_01ks3rssk5qg4f0wr6ce7ftxy0",
+        // PostHog browser SDK config. `phc_` keys are public project keys
+        // designed for client-side embedding; same value as the server-side
+        // POSTHOG_API_KEY Worker secret.
+        "VITE_POSTHOG_KEY": "phc_ryToC3msPXVEeYKbq5UdPipHR2AzrNcEnVFktmxN7C29",
+        "VITE_POSTHOG_HOST": "https://us.i.posthog.com"
       }
     }
   ],

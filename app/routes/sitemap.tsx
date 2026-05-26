@@ -21,6 +21,7 @@ const ENTRIES: SitemapEntry[] = [
   { path: "/pricing", changefreq: "weekly", priority: "0.9" },
   { path: "/privacy", changefreq: "yearly", priority: "0.3" },
   { path: "/terms",   changefreq: "yearly", priority: "0.3" },
+  { path: "/refund",  changefreq: "yearly", priority: "0.3" },
 ];
 
 const BUILD_TIME = new Date().toISOString();

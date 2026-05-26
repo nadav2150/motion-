@@ -15,6 +15,7 @@ export default [
   route("checkout", "routes/checkout.tsx"),
   route("privacy", "routes/privacy.tsx"),
   route("terms", "routes/terms.tsx"),
+  route("refund", "routes/refund.tsx"),
   route("api/jobs", "routes/api.jobs.tsx"),
   route("api/jobs/:id", "routes/api.jobs.$id.tsx"),
   route("api/shots/:id/retry", "routes/api.shots.$id.retry.tsx"),

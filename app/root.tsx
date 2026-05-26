@@ -5,12 +5,23 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import { getUserFromRequest } from "./lib/auth";
 import { SITE_NAME, SITE_URL } from "./lib/seo";
+import { bootstrapPostHog } from "./lib/posthog-client";
+import {
+  usePostHogIdentify,
+  usePostHogPageviews,
+} from "./lib/use-posthog-pageviews";
 import "./app.css";
+
+// Module-load init is safe: bootstrapPostHog() short-circuits when window is
+// undefined, so SSR is unaffected. On the client it runs once when the bundle
+// first executes, before any component mounts and fires its first $pageview.
+bootstrapPostHog();
 
 // Organization schema lives at the document root so every page emits it. Wire
 // social profiles into `sameAs` (Twitter/LinkedIn/etc.) as they go live —
@@ -69,6 +80,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { user } = useLoaderData<typeof loader>();
+  usePostHogPageviews();
+  usePostHogIdentify(user);
   return <Outlet />;
 }
 

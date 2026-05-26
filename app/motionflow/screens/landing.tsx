@@ -1209,7 +1209,10 @@ const FootRule = ({ m }: { m: boolean }) => (
       <span>Videly AI · 2026</span>
     </div>
     <div style={{ display: "flex", gap: m ? 18 : 28, flexWrap: "wrap" }}>
-      <span>Pricing</span><span>Docs</span><span>Changelog</span><span>Privacy</span>
+      <a href="/pricing" style={{ color: "inherit", textDecoration: "none" }}>Pricing</a>
+      <a href="/terms"   style={{ color: "inherit", textDecoration: "none" }}>Terms</a>
+      <a href="/refund"  style={{ color: "inherit", textDecoration: "none" }}>Refund</a>
+      <a href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>Privacy</a>
     </div>
   </footer>
 );
