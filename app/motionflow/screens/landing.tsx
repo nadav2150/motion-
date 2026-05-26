@@ -1202,17 +1202,71 @@ const FinalCta = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number
   </section>
 );
 
-const FootRule = ({ m }: { m: boolean }) => (
-  <footer style={{ padding: m ? "32px 20px 48px" : "56px 56px 80px", borderTop: "1px solid var(--line)", display: "flex", flexDirection: m ? "column" : "row", gap: m ? 16 : 0, justifyContent: "space-between", alignItems: m ? "flex-start" : "center", maxWidth: 1320, margin: "0 auto", color: "var(--ink-3)", fontSize: m ? 12 : 13 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ fontSize: 16, fontWeight: 600 }}>M<span style={{ color: "#7AA2FF" }}>•</span></span>
-      <span>Videly AI · 2026</span>
+const FOOTER_LINKS = {
+  useCases: [
+    { href: "/launch-videos",               label: "Launch videos" },
+    { href: "/feature-announcement-videos", label: "Feature announcements" },
+    { href: "/product-demo-videos",         label: "Product demos" },
+  ],
+  compare: [
+    { href: "/vs/loom",      label: "vs Loom" },
+    { href: "/vs/synthesia", label: "vs Synthesia" },
+    { href: "/vs/runway",    label: "vs Runway" },
+    { href: "/vs/pictory",   label: "vs Pictory" },
+    { href: "/vs/veed",      label: "vs Veed" },
+  ],
+  company: [
+    { href: "/pricing", label: "Pricing" },
+    { href: "/terms",   label: "Terms" },
+    { href: "/refund",  label: "Refund" },
+    { href: "/privacy", label: "Privacy" },
+  ],
+};
+
+const FooterCol = ({
+  title,
+  links,
+}: {
+  title: string;
+  links: Array<{ href: string; label: string }>;
+}) => (
+  <div>
+    <div className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--ink-3)", marginBottom: 14 }}>
+      {title.toUpperCase()}
     </div>
-    <div style={{ display: "flex", gap: m ? 18 : 28, flexWrap: "wrap" }}>
-      <a href="/pricing" style={{ color: "inherit", textDecoration: "none" }}>Pricing</a>
-      <a href="/terms"   style={{ color: "inherit", textDecoration: "none" }}>Terms</a>
-      <a href="/refund"  style={{ color: "inherit", textDecoration: "none" }}>Refund</a>
-      <a href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>Privacy</a>
+    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+      {links.map((l) => (
+        <li key={l.href}>
+          <a href={l.href} style={{ color: "var(--ink-1)", textDecoration: "none", fontSize: 13.5 }}>
+            {l.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+const FootRule = ({ m }: { m: boolean }) => (
+  <footer style={{ borderTop: "1px solid var(--line)", padding: m ? "48px 20px 64px" : "72px 56px 96px", background: "linear-gradient(180deg, transparent, rgba(122,162,255,0.03))" }}>
+    <div style={{ maxWidth: 1320, margin: "0 auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: m ? "1fr 1fr" : "2fr 1fr 1fr 1fr", gap: m ? 32 : 56, marginBottom: m ? 40 : 56 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 18, fontWeight: 600 }}>Videly<span style={{ color: "#7AA2FF", marginLeft: 2 }}>•</span></span>
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6, maxWidth: 360 }}>
+            AI launch video generator for SaaS teams. Turn screenshots and product
+            updates into motion-designed launch videos in minutes.
+          </div>
+        </div>
+        <FooterCol title="Use cases" links={FOOTER_LINKS.useCases}/>
+        <FooterCol title="Compare"   links={FOOTER_LINKS.compare}/>
+        <FooterCol title="Company"   links={FOOTER_LINKS.company}/>
+      </div>
+
+      <div style={{ paddingTop: 24, borderTop: "1px solid var(--line)", display: "flex", flexDirection: m ? "column" : "row", justifyContent: "space-between", alignItems: m ? "flex-start" : "center", gap: 12, fontSize: 12, color: "var(--ink-3)" }}>
+        <span>© 2026 Videly · AI launch video generator</span>
+      </div>
     </div>
   </footer>
 );

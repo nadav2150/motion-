@@ -17,11 +17,26 @@ type SitemapEntry = {
 };
 
 const ENTRIES: SitemapEntry[] = [
-  { path: "/",        changefreq: "weekly", priority: "1.0" },
-  { path: "/pricing", changefreq: "weekly", priority: "0.9" },
-  { path: "/privacy", changefreq: "yearly", priority: "0.3" },
-  { path: "/terms",   changefreq: "yearly", priority: "0.3" },
-  { path: "/refund",  changefreq: "yearly", priority: "0.3" },
+  { path: "/",        changefreq: "weekly",  priority: "1.0" },
+  { path: "/pricing", changefreq: "weekly",  priority: "0.9" },
+
+  // Use-case landing pages — primary SEO surfaces. Weekly recrawl so
+  // Google picks up copy iterations and (eventually) rising rank.
+  { path: "/launch-videos",                changefreq: "weekly", priority: "0.8" },
+  { path: "/feature-announcement-videos",  changefreq: "weekly", priority: "0.8" },
+  { path: "/product-demo-videos",          changefreq: "weekly", priority: "0.8" },
+
+  // Competitor comparison pages. Monthly is enough — these only change
+  // when a competitor changes pricing or we update the feature table.
+  { path: "/vs/loom",      changefreq: "monthly", priority: "0.7" },
+  { path: "/vs/synthesia", changefreq: "monthly", priority: "0.7" },
+  { path: "/vs/runway",    changefreq: "monthly", priority: "0.7" },
+  { path: "/vs/pictory",   changefreq: "monthly", priority: "0.7" },
+  { path: "/vs/veed",      changefreq: "monthly", priority: "0.7" },
+
+  { path: "/privacy", changefreq: "yearly",  priority: "0.3" },
+  { path: "/terms",   changefreq: "yearly",  priority: "0.3" },
+  { path: "/refund",  changefreq: "yearly",  priority: "0.3" },
 ];
 
 const BUILD_TIME = new Date().toISOString();

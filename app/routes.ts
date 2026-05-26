@@ -16,6 +16,18 @@ export default [
   route("privacy", "routes/privacy.tsx"),
   route("terms", "routes/terms.tsx"),
   route("refund", "routes/refund.tsx"),
+
+  // SEO — use-case landing pages
+  route("launch-videos",                "routes/launch-videos.tsx"),
+  route("feature-announcement-videos",  "routes/feature-announcement-videos.tsx"),
+  route("product-demo-videos",          "routes/product-demo-videos.tsx"),
+
+  // SEO — competitor comparison pages
+  route("vs/loom",      "routes/vs.loom.tsx"),
+  route("vs/synthesia", "routes/vs.synthesia.tsx"),
+  route("vs/runway",    "routes/vs.runway.tsx"),
+  route("vs/pictory",   "routes/vs.pictory.tsx"),
+  route("vs/veed",      "routes/vs.veed.tsx"),
   route("api/jobs", "routes/api.jobs.tsx"),
   route("api/jobs/:id", "routes/api.jobs.$id.tsx"),
   route("api/shots/:id/retry", "routes/api.shots.$id.retry.tsx"),
