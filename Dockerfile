@@ -15,32 +15,16 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # ─── build ─────────────────────────────────────────────────────────────
-# Run the React Router production build. Vite bakes any VITE_* env vars
-# into the client bundle at this step, so the Paddle live client token +
-# price IDs must be passed in as --build-arg or they'll be missing in prod.
+# Run the React Router production build. Vite bakes any VITE_* env vars into
+# the client bundle at this step. Polar checkout is created server-side, so no
+# billing client tokens or product IDs are needed here — only PostHog config.
 FROM --platform=linux/amd64 mcr.microsoft.com/playwright:${PLAYWRIGHT_TAG} AS build
 WORKDIR /app
 
-ARG VITE_PADDLE_ENV=live
-ARG VITE_PADDLE_LIVE_CLIENT_TOKEN
-ARG VITE_PADDLE_LIVE_PRICE_STARTER
-ARG VITE_PADDLE_LIVE_PRICE_PRO
-ARG VITE_PADDLE_LIVE_PRICE_STUDIO
-ARG VITE_PADDLE_LIVE_PRICE_PACK_SMALL
-ARG VITE_PADDLE_LIVE_PRICE_PACK_MEDIUM
-ARG VITE_PADDLE_LIVE_PRICE_PACK_LARGE
 ARG VITE_POSTHOG_KEY
 ARG VITE_POSTHOG_HOST
 
-ENV VITE_PADDLE_ENV=${VITE_PADDLE_ENV} \
-    VITE_PADDLE_LIVE_CLIENT_TOKEN=${VITE_PADDLE_LIVE_CLIENT_TOKEN} \
-    VITE_PADDLE_LIVE_PRICE_STARTER=${VITE_PADDLE_LIVE_PRICE_STARTER} \
-    VITE_PADDLE_LIVE_PRICE_PRO=${VITE_PADDLE_LIVE_PRICE_PRO} \
-    VITE_PADDLE_LIVE_PRICE_STUDIO=${VITE_PADDLE_LIVE_PRICE_STUDIO} \
-    VITE_PADDLE_LIVE_PRICE_PACK_SMALL=${VITE_PADDLE_LIVE_PRICE_PACK_SMALL} \
-    VITE_PADDLE_LIVE_PRICE_PACK_MEDIUM=${VITE_PADDLE_LIVE_PRICE_PACK_MEDIUM} \
-    VITE_PADDLE_LIVE_PRICE_PACK_LARGE=${VITE_PADDLE_LIVE_PRICE_PACK_LARGE} \
-    VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY} \
+ENV VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY} \
     VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST}
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -57,6 +41,15 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080 \
     HOST=0.0.0.0
+
+# FFmpeg is required for video encoding: the hyperframes renderer
+# (`npx hyperframes render`) and the stitch step (app/lib/hyperframes/stitch.ts,
+# FFMPEG_BIN="ffmpeg") both shell out to it. The Playwright base image ships
+# Chromium but no system ffmpeg, so renders fail with "FFmpeg not found".
+# Installed as root here, before the image drops to the pwuser user below.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force

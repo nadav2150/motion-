@@ -4,8 +4,8 @@ build
 node_modules
 
 # Secrets — must NEVER ship inside the image. Set them via
-# `wrangler secret put` after deploy, or pass as --build-arg for
-# VITE_PADDLE_* only.
+# `wrangler secret put` after deploy (Polar checkout is created server-side, so
+# no billing values are baked into the client bundle).
 .env
 .env.*
 *.local
