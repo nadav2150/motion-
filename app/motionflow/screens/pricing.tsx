@@ -21,14 +21,14 @@ function useIsMobile(ref: RefObject<HTMLDivElement | null>, threshold = 720) {
 }
 
 // Subscription tiers shown on /pricing. Numbers come from the real billing
-// catalog: Paddle custom_data.monthlyGrant + checkout.tsx TIER_MONTHLY_USD
+// catalog: polar.ts buildCatalog() grants + checkout.tsx TIER_MONTHLY_USD
 // + plan-features.ts PLAN_FEATURES. Keep all three in sync when prices or
 // grants change.
 export type PricingTierKey = "free" | "starter" | "pro" | "studio";
 
 // Add-on credit packs, optional per tier. Slider snaps to one of the 4
 // stops; "none" = no add-on (default). The three paid sizes map to the
-// Paddle credit-pack prices in VITE_PADDLE_PRICE_PACK_*.
+// Polar credit-pack products in POLAR_<ENV>_PRODUCT_PACK_*.
 export type PackKey = "none" | "small" | "medium" | "large";
 
 type Plan = {

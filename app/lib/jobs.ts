@@ -256,11 +256,11 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string 
   // Reserve credits first; throw without inserting if the balance is short
   // so we don't leave an orphan job row. Idempotency key uses a fresh UUID
   // (no jobId yet); attachReservationToJob() links it after the insert.
-  // Reservation runs for every signed-in user — Paddle (isBillingEnabled())
+  // Reservation runs for every signed-in user — Polar (isBillingEnabled())
   // controls *incoming payments*, not balance accounting. The credit ledger
   // is the source of truth regardless of payment-provider configuration, so
   // dev environments deduct real balance and the trial flow can be tested
-  // end-to-end without a Paddle key.
+  // end-to-end without a Polar key.
   let reservationKey: string | null = null;
   if (input.userId) {
     reservationKey = `reserve:${crypto.randomUUID()}`;

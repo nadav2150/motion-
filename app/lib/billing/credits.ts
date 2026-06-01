@@ -8,9 +8,10 @@
 // Phase A note: in observability-only mode, reserveCredits() is a no-op
 // returning success. recordConsumption() still appends ledger rows so we get
 // real cost telemetry without blocking jobs. isBillingEnabled() flips to
-// Phase B+ behaviour when PADDLE_API_KEY is set.
+// Phase B+ behaviour when a Polar access token is configured.
 
 import { getSupabase } from "../supabase";
+import { isPolarConfigured } from "./polar";
 
 export type ConsumptionReason =
   | "opus_director"
@@ -31,7 +32,7 @@ export type LedgerKind = "grant" | "purchase" | "reserve" | "consume" | "refund"
 
 export type UserBilling = {
   user_id: string;
-  paddle_customer_id: string | null;
+  provider_customer_id: string | null;
   plan_tier: string;
   credits_balance: number;
   credits_reserved: number;
@@ -39,12 +40,12 @@ export type UserBilling = {
   period_end: string | null;
 };
 
-// Returns true once the user has opted in to billing by configuring Paddle.
-// In dev environments without Paddle keys, gates short-circuit to "allowed"
+// Returns true once the user has opted in to billing by configuring Polar.
+// In dev environments without a Polar token, gates short-circuit to "allowed"
 // so the dev loop stays unblocked — but the ledger still records consumption
 // so cost dashboards work locally.
 export function isBillingEnabled(): boolean {
-  return Boolean(process.env.PADDLE_API_KEY);
+  return isPolarConfigured();
 }
 
 export async function getOrCreateBilling(userId: string): Promise<UserBilling> {
@@ -216,7 +217,7 @@ export async function recordConsumption(args: {
 }
 
 // Append a grant or refund row AND bump the balance. Used by:
-//   - Paddle webhook (purchase: kind='purchase', renewal: kind='grant')
+//   - Polar webhook (purchase: kind='purchase', renewal: kind='grant')
 //   - reconcileJob (refund unused reservation: kind='refund')
 //   - one-off backfill SQL (kind='grant', reason='backfill')
 export async function adjustBalance(args: {

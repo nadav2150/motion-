@@ -40,8 +40,8 @@ const TIER_MONTHLY_USD: Record<CheckoutTier, number> = {
   pro: 49,
   studio: 149,
 };
-// Monthly credit grant per tier. Mirrors PADDLE_PRICE_* custom_data.monthlyGrant
-// and the buildCatalog() defaults in app/lib/billing/paddle.ts — keep in sync.
+// Monthly credit grant per tier. Mirrors the buildCatalog() grant defaults in
+// app/lib/billing/polar.ts (keyed by Polar product id) — keep in sync.
 const TIER_MONTHLY_CREDITS: Record<CheckoutTier, number> = {
   starter: 8000,
   pro: 20000,
@@ -79,8 +79,8 @@ const TIER_ACCENT: Record<CheckoutTier, string> = {
   studio: "#67E8F9",
 };
 // Optional credit-pack add-on. Mirrors the PACKS table in pricing.tsx and
-// the Paddle credit-pack price catalog (VITE_PADDLE_PRICE_PACK_*). Keep all
-// three in sync — pricing.tsx is the source of truth for the slider values
+// the Polar credit-pack catalog (POLAR_<ENV>_PRODUCT_PACK_* in polar.ts). Keep
+// all three in sync — pricing.tsx is the source of truth for the slider values
 // users see, this map is the source of truth for the checkout total.
 const PACK_LABEL: Record<CheckoutPack, string> = {
   small: "Credit Pack — Small",
@@ -118,11 +118,11 @@ export function CheckoutScreen({
   submitting?: boolean;
 }) {
   const monthlyUsd = TIER_MONTHLY_USD[tier];
-  // Pack price is a one-time charge that lands in the same Paddle cart as
-  // the subscription. We show pre-tax totals here because Paddle computes
-  // the final tax based on the customer's verified location at the Paddle
-  // overlay — tax_mode is "location" on every price (see paddle.ts catalog),
-  // so any estimate we render in-page would diverge from the actual invoice.
+  // Pack price is a one-time charge added alongside the subscription in the
+  // same Polar checkout. We show pre-tax totals here because Polar (merchant of
+  // record) computes the final tax based on the customer's verified location at
+  // the hosted checkout, so any estimate we render in-page would diverge from
+  // the actual invoice.
   const packPrice = pack ? PACK_PRICE_USD[pack] : 0;
   const dueToday = monthlyUsd + packPrice;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -399,7 +399,7 @@ export function CheckoutScreen({
               }}
             >
               <CoLockIcon />
-              Payment details are collected securely by Paddle once you continue.
+              Payment details are collected securely by Polar once you continue.
             </div>
           </CoSection>
 
@@ -568,7 +568,7 @@ export function CheckoutScreen({
                     lineHeight: 1.45,
                   }}
                 >
-                  Local sales tax and any promo codes are applied at the secure Paddle checkout based on your billing location.
+                  Local sales tax and any promo codes are applied at the secure Polar checkout based on your billing location.
                 </div>
                 <div
                   className="mf-mono"
@@ -632,7 +632,7 @@ export function CheckoutScreen({
             {[
               { i: <IconCheck size={11} />, t: "Cancel anytime — no questions" },
               { i: <IconCheck size={11} />, t: "30-day money-back guarantee" },
-              { i: <CoLockIcon />, t: "Secured by Paddle · SSL encrypted" },
+              { i: <CoLockIcon />, t: "Secured by Polar · SSL encrypted" },
             ].map((it, i) => (
               <div
                 key={i}

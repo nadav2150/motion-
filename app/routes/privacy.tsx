@@ -38,7 +38,7 @@ const SECTIONS: LegalSection[] = [
         <P>When you create an account or use Videly, you provide:</P>
         <UL>
           <li>Account details — name, email address, and a hashed password (or sign-in via Google/GitHub).</li>
-          <li>Billing details — handled by our payment processor (Paddle). Videly receives a customer ID, subscription tier, transaction status, and last-four card digits, but never your full card number.</li>
+          <li>Billing details — handled by our payment processor (Polar). Videly receives a customer ID, subscription tier, transaction status, and last-four card digits, but never your full card number.</li>
           <li>Content you upload or generate — prompts, brand assets, scripts, and the rendered video output. This is stored to power the editor and saved as part of your project history.</li>
           <li>Support communications — anything you send to our support address.</li>
         </UL>
@@ -98,7 +98,7 @@ const SECTIONS: LegalSection[] = [
         <UL>
           <li>Supabase — database, authentication, and file storage.</li>
           <li>Cloudflare — DNS, CDN, and DDoS protection.</li>
-          <li>Paddle — payment processing and subscription billing.</li>
+          <li>Polar — payment processing and subscription billing.</li>
           <li>PostHog — product analytics.</li>
           <li>Anthropic, OpenAI, Replicate, ElevenLabs — AI model inference.</li>
           <li>Unsplash, Jamendo, Freesound — stock imagery and audio search.</li>

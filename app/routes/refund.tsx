@@ -7,7 +7,7 @@ export function meta(_: Route.MetaArgs) {
   return buildMeta({
     title: "Refund Policy — Videly",
     description:
-      "Videly's refund policy: when subscriptions and credit packs are refundable, how to request a refund, and how Paddle processes them.",
+      "Videly's refund policy: when subscriptions and credit packs are refundable, how to request a refund, and how Polar processes them.",
     path: "/refund",
   });
 }
@@ -22,7 +22,7 @@ const SECTIONS: LegalSection[] = [
         <P>
           We want Videly to be worth the price. If it isn't a fit, you can request a refund on a recent
           subscription charge within 14 days of the payment, subject to the conditions below. Credit packs
-          are refundable only when unused. All refunds are issued through our payment processor, Paddle,
+          are refundable only when unused. All refunds are issued through our payment processor, Polar,
           back to the original payment method.
         </P>
       </>
@@ -103,12 +103,12 @@ const SECTIONS: LegalSection[] = [
         </P>
         <UL>
           <li>The date and amount of the charge.</li>
-          <li>The last four digits of the card used (or the Paddle transaction id if available).</li>
+          <li>The last four digits of the card used (or the Polar order id if available).</li>
           <li>A short note on why you're requesting the refund — this helps us improve the product but does
             not affect eligibility.</li>
         </UL>
         <P>
-          We respond within 2 business days. Approved refunds are submitted to Paddle the same day and
+          We respond within 2 business days. Approved refunds are submitted to Polar the same day and
           typically appear back on your card within 5–10 business days, depending on your bank.
         </P>
       </>
@@ -131,11 +131,11 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <P>
-          Videly uses <a href="https://www.paddle.com" target="_blank" rel="noopener noreferrer">Paddle</a> as
+          Videly uses <a href="https://polar.sh" target="_blank" rel="noopener noreferrer">Polar</a> as
           the merchant of record for all transactions. All charges, refunds, taxes, and invoices are
-          processed by Paddle on our behalf. Paddle's own
-          <a href="https://www.paddle.com/legal/refund-policy" target="_blank" rel="noopener noreferrer"> refund
-          policy</a> may apply in addition to this one.
+          processed by Polar on our behalf. Polar's own
+          <a href="https://polar.sh/legal/terms" target="_blank" rel="noopener noreferrer"> terms</a> may
+          apply in addition to this one.
         </P>
       </>
     ),
@@ -179,7 +179,7 @@ export default function RefundRoute() {
     <LegalScreen
       eyebrow="LEGAL · REFUND POLICY"
       title="Refund Policy"
-      lede="When subscriptions and credit packs are refundable, and how to request a refund through Paddle."
+      lede="When subscriptions and credit packs are refundable, and how to request a refund through Polar."
       lastUpdated={LAST_UPDATED}
       sections={SECTIONS}
       altDocTitle="Read the Terms of Service"

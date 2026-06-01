@@ -845,7 +845,7 @@ type Tier = {
 const PricingTable = () => {
   // Columns must stay aligned with the four real plan keys in
   // app/motionflow/screens/pricing.tsx (free / starter / pro / studio) and
-  // the monthly USD + monthlyGrant in app/lib/billing/paddle.ts. If a plan
+  // the monthly USD + monthlyGrant in app/lib/billing/polar.ts. If a plan
   // is added or renamed, update all three places together.
   const cols = ["Free", "Starter", "Pro", "Studio"];
   const rows: [string, string[]][] = [
@@ -945,7 +945,7 @@ const PricingTable = () => {
 const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => {
   // Tier cards mirror the real PLANS in app/motionflow/screens/pricing.tsx.
   // Keep monthlyUsd / baseCredits / perks in sync across this file, that
-  // one, and the Paddle catalog in app/lib/billing/paddle.ts.
+  // one, and the Polar catalog in app/lib/billing/polar.ts.
   const tiers: Tier[] = [
     {
       n: "Free", price: 0, sub: "Try Videly with a starter grant — no card.",

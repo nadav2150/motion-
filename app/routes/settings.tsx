@@ -28,7 +28,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const db = getSupabase();
   const { data: subRow } = await db
     .from("subscriptions")
-    .select("paddle_subscription_id, status, cancel_at_period_end, current_period_end")
+    .select("provider_subscription_id, status, cancel_at_period_end, current_period_end")
     .eq("user_id", user.id)
     .in("status", ["active", "trialing"])
     .order("created_at", { ascending: false })

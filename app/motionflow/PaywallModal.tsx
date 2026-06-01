@@ -11,7 +11,7 @@
 //   - No "Already have an account? Sign in" row — the user is already
 //     signed in at the moment this modal fires.
 //   - Guarantee strip swapped to match what we actually offer (cancel
-//     anytime, top up with packs, Paddle instead of Stripe).
+//     anytime, top up with packs, Polar instead of Stripe).
 //   - Plan card sources its data from PLAN_CATALOG below — kept in sync
 //     with app/motionflow/screens/pricing.tsx (PLANS array).
 //
@@ -503,7 +503,7 @@ export function PaywallModal({
             {[
               "Cancel anytime — credits stay until period end",
               "Top up with one-time credit packs anytime",
-              "Secure payment · Paddle",
+              "Secure payment · Polar",
             ].map((t, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <IconCheck size={11} style={{ color: "rgba(166,240,189,0.7)" }} />

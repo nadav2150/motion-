@@ -7,6 +7,15 @@
   "compatibility_date": "2026-05-22",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Non-secret Worker vars. POLAR_ENV selects which POLAR_PRODUCTION_* /
+  // POLAR_SANDBOX_* secrets the billing code reads. The access token, webhook
+  // secret, and product IDs are set as secrets via `wrangler secret put`
+  // (e.g. POLAR_PRODUCTION_ACCESS_TOKEN, POLAR_PRODUCTION_WEBHOOK_SECRET,
+  // POLAR_PRODUCTION_PRODUCT_PRO, …).
+  "vars": {
+    "POLAR_ENV": "production"
+  },
+
   // Single container class wraps the Node/React Router server.
   // standard-2 gives 1 vCPU + 6 GiB memory — enough for the Playwright
   // Chromium pool + a few concurrent renders without thrashing. Bump to
@@ -18,17 +27,10 @@
       "max_instances": 10,
       "instance_type": "standard-2",
       "name": "videly-app",
-      // Build-time vars baked into the Vite client bundle. Paddle.js needs
-      // the live client token + price IDs to mount the checkout overlay.
+      // Build-time vars baked into the Vite client bundle. Polar checkout is
+      // created server-side (the browser only POSTs tier/pack then redirects),
+      // so no product IDs or client tokens are exposed here.
       "image_vars": {
-        "VITE_PADDLE_ENV": "live",
-        "VITE_PADDLE_LIVE_CLIENT_TOKEN": "live_3a5d48068628998b8e048efcbb9",
-        "VITE_PADDLE_LIVE_PRICE_STARTER": "pri_01ks3rsqyc329pz20rcgfkgh16",
-        "VITE_PADDLE_LIVE_PRICE_PRO": "pri_01ks3rsr8yf913e3e9gn7nynjv",
-        "VITE_PADDLE_LIVE_PRICE_STUDIO": "pri_01ks3rsrkns56txergpsy57sb3",
-        "VITE_PADDLE_LIVE_PRICE_PACK_SMALL": "pri_01ks3rsrycjymd14dc8spt60mk",
-        "VITE_PADDLE_LIVE_PRICE_PACK_MEDIUM": "pri_01ks3rss8h4gtca93ccp4v445d",
-        "VITE_PADDLE_LIVE_PRICE_PACK_LARGE": "pri_01ks3rssk5qg4f0wr6ce7ftxy0",
         // PostHog browser SDK config. `phc_` keys are public project keys
         // designed for client-side embedding; same value as the server-side
         // POSTHOG_API_KEY Worker secret.

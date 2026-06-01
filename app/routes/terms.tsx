@@ -58,10 +58,10 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <UL>
-          <li>Paid plans are billed monthly through Paddle, our merchant of record. Each renewal grants a fresh credit allowance for that billing period.</li>
+          <li>Paid plans are billed monthly through Polar, our merchant of record. Each renewal grants a fresh credit allowance for that billing period.</li>
           <li>Unused monthly credits do not roll over. Add-on credit packs do not expire while your account is active.</li>
           <li>Prices may change for future billing periods on at least 30 days’ notice; your current period is honoured at the price you agreed to.</li>
-          <li>Taxes are calculated and collected by Paddle based on your billing address.</li>
+          <li>Taxes are calculated and collected by Polar based on your billing address.</li>
         </UL>
       </>
     ),

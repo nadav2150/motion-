@@ -25,9 +25,9 @@ type Detail = {
     credits_reserved: number;
     monthly_grant: number;
     period_end: string | null;
-    paddle_customer_id: string | null;
+    provider_customer_id: string | null;
   } | null;
-  subscriptions: Array<{ paddle_subscription_id: string; plan_tier: string; status: string; current_period_end: string | null; cancel_at_period_end: boolean }>;
+  subscriptions: Array<{ provider_subscription_id: string; plan_tier: string; status: string; current_period_end: string | null; cancel_at_period_end: boolean }>;
   usage: { job_count: number; last_job_at: string | null };
   recent_jobs: Array<{ id: string; title: string | null; status: string; created_at: string }>;
   ledger: Array<{ id: string; delta: number; kind: string; reason: string; created_at: string }>;
@@ -96,7 +96,7 @@ export default function BackofficeUserDetail() {
                 <Row k="Credits reserved" v={b.credits_reserved.toLocaleString()} />
                 <Row k="Monthly grant" v={b.monthly_grant.toLocaleString()} />
                 <Row k="Period end" v={fmt(b.period_end)} />
-                <Row k="Paddle customer" v={b.paddle_customer_id ?? "—"} />
+                <Row k="Polar customer" v={b.provider_customer_id ?? "—"} />
               </>
             ) : <p style={S.muted}>No billing row.</p>}
           </Card>
@@ -108,7 +108,7 @@ export default function BackofficeUserDetail() {
 
           <Card title="Subscriptions">
             {detail.subscriptions.length === 0 ? <p style={S.muted}>None.</p> : detail.subscriptions.map((s) => (
-              <div key={s.paddle_subscription_id} style={S.subRow}>
+              <div key={s.provider_subscription_id} style={S.subRow}>
                 <span style={S.tag}>{s.plan_tier}</span>
                 <span>{s.status}{s.cancel_at_period_end ? " (canceling)" : ""}</span>
                 <span style={S.muted}>ends {fmt(s.current_period_end)}</span>
