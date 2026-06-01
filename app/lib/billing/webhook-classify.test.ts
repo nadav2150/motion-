@@ -21,10 +21,10 @@ test("classifyOrder: subscription update bill is skipped", () => {
     .toBe("skip");
 });
 
-test("extractUserIdHint prefers metadata.userId, then customer.external_id", () => {
-  expect(extractUserIdHint({ metadata: { userId: "u1" }, customer: { external_id: "u2" } }))
+test("extractUserIdHint prefers metadata.userId, then customer.externalId", () => {
+  expect(extractUserIdHint({ metadata: { userId: "u1" }, customer: { externalId: "u2" } }))
     .toBe("u1");
-  expect(extractUserIdHint({ metadata: {}, customer: { external_id: "u2" } }))
+  expect(extractUserIdHint({ metadata: {}, customer: { externalId: "u2" } }))
     .toBe("u2");
   expect(extractUserIdHint({})).toBeNull();
 });

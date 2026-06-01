@@ -56,8 +56,8 @@ export default [
   route("impersonate/start", "routes/impersonate.start.tsx"),
   route("impersonate/stop", "routes/impersonate.stop.tsx"),
 
-  route("api/billing/customer", "routes/api.billing.customer.tsx"),
+  route("api/billing/checkout", "routes/api.billing.checkout.tsx"),
   route("api/billing/cancel-subscription", "routes/api.billing.cancel-subscription.tsx"),
-  route("api/webhooks/paddle", "routes/api.webhooks.paddle.tsx"),
+  route("api/webhooks/polar", "routes/api.webhooks.polar.tsx"),
   route("sitemap.xml", "routes/sitemap.tsx"),
 ] satisfies RouteConfig;

@@ -6,7 +6,7 @@
 //   3. Dedupe via billing_events.event_id INSERT using the webhook-id header.
 //   4. Dispatch by event.type. Each handler is idempotent on the ledger side.
 //
-// userId resolution: metadata.userId → customer.external_id → user_billing
+// userId resolution: metadata.userId → customer.externalId → user_billing
 // lookup by provider_customer_id.
 
 import type { Route } from "./+types/api.webhooks.polar";
@@ -105,10 +105,19 @@ export function loader() {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = any;
 
+// validateEvent returns SDK models whose timestamp fields are Date objects and
+// whose keys are camelCase. Normalize a Date | string | null to an ISO string
+// for the Postgres timestamptz columns.
+function toIso(v: unknown): string | null {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "string" && v) return v;
+  return null;
+}
+
 async function resolveUserId(data: AnyData): Promise<string | null> {
   const hint = extractUserIdHint(data);
   if (hint) return hint;
-  const customerId = data.customer_id ?? data.customer?.id;
+  const customerId = data.customerId ?? data.customer?.id;
   if (typeof customerId === "string" && customerId) {
     const db = getSupabase();
     const { data: row } = await db
@@ -128,7 +137,7 @@ async function handleSubscriptionCreated(data: AnyData): Promise<void> {
     log("warn", "subscription.created without resolvable userId", { sub: subscriptionId });
     return;
   }
-  const productId = data.product_id as string | undefined;
+  const productId = data.productId as string | undefined;
   const entry = productId ? lookupProduct(productId) : null;
   if (!entry || entry.kind !== "subscription") {
     log("warn", "unknown subscription product (skipping)", { sub: subscriptionId, product_id: productId });
@@ -136,8 +145,8 @@ async function handleSubscriptionCreated(data: AnyData): Promise<void> {
   }
 
   const status = (data.status as string) ?? "active";
-  const periodStart = (data.current_period_start as string) ?? null;
-  const periodEnd = (data.current_period_end as string) ?? null;
+  const periodStart = toIso(data.currentPeriodStart);
+  const periodEnd = toIso(data.currentPeriodEnd);
 
   const db = getSupabase();
   await db.from("subscriptions").upsert(
@@ -155,7 +164,7 @@ async function handleSubscriptionCreated(data: AnyData): Promise<void> {
   );
 
   // Persist the customer id so future events without metadata still resolve.
-  const customerId = data.customer_id ?? data.customer?.id ?? null;
+  const customerId = data.customerId ?? data.customer?.id ?? null;
   if (customerId) {
     await db.from("user_billing").update({ provider_customer_id: customerId }).eq("user_id", userId);
   }
@@ -174,9 +183,9 @@ async function handleSubscriptionCreated(data: AnyData): Promise<void> {
 async function handleSubscriptionUpdated(data: AnyData): Promise<void> {
   const subscriptionId = data.id as string;
   const status = (data.status as string) ?? "active";
-  const periodStart = (data.current_period_start as string) ?? null;
-  const periodEnd = (data.current_period_end as string) ?? null;
-  const cancelFlag = Boolean(data.cancel_at_period_end);
+  const periodStart = toIso(data.currentPeriodStart);
+  const periodEnd = toIso(data.currentPeriodEnd);
+  const cancelFlag = Boolean(data.cancelAtPeriodEnd);
 
   const db = getSupabase();
   const { data: current } = await db
@@ -233,10 +242,10 @@ async function handleSubscriptionCanceled(data: AnyData): Promise<void> {
 
 async function handleOrderPaid(data: AnyData): Promise<void> {
   const orderId = data.id as string;
-  const cls = classifyOrder({ subscription_id: data.subscription_id, billing_reason: data.billing_reason });
+  const cls = classifyOrder({ subscription_id: data.subscriptionId, billing_reason: data.billingReason });
 
   if (cls === "skip") {
-    log("info", "order.paid skipped (subscription bill handled elsewhere)", { order: orderId, reason: data.billing_reason });
+    log("info", "order.paid skipped (subscription bill handled elsewhere)", { order: orderId, reason: data.billingReason });
     return;
   }
 
@@ -248,32 +257,33 @@ async function handleOrderPaid(data: AnyData): Promise<void> {
   const db = getSupabase();
 
   if (cls === "renewal") {
-    const subscriptionId = data.subscription_id as string;
+    const subscriptionId = data.subscriptionId as string;
     const { data: sub } = await db
       .from("subscriptions")
       .select("provider_product_id")
       .eq("provider_subscription_id", subscriptionId)
       .maybeSingle();
-    const productId = (sub?.provider_product_id ?? data.product_id) as string | undefined;
+    // Order has no period fields; the nested subscription carries the new period.
+    const productId = (sub?.provider_product_id ?? data.subscription?.productId ?? data.productId) as string | undefined;
     const entry = productId ? lookupProduct(productId) : null;
     if (!entry || entry.kind !== "subscription") {
       log("warn", "renewal skipped — product not in catalog", { order: orderId, product_id: productId });
       return;
     }
-    const periodEnd = (data.current_period_end as string) ?? null;
+    const periodEnd = toIso(data.subscription?.currentPeriodEnd);
     await applyPlanAndGrant(userId, entry.planTier, entry.monthlyGrant, periodEnd, `sub_renew:${subscriptionId}:${orderId}`);
     log("info", "order.paid renewal granted", { order: orderId, user_id: userId, plan_tier: entry.planTier });
     return;
   }
 
   // credit_pack
-  const productId = data.product_id as string | undefined;
+  const productId = data.productId as string | undefined;
   const entry = productId ? lookupProduct(productId) : null;
   if (!entry || entry.kind !== "credit_pack") {
     log("info", "order.paid one-time but product not a credit pack (skipping)", { order: orderId, product_id: productId });
     return;
   }
-  const amountCents = Number(data.total_amount ?? 0);
+  const amountCents = Number(data.totalAmount ?? 0);
   await db.from("credit_purchases").upsert(
     {
       provider_order_id: orderId,

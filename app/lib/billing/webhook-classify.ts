@@ -18,14 +18,16 @@ export function classifyOrder(order: OrderShape): OrderClass {
 }
 
 // Best-effort userId hint from a webhook payload: our metadata first, then the
-// customer's external_id (which we set to the Supabase user id at checkout).
+// customer's externalId (which we set to the Supabase user id at checkout).
+// Polar's validateEvent returns SDK models with camelCase fields, so the
+// customer property is `externalId` (not the snake_case wire name).
 export function extractUserIdHint(data: {
   metadata?: { userId?: unknown } | null;
-  customer?: { external_id?: unknown } | null;
+  customer?: { externalId?: unknown } | null;
 }): string | null {
   const fromMeta = data.metadata?.userId;
   if (typeof fromMeta === "string" && fromMeta) return fromMeta;
-  const fromExternal = data.customer?.external_id;
+  const fromExternal = data.customer?.externalId;
   if (typeof fromExternal === "string" && fromExternal) return fromExternal;
   return null;
 }
