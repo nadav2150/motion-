@@ -7,12 +7,7 @@ import {
   type CheckoutPack,
 } from "../motionflow/screens/checkout";
 import { requireUserOrRedirect } from "../lib/auth";
-import {
-  openPaddleCheckout,
-  priceEnvVarName,
-  priceIdForPack,
-  priceIdForTier,
-} from "../lib/paddle-client";
+import { startCheckout } from "../lib/billing/checkout-client";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -63,59 +58,12 @@ export default function CheckoutRoute() {
   async function handleComplete() {
     setSubmitting(true);
     try {
-      const priceId = priceIdForTier(tier);
-      if (!priceId) {
-        alert(
-          `No Paddle price configured for tier "${tier}". Set ${priceEnvVarName(
-            `PRICE_${tier.toUpperCase()}`,
-          )} in .env.`,
-        );
-        return;
-      }
-      // Resolve the optional pack add-on. We treat a missing pack price as a
-      // soft warning: the subscription still goes through, the pack just
-      // gets dropped from the cart.
-      let extraItems: { priceId: string; quantity: number }[] = [];
-      if (pack) {
-        const packPriceId = priceIdForPack(pack);
-        if (!packPriceId) {
-          console.warn(
-            `[checkout] no Paddle price configured for pack "${pack}". ` +
-              `Set ${priceEnvVarName(`PRICE_PACK_${pack.toUpperCase()}`)} in .env. ` +
-              `Continuing with subscription only.`,
-          );
-        } else {
-          extraItems = [{ priceId: packPriceId, quantity: 1 }];
-        }
-      }
-
-      const res = await fetch("/api/billing/customer", { method: "POST" });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `Customer endpoint failed (${res.status})`);
-      }
-      const { customerId } = (await res.json()) as { customerId: string };
-
-      await openPaddleCheckout({
-        priceId,
-        extraItems,
-        customerId,
-        customData: {
-          userId: user.id,
-          kind: "subscription",
-          planTier: tier,
-          // packKey is included so the Paddle webhook handler can attribute
-          // the pack purchase to this subscription transaction without
-          // re-deriving it from the line items.
-          packKey: pack ?? null,
-        },
-        successUrl: `${window.location.origin}/home?upgraded=${tier}`,
-      });
+      await startCheckout({ tier, pack });
+      // startCheckout redirects on success; nothing else runs on this page.
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[checkout] failed to open Paddle overlay:", msg);
+      console.error("[checkout] failed to start Polar checkout:", msg);
       alert(`Could not open checkout: ${msg}`);
-    } finally {
       setSubmitting(false);
     }
   }
