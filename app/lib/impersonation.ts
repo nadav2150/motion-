@@ -126,11 +126,19 @@ export async function mintImpersonatedSession(
   throw new Error("verifyOtp failed for impersonation token");
 }
 
-/** App origin for a request (strips a `backoffice.` host prefix). */
+/**
+ * App origin for a request (strips a `backoffice.` host prefix). TLS
+ * terminates at the Cloudflare edge, so inside the container `request.url` is
+ * http://. Trust X-Forwarded-Proto, and force https for any non-local host so
+ * the cross-origin handoff form never posts over an insecure connection.
+ */
 export function appOriginFor(request: Request): string {
   const url = new URL(request.url);
   const host = url.host.replace(/^backoffice\./, "");
-  return `${url.protocol}//${host}`;
+  const isLocal = host.startsWith("localhost") || host.startsWith("127.");
+  const fwd = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto = fwd || (isLocal ? "http" : "https");
+  return `${proto}://${host}`;
 }
 
 export function setImpersonationCookies(
