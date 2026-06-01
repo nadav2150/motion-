@@ -25,7 +25,7 @@ export class AuthError extends Error {
   }
 }
 
-function sessionCookieAttrs(maxAge: number): string {
+export function sessionCookieAttrs(maxAge: number): string {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
@@ -119,7 +119,7 @@ export async function registerWithEmail(
   return { ...session, userId: created.user.id };
 }
 
-function parseCookies(header: string | null): Record<string, string> {
+export function parseCookies(header: string | null): Record<string, string> {
   const out: Record<string, string> = {};
   if (!header) return out;
   for (const part of header.split(";")) {

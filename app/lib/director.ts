@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
-export const DIRECTOR_MODEL = "claude-opus-4-7";
+export const DIRECTOR_MODEL = "claude-opus-4-8";
 export const MIN_SHOTS = 5;
 export const MAX_SHOTS = 14;
 

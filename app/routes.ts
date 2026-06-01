@@ -49,6 +49,13 @@ export default [
   route("api/auth/signout", "routes/api.auth.signout.tsx"),
   route("api/auth/forgot-password", "routes/api.auth.forgot-password.tsx"),
   route("api/auth/reset-password", "routes/api.auth.reset-password.tsx"),
+  // Backoffice admin panel (gated by ADMIN_EMAILS; served at backoffice.videly.io)
+  route("backoffice", "routes/backoffice.tsx"),
+  route("backoffice/users/:id", "routes/backoffice.users.$id.tsx"),
+  route("api/backoffice/impersonate", "routes/api.backoffice.impersonate.tsx"),
+  route("impersonate/start", "routes/impersonate.start.tsx"),
+  route("impersonate/stop", "routes/impersonate.stop.tsx"),
+
   route("api/billing/customer", "routes/api.billing.customer.tsx"),
   route("api/billing/cancel-subscription", "routes/api.billing.cancel-subscription.tsx"),
   route("api/webhooks/paddle", "routes/api.webhooks.paddle.tsx"),

@@ -67,6 +67,12 @@
     {
       "pattern": "www.videly.io",
       "custom_domain": true
+    },
+    // Admin backoffice. Same Worker/container; /backoffice + /impersonate
+    // routes are gated by the ADMIN_EMAILS allowlist (see app/lib/admin.ts).
+    {
+      "pattern": "backoffice.videly.io",
+      "custom_domain": true
     }
   ],
 

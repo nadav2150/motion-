@@ -42,6 +42,10 @@ type Env = {
   PADDLE_LIVE_PRICE_PACK_LARGE: string;
   POSTHOG_API_KEY: string;
   POSTHOG_PROJECT_ID: string;
+  // Backoffice admin panel: comma-separated admin email allowlist + HMAC key
+  // for signing impersonation handoff tokens.
+  ADMIN_EMAILS: string;
+  IMPERSONATION_SECRET: string;
 };
 
 export class VidelyContainer extends Container<Env> {
@@ -91,6 +95,8 @@ export class VidelyContainer extends Container<Env> {
     PADDLE_LIVE_PRICE_PACK_LARGE: this.env.PADDLE_LIVE_PRICE_PACK_LARGE,
     POSTHOG_API_KEY: this.env.POSTHOG_API_KEY,
     POSTHOG_PROJECT_ID: this.env.POSTHOG_PROJECT_ID,
+    ADMIN_EMAILS: this.env.ADMIN_EMAILS,
+    IMPERSONATION_SECRET: this.env.IMPERSONATION_SECRET,
   };
 
   override onStart(): void {

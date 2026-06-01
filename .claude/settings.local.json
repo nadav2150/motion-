@@ -183,7 +183,13 @@
       "mcp__supabase__list_organizations",
       "mcp__supabase__get_organization",
       "Bash(docker info *)",
-      "Bash(xargs grep -l \"\\\\.capture\\\\\\(\")"
+      "Bash(xargs grep -l \"\\\\.capture\\\\\\(\")",
+      "mcp__supabase__search_docs",
+      "Bash(python -c ' *)",
+      "Bash(printf -- '- [Backoffice admin panel]\\(backoffice-admin-panel.md\\) — backoffice.videly.io user list + impersonation; ADMIN_EMAILS/IMPERSONATION_SECRET secrets needed to deploy\\\\n')",
+      "Bash(CLOUDFLARE_ACCOUNT_ID=9df3952910e940807bd4e35d036e1bf8 npx wrangler secret list --name videly)",
+      "Bash(nslookup backoffice.videly.io 1.1.1.1)",
+      "Bash(nslookup videly.io 1.1.1.1)"
     ]
   },
   "enabledPlugins": {

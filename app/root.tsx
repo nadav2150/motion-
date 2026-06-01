@@ -10,6 +10,7 @@ import {
 
 import type { Route } from "./+types/root";
 import { getUserFromRequest } from "./lib/auth";
+import { getImpersonation } from "./lib/impersonation";
 import { SITE_NAME, SITE_URL } from "./lib/seo";
 import { bootstrapPostHog } from "./lib/posthog-client";
 import {
@@ -37,7 +38,8 @@ const ORGANIZATION_JSONLD = JSON.stringify({
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getUserFromRequest(request);
-  return { user };
+  const impersonating = getImpersonation(request);
+  return { user, impersonating };
 }
 
 export const links: Route.LinksFunction = () => [
@@ -79,11 +81,62 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ImpersonationBanner({ email }: { email: string }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 2147483647,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        padding: "8px 16px",
+        background: "#7AA2FF",
+        color: "#06070A",
+        fontFamily: "Inter, system-ui, sans-serif",
+        fontSize: 13,
+        fontWeight: 600,
+        boxShadow: "0 1px 0 rgba(0,0,0,0.2)",
+      }}
+    >
+      <span>
+        Impersonating <strong>{email || "user"}</strong>
+      </span>
+      <form method="post" action="/impersonate/stop" style={{ margin: 0 }}>
+        <button
+          type="submit"
+          style={{
+            background: "#06070A",
+            color: "#E6E8EC",
+            border: "none",
+            borderRadius: 6,
+            padding: "4px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Return to admin
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
-  const { user } = useLoaderData<typeof loader>();
+  const { user, impersonating } = useLoaderData<typeof loader>();
   usePostHogPageviews();
   usePostHogIdentify(user);
-  return <Outlet />;
+  return (
+    <>
+      {impersonating && <ImpersonationBanner email={impersonating.email} />}
+      <Outlet />
+    </>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

@@ -2,8 +2,8 @@
 // composition HTML. Template-first single-composition pipeline. No per-scene
 // HTML generation; no ffmpeg stitch.
 //
-// Uses Anthropic Claude Opus 4.7 via @anthropic-ai/sdk. Key notes:
-//   • Opus 4.7 removes `temperature` / `top_p` / `top_k` (400 if sent) and
+// Uses Anthropic Claude Opus 4.8 via @anthropic-ai/sdk. Key notes:
+//   • Opus 4.8 removes `temperature` / `top_p` / `top_k` (400 if sent) and
 //     removes manual `budget_tokens` thinking. We use adaptive thinking
 //     and `output_config.effort` to control depth instead.
 //   • Two LLM calls per job: generateStoryboard (script analysis + identity
@@ -42,10 +42,10 @@ import {
   type TtsModelId,
 } from "../elevenlabs-tts";
 
-const MODEL = "claude-opus-4-7";
+const MODEL = "claude-opus-4-8";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
 // level). Critique is judgmental + structured, not generative — Sonnet is
-// fast here and we reserve Opus 4.7 wall-time for the creative passes
+// fast here and we reserve Opus 4.8 wall-time for the creative passes
 // (storyboard, blueprint, scene fills, refinement).
 const SONNET_MODEL = "claude-sonnet-4-6";
 

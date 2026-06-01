@@ -12,6 +12,7 @@ const MICROS_PER_CENT = 10_000;
 
 // ---------- Anthropic ----------
 // Public Anthropic pricing (per 1M tokens, as of 2026-05-20):
+//   claude-opus-4-8   : $15 in, $75 out  → 15  micros/token in, 75  micros/token out
 //   claude-opus-4-7   : $15 in, $75 out  → 15  micros/token in, 75  micros/token out
 //   claude-sonnet-4-6 : $3  in, $15 out  → 3   micros/token in, 15  micros/token out
 // Cache reads bill at ~10% of base input; cache_creation_input_tokens bill at
@@ -20,6 +21,7 @@ const MICROS_PER_CENT = 10_000;
 // through is close enough for the average. No need to model cache pricing
 // here; the variance is small at our volumes.
 const ANTHROPIC_PRICE_TABLE: Record<string, { inputPerToken: number; outputPerToken: number }> = {
+  "claude-opus-4-8": { inputPerToken: 15, outputPerToken: 75 },
   "claude-opus-4-7": { inputPerToken: 15, outputPerToken: 75 },
   "claude-sonnet-4-6": { inputPerToken: 3, outputPerToken: 15 },
 };
@@ -32,7 +34,7 @@ export function usdMicrosForAnthropic(
   const price = ANTHROPIC_PRICE_TABLE[model];
   if (!price) {
     console.warn(`[pricing-usd] unknown Anthropic model "${model}" — defaulting to Opus pricing`);
-    return usdMicrosForAnthropic("claude-opus-4-7", inputTokens, outputTokens);
+    return usdMicrosForAnthropic("claude-opus-4-8", inputTokens, outputTokens);
   }
   return inputTokens * price.inputPerToken + outputTokens * price.outputPerToken;
 }

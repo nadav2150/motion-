@@ -153,7 +153,7 @@ import {
 } from "./pricing-usd";
 
 export function usdMicrosForOpus(usage: { input_tokens?: number; output_tokens?: number }): number {
-  return usdMicrosForAnthropic("claude-opus-4-7", usage.input_tokens ?? 0, usage.output_tokens ?? 0);
+  return usdMicrosForAnthropic("claude-opus-4-8", usage.input_tokens ?? 0, usage.output_tokens ?? 0);
 }
 
 export function usdMicrosForSonnet(usage: { input_tokens?: number; output_tokens?: number }): number {

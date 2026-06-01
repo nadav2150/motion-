@@ -11,8 +11,14 @@
 //     fires on full reloads, missing every React Router client navigation.
 //   • autocapture: false — current scope is page views only; no click/form
 //     events. Re-enable later if heatmaps or click funnels are needed.
-//   • disable_session_recording: true — recordings carry storage cost and a
-//     privacy surface we haven't opted into.
+//   • session_recording — enabled. All <input> values are masked by default
+//     so emails, passwords, and card fields don't leak into the replay.
+//     Mark any extra element private with `data-private` on the DOM node;
+//     PostHog will blur it in the replay. Conversely, add `data-ph-no-mask`
+//     to an input you DO want visible (e.g. a benign filter box).
+//     NOTE: PostHog Cloud's Session Replay add-on must also be enabled at
+//     PostHog → Settings → Session Replay, otherwise recordings are sent
+//     by the client but discarded server-side.
 
 import posthog, { type PostHog } from "posthog-js";
 
@@ -30,7 +36,11 @@ export function bootstrapPostHog(): void {
     api_host: host,
     capture_pageview: false,
     autocapture: false,
-    disable_session_recording: true,
+    disable_session_recording: false,
+    session_recording: {
+      maskAllInputs: true,
+      maskTextSelector: "[data-private]",
+    },
     persistence: "localStorage+cookie",
   });
   initialized = true;
