@@ -189,7 +189,22 @@
       "Bash(printf -- '- [Backoffice admin panel]\\(backoffice-admin-panel.md\\) — backoffice.videly.io user list + impersonation; ADMIN_EMAILS/IMPERSONATION_SECRET secrets needed to deploy\\\\n')",
       "Bash(CLOUDFLARE_ACCOUNT_ID=9df3952910e940807bd4e35d036e1bf8 npx wrangler secret list --name videly)",
       "Bash(nslookup backoffice.videly.io 1.1.1.1)",
-      "Bash(nslookup videly.io 1.1.1.1)"
+      "Bash(nslookup videly.io 1.1.1.1)",
+      "Bash(git checkout *)",
+      "WebFetch(domain:docs.polar.sh)",
+      "WebFetch(domain:polar.sh)",
+      "Bash(npm test *)",
+      "Bash(npm ls *)",
+      "Bash(git *)",
+      "Bash(npm uninstall *)",
+      "mcp__Polar-Sandbox__search_tools",
+      "mcp__Polar-Sandbox__describe_tools",
+      "mcp__Polar-Sandbox__execute_tool",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); items=d.get\\('items',d\\); print\\('count:', len\\(items\\)\\); [print\\(p['id'], '|', p['name'], '|', \\('recurring' if p.get\\('is_recurring'\\) else 'one-time'\\), '|', p['prices'][0]['price_amount']\\) for p in items]\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); items=d['items']; print\\('authenticated OK — products:', len\\(items\\)\\); [print\\(' ', p['id'], '|', p['name'], '|', \\('recurring' if p['is_recurring'] else 'one-time'\\), '| \\\\$'+str\\(p['prices'][0]['price_amount']/100\\)\\) for p in items]\")",
+      "mcp__Polar__search_tools",
+      "mcp__Polar__describe_tools",
+      "mcp__Polar__execute_tool"
     ]
   },
   "enabledPlugins": {

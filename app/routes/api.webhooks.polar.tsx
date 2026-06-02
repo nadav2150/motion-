@@ -66,8 +66,22 @@ export async function action({ request }: Route.ActionArgs) {
       log("info", "deduped (already processed)", { id: deliveryId });
       return Response.json({ ok: true, deduped: true });
     }
-    log("error", "dedupe insert failed", { id: deliveryId, error: dedupeErr.message });
-    return Response.json({ error: "Dedupe failure" }, { status: 500 });
+    // Not a duplicate — the audit insert genuinely failed. Surface the
+    // Postgres code/details so a stale schema (e.g. 42P01: billing_events
+    // missing because the rename migration hasn't run) is obvious in logs
+    // instead of hiding behind a generic "Dedupe failure".
+    log("error", "billing_events insert failed", {
+      id: deliveryId,
+      type: event.type,
+      pg_code: dedupeErr.code,
+      error: dedupeErr.message,
+      details: dedupeErr.details,
+      hint: dedupeErr.hint,
+    });
+    return Response.json(
+      { error: "Could not record event", pg_code: dedupeErr.code, detail: dedupeErr.message },
+      { status: 500 },
+    );
   }
 
   try {
@@ -112,6 +126,51 @@ function toIso(v: unknown): string | null {
   if (v instanceof Date) return v.toISOString();
   if (typeof v === "string" && v) return v;
   return null;
+}
+
+// After a grant/plan change, read the user's billing row back from Supabase and
+// emit a single line showing the resulting plan + balance — so you can confirm
+// at a glance that "webhook → DB → credits" actually landed. Mirrors the same
+// snapshot to PostHog as an event so it shows up in the dashboard too.
+async function logBillingAfter(
+  userId: string,
+  context: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  const db = getSupabase();
+  const { data, error } = await db
+    .from("user_billing")
+    .select("plan_tier, credits_balance, credits_reserved, monthly_grant, period_end")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    log("warn", `${context}: could not read back billing state`, { user_id: userId, error: error.message });
+    return;
+  }
+  log("info", `${context} ✓ billing now`, {
+    user_id: userId,
+    plan_tier: data?.plan_tier,
+    credits_balance: data?.credits_balance,
+    credits_reserved: data?.credits_reserved,
+    monthly_grant: data?.monthly_grant,
+    period_end: data?.period_end,
+    ...extra,
+  });
+  try {
+    getPostHog().capture({
+      distinctId: userId,
+      event: "polar_credits_applied",
+      properties: {
+        context,
+        plan_tier: data?.plan_tier,
+        credits_balance: data?.credits_balance,
+        monthly_grant: data?.monthly_grant,
+        ...extra,
+      },
+    });
+  } catch {
+    // PostHog is best-effort; never let telemetry break the grant.
+  }
 }
 
 async function resolveUserId(data: AnyData): Promise<string | null> {
@@ -307,6 +366,11 @@ async function handleOrderPaid(data: AnyData): Promise<void> {
     last_credit_purchase_at: new Date().toISOString(),
   });
   log("info", "order.paid credit pack granted", { order: orderId, user_id: userId, credits: entry.credits });
+  await logBillingAfter(userId, "credit_pack purchase", {
+    order_id: orderId,
+    pack: entry.packSize,
+    credits_added: entry.credits,
+  });
 }
 
 async function applyPlanAndGrant(
@@ -330,6 +394,7 @@ async function applyPlanAndGrant(
     idempotencyKey,
   });
   log("info", "plan applied + monthly grant", { user_id: userId, plan_tier: planTier, monthly_grant: monthlyGrant });
+  await logBillingAfter(userId, `plan applied (${planTier})`, { monthly_grant: monthlyGrant });
 }
 
 function identifyPlan(userId: string, properties: Record<string, unknown>): void {
