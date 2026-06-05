@@ -694,13 +694,17 @@ const PresetGallery = ({ f, m }: { f: number; m: boolean }) => {
 
 /* ─────── USE CASES ─────── */
 const UseCaseGrid = ({ m }: { m: boolean }) => {
+  // Each card links to a use-case landing page (in-content internal links —
+  // these carry more crawl weight than footer links, so they help Google
+  // discover and index the SEO cluster faster). Six cards map onto the three
+  // dedicated pages by closest intent.
   const cases = [
-    { t: "Launch Videos",      d: "Turn feature launches into premium reveals." },
-    { t: "Product Updates",    d: "Transform release notes into engaging motion content." },
-    { t: "Founder Marketing",  d: "Create premium social content without a creative team." },
-    { t: "SaaS Storytelling",  d: "Show your product like world-class companies do." },
-    { t: "App Store Videos",   d: "Generate polished previews optimized for conversion." },
-    { t: "Onboarding Visuals", d: "Welcome new users with motion that feels considered." },
+    { t: "Launch Videos",      d: "Turn feature launches into premium reveals.",            href: "/launch-videos" },
+    { t: "Product Updates",    d: "Transform release notes into engaging motion content.",  href: "/feature-announcement-videos" },
+    { t: "Founder Marketing",  d: "Create premium social content without a creative team.",  href: "/launch-videos" },
+    { t: "SaaS Storytelling",  d: "Show your product like world-class companies do.",        href: "/product-demo-videos" },
+    { t: "App Store Videos",   d: "Generate polished previews optimized for conversion.",    href: "/product-demo-videos" },
+    { t: "Onboarding Visuals", d: "Welcome new users with motion that feels considered.",    href: "/feature-announcement-videos" },
   ];
   return (
     <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
@@ -714,12 +718,14 @@ const UseCaseGrid = ({ m }: { m: boolean }) => {
 
         <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
           {cases.map((c, i) => (
-            <div
+            <a
               key={i}
+              href={c.href}
               style={{
                 padding: m ? "24px 22px" : "36px 32px", background: "rgba(8,9,13,0.6)",
                 display: "flex", flexDirection: "column", gap: 12,
                 minHeight: m ? 140 : 220, position: "relative", cursor: "pointer", transition: "background 200ms",
+                textDecoration: "none", color: "inherit",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(122,162,255,0.04)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(8,9,13,0.6)"; }}
@@ -728,7 +734,7 @@ const UseCaseGrid = ({ m }: { m: boolean }) => {
               <div style={{ fontSize: m ? 18 : 22, fontWeight: 500, letterSpacing: "-0.02em" }}>{c.t}</div>
               <div className="mf-body" style={{ fontSize: m ? 13 : 14, color: "var(--ink-3)", marginTop: "auto" }}>{c.d}</div>
               <IconArrowRight size={14} style={{ position: "absolute", right: m ? 22 : 28, bottom: m ? 22 : 32, color: "var(--ink-3)" }}/>
-            </div>
+            </a>
           ))}
         </div>
       </div>
@@ -1145,6 +1151,18 @@ const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number;
             </div>
           </div>
           {m && <div className="mf-mono" style={{ marginTop: 8, fontSize: 9.5, color: "var(--ink-4)", letterSpacing: "0.12em", textAlign: "center" }}>→ SWIPE TO COMPARE</div>}
+
+          {/* In-content links to the competitor comparison pages. Keeps the
+              /vs/* SEO cluster one click from the homepage body (not just the
+              footer), which speeds up crawling and indexing. */}
+          <div style={{ marginTop: m ? 24 : 36, textAlign: "center", fontSize: m ? 13.5 : 15, color: "var(--ink-3)", lineHeight: 1.7 }}>
+            See how Videly compares to{" "}
+            <a href="/vs/loom"      style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Loom</a>,{" "}
+            <a href="/vs/synthesia" style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Synthesia</a>,{" "}
+            <a href="/vs/runway"    style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Runway</a>,{" "}
+            <a href="/vs/pictory"   style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Pictory</a>, and{" "}
+            <a href="/vs/veed"      style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Veed</a>.
+          </div>
         </div>
 
         <div style={{ marginTop: m ? 56 : 96, textAlign: "center", padding: m ? "40px 24px" : "72px 56px", borderRadius: 24, background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)" }}>
