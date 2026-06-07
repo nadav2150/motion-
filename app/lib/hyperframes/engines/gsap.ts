@@ -4,6 +4,7 @@
 // offset to every numeric position arg, so layer code stays scene-local.
 
 import type { EngineAdapter, Layer, LayerEmitContext } from "./types";
+import { stackLayerDom } from "./dom";
 
 function indentLines(s: string, indent: string): string {
   return s
@@ -19,12 +20,7 @@ export const gsapAdapter: EngineAdapter = {
   cdn: null,
 
   emitDom(layer: Layer, ctx: LayerEmitContext): string {
-    const html = layer.html ?? "";
-    // Single GSAP layer == legacy path: emit the html unwrapped so output is
-    // byte-identical to the pre-layer skeleton.
-    if (ctx.total <= 1) return html;
-    // Stacked: wrap in an absolutely-positioned layer so z-order is explicit.
-    return `<div class="layer" style="position:absolute;inset:0;z-index:${ctx.index}">${html}</div>`;
+    return stackLayerDom(layer.html ?? "", ctx.index, ctx.total);
   },
 
   emitJs(layer: Layer, ctx: LayerEmitContext): string {
