@@ -1772,6 +1772,14 @@ export type SceneBrief = {
    * (principles #1, #7). Propagated by generateFilmBlueprint.
    */
   pacingIntent?: PacingIntent;
+  /**
+   * Which engine (if any) should render this scene's background depth layer.
+   * "none" for most scenes. "three" is render-budget-capped film-wide
+   * (MAX_THREE_SCENES); normalization downgrades extras to "none".
+   */
+  backgroundEngine?: "none" | "three" | "anime" | "waapi";
+  /** 1-sentence concept for the background layer (only when != "none"). */
+  backgroundConcept?: string;
 };
 
 /** A single asset locked into a scene by the asset-planning stage. */
@@ -2629,6 +2637,10 @@ ${
 // choice with the 2-3-non-hard_cut budget). It does NOT emit HTML / CSS /
 // GSAP timelines — that's Stage B.
 
+// Render-budget cap: each three-layer scene adds WebGL frame cost at render
+// time. Keep the hero moments, downgrade the rest.
+const MAX_THREE_SCENES = 2;
+
 const FILM_BLUEPRINT_SYSTEM_PROMPT = `You are the show-runner of a short cinematic launch film. Your job is to lock the global creative DNA and a per-scene plan that every subsequent scene-renderer will follow. You DO NOT emit HTML, CSS, or GSAP code — only structured creative direction.
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -2746,6 +2758,11 @@ A single FilmBlueprint JSON with:
        transitionInIntent       — 1 sentence: how this scene picks up from the previous (mirror the previous scene's endStateHint).
        transitionOutIntent      — 1 sentence: how this scene hands off to the next (this should match the next scene's transitionInIntent).
        transitionInChoice       — "hard_cut" | "shader_flash" | "shader_wipe" | "shader_zoom".
+       backgroundEngine         — "none" | "three" | "anime" | "waapi". An OPTIONAL living background layer rendered by a second animation engine BEHIND the scene's typography. "none" for MOST scenes — depth must be earned, not default. Choose:
+                                    • "three"  — true 3D/WebGL depth (particle fields, volumetric gradients, slow geometry). HERO moments only: AT MOST ${MAX_THREE_SCENES} scenes per film (hard budget — extras get downgraded to "none").
+                                    • "anime"  — organic 2D motion textures (drifting shapes, morphing accents) when GSAP-on-DOM would feel flat.
+                                    • "waapi"  — featherweight native motion (subtle gradient pans, slow ambient drift).
+       backgroundConcept        — 1 sentence: WHAT the background layer shows and why it serves this beat. Empty string when backgroundEngine="none".
 
 ═══ TRANSITION BUDGET (HARD CONSTRAINT) ═══
 
@@ -2826,6 +2843,7 @@ const FILM_BLUEPRINT_SCHEMA = {
           "id", "durationSeconds", "copy", "brief", "palette", "motionPattern",
           "allowedElements", "focalElementHint", "startStateHint", "endStateHint",
           "transitionInIntent", "transitionOutIntent", "transitionInChoice",
+          "backgroundEngine", "backgroundConcept",
         ],
         properties: {
           id: { type: "string" },
@@ -2844,6 +2862,8 @@ const FILM_BLUEPRINT_SCHEMA = {
             type: "string",
             enum: ["hard_cut", "shader_flash", "shader_wipe", "shader_zoom"],
           },
+          backgroundEngine: { type: "string", enum: ["none", "three", "anime", "waapi"] },
+          backgroundConcept: { type: "string" },
         },
       },
     },
@@ -3559,6 +3579,23 @@ export async function generateFilmBlueprint(
         normalizedOutline[x.i] = { ...normalizedOutline[x.i], transitionInChoice: "hard_cut" };
       }
     }
+  }
+
+  // Enforce the three budget: keep the first MAX_THREE_SCENES "three"
+  // recommendations (blueprint order ≈ narrative priority), downgrade extras.
+  let threeCount = 0;
+  for (const brief of normalizedOutline) {
+    if (brief.backgroundEngine === "three") {
+      threeCount += 1;
+      if (threeCount > MAX_THREE_SCENES) {
+        console.warn(
+          `[hyperframes blueprint] downgrading backgroundEngine=three on ${brief.id} (budget ${MAX_THREE_SCENES})`,
+        );
+        brief.backgroundEngine = "none";
+        brief.backgroundConcept = "";
+      }
+    }
+    if (!brief.backgroundEngine) brief.backgroundEngine = "none";
   }
 
   const filmRhythm = sanitizeFilmRhythm(
