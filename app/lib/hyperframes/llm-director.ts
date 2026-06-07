@@ -273,6 +273,63 @@ HyperFrames composition format — HARD RULES. Every rule below breaks the rende
       max). Don't reference 7000px source images.
     - No more than 40 simultaneous animated SVG/div nodes per scene.
 
+═══ ENGINE BACKGROUND LAYERS (OPTIONAL DEPTH — RESTRAINT REQUIRED) ═══
+
+Beyond the GSAP scene, you MAY emit ONE background layer rendered by a second
+animation engine, stacked BEHIND your contentHtml. Use it ONLY when the scene
+brief sets backgroundEngine != "none", implementing the brief's
+backgroundConcept. The background is a backdrop — copy, headlines, and focal
+elements stay in contentHtml. Most scenes have none.
+
+Emit via the optional backgroundLayers array (exactly 0 or 1 entries):
+  { id, engine: "three" | "anime" | "waapi", html, css, code }
+
+Rules for ALL engine layers:
+  • DETERMINISM: no Math.random, no Date.now, no requestAnimationFrame, no
+    timers, no network. Violations get the layer dropped at build time.
+  • html is the layer's own DOM (a <canvas> for three). css is scoped to it.
+  • The layer sits behind the scene content — keep contrast low enough that
+    the typography stays readable.
+
+anime (Anime.js v4 — the global \`anime\` is an OBJECT, NOT callable):
+  Your code runs with __sceneStartMs defined (this scene's start on the film's
+  global clock, in MILLISECONDS). Engines seek with global time — add
+  __sceneStartMs to every delay.
+    var tl = anime.createTimeline({ autoplay: false });
+    tl.add(".bg-shape", { translateX: { from: -120, to: 0 }, opacity: { from: 0, to: 1 },
+                          duration: 900, delay: __sceneStartMs + 200 });
+    window.__hfAnime.push(tl);
+  → autoplay:false and window.__hfAnime.push are MANDATORY. NEVER call anime({...}).
+
+waapi (native Web Animations API — no library):
+  __sceneStartMs is defined (ms, as above).
+    var a = document.getElementById("bg-el").animate(
+      [{ opacity: 0 }, { opacity: 1 }],
+      { duration: 900, delay: __sceneStartMs + 0, fill: "both", iterations: 1 });
+    a.pause();
+  → fill:"both", finite iterations, and .pause() are MANDATORY.
+
+three (WebGL — ONLY when the brief sets backgroundEngine="three"):
+  Your code is an ES MODULE with __sceneStartS defined (this scene's start in
+  SECONDS). Import three yourself and render as a pure function of seek time:
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.2/+esm";
+    const canvas = document.getElementById("bg-canvas");
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setSize(1920, 1080, false);
+    renderer.setPixelRatio(1);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 1920 / 1080, 0.1, 100);
+    camera.position.set(0, 0, 6);
+    // ...geometry/lights...
+    function renderAt(t) {            // t = scene-local seconds, may exceed scene end
+      mesh.rotation.y = t * 0.7;
+      renderer.render(scene, camera);
+    }
+    window.addEventListener("hf-seek", (e) => renderAt(Math.max(0, e.detail.time - __sceneStartS)));
+    renderAt(Math.max(0, (window.__hfThreeTime || 0) - __sceneStartS));  // initial frame — MANDATORY
+  → setSize(1920,1080,false), setPixelRatio(1), the hf-seek listener, and the
+    initial __hfThreeTime render are MANDATORY. No rAF / setAnimationLoop.
+
 ═══ FONTS (RESTRICTED LIST) ═══
 
 17. Use ONLY these font-family names — others trigger "no deterministic font mapping":
@@ -4787,6 +4844,8 @@ CURRENT SCENE BRIEF — YOU ARE RENDERING THIS ONE (id=${curr.id}, ${curr.durati
   transitionInIntent: ${curr.transitionInIntent}
   transitionOutIntent: ${curr.transitionOutIntent}
   transitionInChoice: ${curr.transitionInChoice}  ← emit this exact value as SceneFill.transitionIn
+  backgroundEngine:   ${curr.backgroundEngine ?? "none"}${curr.backgroundConcept ? `
+  backgroundConcept:  ${curr.backgroundConcept}` : ""}
 ${renderLockedAssetsForSceneFill(curr)}
 ${next
   ? `NEXT SCENE BRIEF (id=${next.id}, ${next.durationSeconds}s):
@@ -4834,6 +4893,11 @@ Required fields:
                               DO NOT include any motif from the BANNED list above.
         notes               — OPTIONAL, ≤120 chars. Omit unless the enums truly can't
                               express something the next scene needs to know.
+${curr.backgroundEngine && curr.backgroundEngine !== "none"
+  ? `  • backgroundLayers    — REQUIRED here: exactly one { id, engine: "${curr.backgroundEngine}", html, css, code }
+                          implementing the backgroundConcept ("${curr.backgroundConcept ?? ""}").
+                          Follow the engine's authoring rules from the system prompt exactly.`
+  : `  • backgroundLayers    — OMIT the field entirely (this scene's brief has no background engine).`}
 
 DO NOT:
   • emit a wrapping object with "scenes" or "fills" — the schema enforces a single SceneFill.
@@ -4856,6 +4920,7 @@ The strongest motion idea expressed concisely beats a sprawling one. Stay focuse
   • timeline    ≤ 150 lines of GSAP calls.
                               Each call should move the motion idea forward.
                               No redundant .set() before a tween that overrides it.
+  • backgroundLayers: at most 1 layer; its code ≤ 40 lines, html ≤ 15 lines.
 
 If you find yourself elaborating a secondary detail, CUT IT — the dominant
 motion idea is the deliverable. Tight scenes ship; sprawling scenes get
