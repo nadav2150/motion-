@@ -45,6 +45,7 @@ import { hyperframesArgs, hyperframesBin } from "./cli";
 import type { Layer, LayerEmitContext } from "./engines/types";
 import { resolveLayers } from "./engines/layers";
 import { collectExtraCdn, getEngineAdapter } from "./engines/registry";
+import { validateLayer } from "./engines/validate";
 
 const MODEL = "claude-opus-4-8";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
@@ -2914,6 +2915,22 @@ const SCENE_FILL_SCHEMA = {
         notes: { type: "string" },
       },
     },
+    backgroundLayers: {
+      type: "array",
+      maxItems: 1,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "engine", "html", "css", "code"],
+        properties: {
+          id: { type: "string" },
+          engine: { type: "string", enum: ["three", "anime", "waapi"] },
+          html: { type: "string" },
+          css: { type: "string" },
+          code: { type: "string" },
+        },
+      },
+    },
   },
 } as const;
 
@@ -4946,11 +4963,38 @@ async function generateSceneFill(
     usage.output_tokens,
   );
 
+  // Background-layer guard: cap at 1, drop layers that fail static validation,
+  // and drop three layers the blueprint didn't budget for this scene. Dropping
+  // is silent degradation — the GSAP base scene always survives.
+  let backgroundLayers = Array.isArray(parsed.backgroundLayers)
+    ? parsed.backgroundLayers.slice(0, 1)
+    : undefined;
+  if (backgroundLayers && backgroundLayers.length > 0) {
+    backgroundLayers = backgroundLayers.filter((layer) => {
+      if (layer.engine === "three" && curr.backgroundEngine !== "three") {
+        console.warn(
+          `[hyperframes scene ${curr.id}] dropping unbudgeted three layer "${layer.id}" (brief recommends ${curr.backgroundEngine ?? "none"})`,
+        );
+        return false;
+      }
+      const violations = validateLayer(layer);
+      if (violations.length > 0) {
+        console.warn(
+          `[hyperframes scene ${curr.id}] dropping invalid ${layer.engine} layer "${layer.id}": ${violations.join("; ")}`,
+        );
+        return false;
+      }
+      return true;
+    });
+    if (backgroundLayers.length === 0) backgroundLayers = undefined;
+  }
+
   // Safety: pin the id and transitionIn to what the blueprint demanded.
   return {
     ...parsed,
     id: curr.id,
     transitionIn: curr.transitionInChoice,
+    backgroundLayers,
   };
 }
 
