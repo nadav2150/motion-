@@ -1593,6 +1593,14 @@ export type SceneFill = {
    * single implicit GSAP layer from those legacy fields (full backward compat).
    */
   layers?: Layer[];
+  /**
+   * Optional LLM-emitted engine layers stacked BEHIND the contentHtml base
+   * (≤1 in practice; schema-capped). Unlike `layers` (full supersede, used by
+   * hand-authored compositions), these are ADDITIVE: resolveLayers composes
+   * [...backgroundLayers, gsapBase]. Statically validated; invalid entries
+   * are dropped, never fatal.
+   */
+  backgroundLayers?: Layer[];
 };
 
 // ─── Continuity threading (blueprint + batched scenes) ─────────────────────
@@ -2305,6 +2313,7 @@ export function buildFilmSkeleton(
 
       const layers = resolveLayers({
         layers: fill?.layers,
+        backgroundLayers: fill?.backgroundLayers,
         contentHtml: fill?.contentHtml ?? `<h1>${escapeHtml(scene.copy)}</h1>`,
         sceneCss: fill?.sceneCss ?? "",
         timeline: fill?.timeline ?? "",
@@ -2362,6 +2371,7 @@ export function buildFilmSkeleton(
 
       const layers = resolveLayers({
         layers: fill?.layers,
+        backgroundLayers: fill?.backgroundLayers,
         contentHtml: fill?.contentHtml ?? `<h1>${escapeHtml(scene.copy)}</h1>`,
         sceneCss: fill?.sceneCss ?? "",
         timeline: fill?.timeline ?? "",
@@ -2398,6 +2408,7 @@ export function buildFilmSkeleton(
     const start = starts[i];
     const layers = resolveLayers({
       layers: fill?.layers,
+      backgroundLayers: fill?.backgroundLayers,
       contentHtml: fill?.contentHtml ?? "",
       sceneCss: fill?.sceneCss ?? "",
       timeline: fill?.timeline ?? "",
@@ -2529,6 +2540,7 @@ export function buildFilmSkeleton(
     const fill = fillById.get(sid) ?? fillById.get(scene.id);
     return resolveLayers({
       layers: fill?.layers,
+      backgroundLayers: fill?.backgroundLayers,
       contentHtml: fill?.contentHtml ?? "",
       sceneCss: fill?.sceneCss ?? "",
       timeline: fill?.timeline ?? "",
