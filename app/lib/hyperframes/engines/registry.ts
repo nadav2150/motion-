@@ -5,10 +5,14 @@
 // degrade gracefully (drop the layer) rather than throw.
 
 import { gsapAdapter } from "./gsap";
+import { animeAdapter } from "./anime";
+import { waapiAdapter } from "./waapi";
 import type { EngineAdapter, Layer, LayerEngine } from "./types";
 
 const ADAPTERS: Partial<Record<LayerEngine, EngineAdapter>> = {
   gsap: gsapAdapter,
+  anime: animeAdapter,
+  waapi: waapiAdapter,
 };
 
 export function getEngineAdapter(engine: LayerEngine): EngineAdapter | null {
