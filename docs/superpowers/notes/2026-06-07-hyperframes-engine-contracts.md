@@ -32,8 +32,14 @@
 | `https://hyperframes.heygen.com/guides/three.md` (and variants) | WebFetch | 404 — no dedicated page |
 | `hf-example/CLAUDE.md` (local repo file) | Read | OK — cross-check source |
 | `hf-example/index.html` + `compositions/*.html` (local examples) | Read | OK — GSAP pattern confirmed |
+| `https://github.com/heygen-com/hyperframes/tree/main/skills/animejs` | WebFetch | **OK — AUTHORITATIVE: `skills/animejs/SKILL.md`** |
+| `https://github.com/heygen-com/hyperframes/tree/main/skills/waapi` | WebFetch | **OK — AUTHORITATIVE: `skills/waapi/SKILL.md`** |
+| `https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/animejs/SKILL.md` | WebFetch | **OK — verbatim skill file read** |
+| `https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/waapi/SKILL.md` | WebFetch | **OK — verbatim skill file read** |
+| `https://github.com/heygen-com/hyperframes/blob/main/packages/core/src/runtime/adapters/animejs.ts` | WebFetch | **OK — authoritative adapter source code** |
+| `https://github.com/heygen-com/hyperframes/blob/main/packages/core/src/runtime/adapters/waapi.ts` | WebFetch | **OK — authoritative adapter source code** |
 
-**Conclusion on coverage:** GSAP is fully documented. Anime.js, WAAPI, and Three.js are listed in the frame-adapters table with their seek mechanisms, but no dedicated guide pages exist at 0.6.6. The contracts below for those three engines are derived from the frame-adapters reference page (verified) plus the CLAUDE.md cross-check, and are marked accordingly.
+**Conclusion on coverage:** GSAP is fully documented. Anime.js and WAAPI are now **fully verified** from two authoritative sources each: the `skills/*/SKILL.md` canonical usage guides and the `packages/core/src/runtime/adapters/*.ts` source code. Three.js remains partially inferred. Dedicated guide pages (`.heygen.com/guides/animejs`, etc.) do not exist in the published docs site but the GitHub skills and source code are definitive.
 
 ---
 
@@ -153,164 +159,325 @@ The CLI docs example uses the looser `gsap@3` tag; the local hf-example pins `gs
 
 ## Engine 2: Anime.js
 
-**Confidence: VERIFIED (frame-adapters table) / PARTIALLY UNVERIFIED (code pattern)**
-
-The seek method (`instance.seek(timeMs)`) and registration global (`window.__hfAnime`) are confirmed by the frame-adapters reference page and CLAUDE.md. No dedicated guide page exists at 0.6.6 — the minimal code example below is inferred from the seek-contract table plus standard Anime.js v3 API. **Confirm the exact registration shape against a running 0.6.6 composition before shipping.**
+**Confidence: FULLY VERIFIED** — from `skills/animejs/SKILL.md` (canonical usage guide) and `packages/core/src/runtime/adapters/animejs.ts` (adapter source code), both from the authoritative `heygen-com/hyperframes` GitHub repo.
 
 ### Registration global
+
+**Shape: Array** — push each instance explicitly.
 
 ```javascript
 window.__hfAnime = window.__hfAnime || [];
 window.__hfAnime.push(animeInstance);
 ```
 
-The framework collects all instances registered on `window.__hfAnime` and seeks them all on each frame.
+The adapter iterates `window.__hfAnime` as a plain Array and calls `instance.seek(timeMs)` on each element. There is no keyed-object form.
 
-> UNVERIFIED: whether `window.__hfAnime` is an Array (push pattern) or an object keyed by ID. The frame-adapters docs say "instance.seek() on window-registered animations" without specifying the shape. CLAUDE.md lists the global but not its shape. **Confirm before implementing the adapter.**
+**Auto-discovery fallback:** The adapter also scans `anime.running` (Anime.js's internal active-instances array) to catch instances that were not manually pushed. However, **explicit `push()` is required** — do not rely on auto-discovery.
+
+Source: `animejs.ts` `discover()` function merges `anime.running` into `__hfAnime` as a fallback; `seek()` iterates the array.
 
 ### Must be created paused?
 
-**Yes** — the seek contract requires animations be under framework control, not self-playing. Use `autoplay: false`:
+**Yes — mandatory.** Use `autoplay: false`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js"></script>
+<script>
+  const anim = anime({
+    targets: ".mark",
+    translateX: 280,
+    rotate: "1turn",
+    opacity: [0, 1],
+    duration: 1200,
+    easing: "easeOutExpo",
+    autoplay: false,          // REQUIRED — HyperFrames owns the clock
+  });
+
+  window.__hfAnime = window.__hfAnime || [];
+  window.__hfAnime.push(anim);
+</script>
+```
+
+Timeline pattern:
 
 ```javascript
-const instance = anime({
-  targets: "#my-element",
-  opacity: [0, 1],
-  duration: 500,
-  autoplay: false,   // REQUIRED — do not let Anime.js drive its own clock
+const tl = anime.timeline({
+  autoplay: false,            // REQUIRED on the timeline object
+  easing: "easeOutCubic",
 });
 
+tl.add({
+  targets: ".title",
+  translateY: [40, 0],
+  opacity: [0, 1],
+  duration: 650,
+}).add(
+  {
+    targets: ".accent",
+    scaleX: [0, 1],
+    duration: 450,
+  },
+  250,
+);
+
 window.__hfAnime = window.__hfAnime || [];
-window.__hfAnime.push(instance);
+window.__hfAnime.push(tl);
 ```
 
 ### How HyperFrames seeks to a given time
 
+The adapter internally converts global time (seconds) to milliseconds, then calls:
+
 ```javascript
-instance.seek(t_seconds * 1000); // Anime.js seek() takes milliseconds
+instance.seek(timeMs);   // timeMs = ctx.time * 1000
 ```
 
-The frame-adapters table confirms: **`instance.seek(timeMs)`** — note the unit conversion: HyperFrames master clock is in **seconds**; `seek()` expects **milliseconds**.
+From `animejs.ts` source (verbatim):
+
+```typescript
+seek: (ctx) => {
+  const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);
+  for (const instance of instances) {
+    if (typeof instance.seek === "function") {
+      instance.seek(timeMs);
+    }
+  }
+},
+```
+
+**Unit: milliseconds.** Anime.js `seek()` takes ms; HyperFrames performs the `seconds → ms` conversion internally.
 
 ```
-t_ms = (normalizedFrame / fps) * 1000
+t_ms = Math.max(0, ctx.time * 1000)   // ctx.time is global seconds
 ```
 
 ### Time offset (placing animation at a scene's start offset)
 
-Anime.js `seek()` positions within the animation's own duration (0 → `instance.duration` ms). To place an animation at a scene start offset on the global timeline, compute the local time:
+The adapter passes the **raw global composition time** (in ms) to every `instance.seek()` call — it does **not** apply any per-instance `data-start` offset. The author must encode scene-local timing inside the animation itself.
+
+For a single animation that starts at `SCENE_START` seconds into the composition, use Anime.js's `delay` option (which shifts the animation's internal time origin):
 
 ```javascript
-const SCENE_START_MS = 1860;  // e.g., data-start="1.86" converted to ms
+const SCENE_START_MS = 1860; // data-start="1.86" * 1000
 
-// On each frame, the runtime will call:
-// local_t_ms = global_t_ms - SCENE_START_MS
-// instance.seek(clamp(local_t_ms, 0, instance.duration))
+const anim = anime({
+  targets: ".lower-third",
+  opacity: [0, 1],
+  duration: 500,
+  delay: SCENE_START_MS,     // Anime.js delays the start by this many ms
+  autoplay: false,
+});
+
+window.__hfAnime = window.__hfAnime || [];
+window.__hfAnime.push(anim);
 ```
 
-> UNVERIFIED: Whether HyperFrames performs the offset arithmetic internally (most likely, since it knows `data-start`) or whether the author must encode it inside the animation (e.g., using Anime.js timeline delays). **Confirm against running 0.6.6.**
+For timelines, use the timeline's `delay` option or `.add({}, offset)` position argument:
 
-### CDN URL
+```javascript
+const tl = anime.timeline({ autoplay: false });
+tl.add({ targets: ".title", opacity: [0, 1], duration: 500 }, SCENE_START_MS);
+```
+
+The SKILL.md does not document scene-offset as a built-in HyperFrames feature for Anime.js; the adapter source confirms the seek is global-clock. **Use `delay` or timeline offsets as the offset mechanism.**
+
+### CDN URL (pinned, verified from SKILL.md and adapter JSDoc)
+
+**Anime.js v4 is required** (the `.seek()` API is confirmed to work with v4; v3 has a different API surface). The SKILL.md and the adapter's own JSDoc example both pin:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/animejs@3/lib/anime.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js"></script>
 ```
 
-> UNVERIFIED: HyperFrames docs do not specify which Anime.js version is tested. The v3 CDN URL above is the standard. Anime.js v4 has a different module format — verify compatibility with 0.6.6 before upgrading.
+ES module alternative (also documented in SKILL.md):
+
+```html
+<script type="module">
+  import { animate } from "https://cdn.jsdelivr.net/npm/animejs/+esm";
+
+  const anim = animate(".chip", {
+    x: "18rem",
+    duration: 900,
+    autoplay: false,
+  });
+
+  window.__hfAnime = window.__hfAnime || [];
+  window.__hfAnime.push(anim);
+</script>
+```
+
+> **Warning:** Anime.js v3 (`animejs@3`) has a different module format and CDN path (`lib/anime.min.js`). HyperFrames 0.6.6 targets **v4** — do not use v3.
 
 ### Determinism constraints
 
-- `autoplay: false` — mandatory.
-- No `loop: true` or infinite animations.
+- `autoplay: false` — mandatory on every `anime({})` and `anime.timeline({})` call.
+- No `loop: true` or infinite animations — compute a finite repeat count.
+- Do not rely on `anime.running` auto-discovery alone — always `push()` explicitly.
 - No `Math.random()` or `Date.now()` in `targets`, `delay`, or `easing` functions.
-- All easing must be deterministic string references (`'easeInOutQuad'`) or pure mathematical functions.
+- Do not build animations inside timers, promises, event handlers, or after async asset loads — create synchronously during composition init.
+- Adapter also exposes `pause()` and `play()` (called by HyperFrames lifecycle) — ensure the instance has these methods (all `anime()` and `anime.timeline()` return objects do).
 
 ---
 
 ## Engine 3: WAAPI (Web Animations API)
 
-**Confidence: VERIFIED (seek mechanism) / PARTIALLY UNVERIFIED (registration shape)**
-
-Seek via `document.getAnimations()` + `currentTime` is confirmed by both the frame-adapters table and CLAUDE.md. No dedicated guide page exists. The exact `fill` mode requirement and setup pattern are inferred from standard WAAPI usage. **Confirm against running 0.6.6.**
+**Confidence: FULLY VERIFIED** — from `skills/waapi/SKILL.md` (canonical usage guide) and `packages/core/src/runtime/adapters/waapi.ts` (adapter source code), both from the authoritative `heygen-com/hyperframes` GitHub repo.
 
 ### Registration mechanism
 
-WAAPI animations are **not explicitly registered** on a global. HyperFrames discovers them via the browser-native `document.getAnimations()` API, which returns all `Animation` objects currently attached to the document:
+WAAPI animations are **not explicitly registered** on any global. HyperFrames discovers them automatically via `document.getAnimations()`, which returns all `Animation` objects currently attached to the document — including those created with `element.animate()` and CSS `@keyframes` / `animation:`.
 
 ```javascript
-const anim = element.animate(
-  [{ opacity: 0 }, { opacity: 1 }],
-  { duration: 500, fill: "both", delay: 0 }
+const orb = document.getElementById("orb");
+const animation = orb.animate(
+  [
+    { transform: "translate3d(-160px, 0, 0) scale(0.8)", opacity: 0 },
+    { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1, offset: 0.35 },
+    { transform: "translate3d(120px, 0, 0) scale(1.08)", opacity: 1 },
+  ],
+  {
+    duration: 3000,
+    delay: 2000,
+    easing: "cubic-bezier(0.2, 0, 0, 1)",
+    fill: "both",
+    iterations: 1,
+  },
 );
-anim.pause(); // REQUIRED immediately after creation
+
+animation.pause();    // pause after creation; adapter will also pause on every seek
 ```
 
-No `window.*` registration step — all animations created via `.animate()` or `@keyframes` + `animation:` CSS are automatically discoverable.
+No `window.*` registration step is required or supported.
 
-> UNVERIFIED: Whether HyperFrames seeks ALL animations returned by `document.getAnimations()` or only those in a specific paused state. **Confirm whether calling `anim.pause()` immediately is sufficient, or whether additional tagging (e.g., a `data-hf-managed` attribute) is expected.**
+**Which animations are sought:** The adapter calls `document.getAnimations()` and seeks **ALL** returned animations on each frame. There is no filtering by state or tag. Every live `Animation` in the document is seeked and then explicitly paused on every frame.
 
 ### Must be created paused?
 
-**Yes.** Call `.pause()` immediately after construction so HyperFrames can take over `currentTime`:
+**Yes — strongly recommended.** Call `.pause()` immediately after creation. The adapter also calls `animation.pause()` after every `currentTime` write, so even if you forget the initial pause, the adapter takes ownership on the first seek. However, explicit `pause()` after construction avoids any browser-clock frames before the first seek.
 
 ```javascript
 const anim = element.animate(keyframes, options);
-anim.pause(); // take ownership away from browser clock
+anim.pause();   // take ownership away from browser clock immediately
 ```
+
+From the adapter source (seek function, verbatim):
+
+```typescript
+try {
+  animation.currentTime = localTimeMs;
+} catch (err) { … }
+try {
+  animation.pause();
+} catch (err) { … }
+```
+
+The adapter writes `currentTime` and then `pause()`s on every single frame.
 
 ### How HyperFrames seeks to a given time
 
-```javascript
-// For each animation in document.getAnimations():
-anim.currentTime = t_ms; // milliseconds
-```
+The adapter iterates `document.getAnimations()` and sets `currentTime` (in milliseconds) on each, then pauses it:
 
-The frame-adapters table confirms: **`document.getAnimations()` + `currentTime` property**. The unit is **milliseconds**, same as Anime.js.
-
-```
-t_ms = (normalizedFrame / fps) * 1000
-```
-
-### Time offset (placing animation at a scene's start offset)
-
-Use WAAPI's `delay` option to push the animation's start time forward within the composition's clock:
-
-```javascript
-const SCENE_START_MS = 1860; // data-start="1.86" * 1000
-
-const anim = element.animate(
-  [{ opacity: 0 }, { opacity: 1 }],
-  {
-    duration: 500,
-    delay: SCENE_START_MS,   // animation starts at 1.86s on the global clock
-    fill: "both",
+```typescript
+seek: (ctx) => {
+  const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);
+  // …
+  for (const animation of snapshotAnimations()) {
+    const localTimeMs = baseline.animationTimeMs + Math.max(0, timeMs - baseline.compositionTimeMs);
+    animation.currentTime = localTimeMs;
+    animation.pause();
   }
-);
-anim.pause();
+},
 ```
 
-With `fill: "both"`, the element holds its pre-animation state before `delay` and its final state after the animation ends — essential for deterministic frame snapshots.
+**Unit: milliseconds.** `ctx.time` is global seconds; the adapter converts to ms internally.
 
-> UNVERIFIED: Whether HyperFrames sets `currentTime` to the raw global time (so `delay` creates the offset), or whether it adjusts per-animation start times separately. **Confirm delay handling against running 0.6.6.**
+### Time offset — how `delay` interacts with the adapter
+
+The adapter implements a **baseline system** to handle animations that were created with non-zero `currentTime` (e.g., created after `discover()` has already been called). The key arithmetic is:
+
+```
+localTimeMs = baseline.animationTimeMs + max(0, seekTimeMs - baseline.compositionTimeMs)
+```
+
+In the common case (animations created before first seek, `discover()` not yet called), `baseline.animationTimeMs = 0` and `baseline.compositionTimeMs = 0`, so:
+
+```
+localTimeMs = seekTimeMs   // the raw global composition time in ms
+```
+
+This means the adapter sets `currentTime` to the **raw global composition time** — not an animation-local time. **WAAPI `delay` then creates the scene-start offset correctly:** when `currentTime = 1500ms` and the animation has `delay: 2000ms`, the animation hasn't started yet (it's in the pre-fill region), and `fill: "both"` holds the first keyframe state.
+
+Verified pattern from SKILL.md:
+
+```javascript
+const SCENE_START_MS = 2000; // data-start="2" * 1000
+
+const animation = element.animate(
+  [
+    { transform: "translate3d(-160px, 0, 0) scale(0.8)", opacity: 0 },
+    { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1, offset: 0.35 },
+    { transform: "translate3d(120px, 0, 0) scale(1.08)", opacity: 1 },
+  ],
+  {
+    duration: 3000,
+    delay: SCENE_START_MS,     // use delay for scene-start offset
+    easing: "cubic-bezier(0.2, 0, 0, 1)",
+    fill: "both",              // REQUIRED — holds state outside animation range
+    iterations: 1,
+  },
+);
+
+animation.pause();
+```
+
+Stagger pattern (each element gets its own delay):
+
+```javascript
+document.querySelectorAll(".token").forEach((token, index) => {
+  const animation = token.animate(
+    [
+      { transform: "translateY(24px)", opacity: 0 },
+      { transform: "translateY(0)", opacity: 1 },
+    ],
+    {
+      duration: 620,
+      delay: index * 80,         // stagger — no scene-start offset needed here
+      easing: "cubic-bezier(0.2, 0, 0, 1)",
+      fill: "both",
+      iterations: 1,
+    },
+  );
+  animation.pause();
+});
+```
 
 ### CDN URL
 
-WAAPI is a **native browser API** — no CDN script required for basic usage. For a polyfill or enhanced features:
+WAAPI is a **native browser API** — no CDN script required. Headless Chrome (which HyperFrames uses for rendering) supports WAAPI natively; no polyfill is needed.
 
 ```html
-<!-- Only needed for older browsers or advanced GroupEffect / KeyframeEffect usage -->
+<!-- No CDN script needed. element.animate() is built into the browser. -->
+```
+
+If you need `GroupEffect` or `KeyframeEffect` APIs beyond basic `element.animate()`:
+
+```html
+<!-- Only for advanced KeyframeEffect / GroupEffect usage in older Chromium builds -->
 <script src="https://cdn.jsdelivr.net/npm/web-animations-js@2/web-animations.min.js"></script>
 ```
 
-> UNVERIFIED: HyperFrames docs do not mention whether a WAAPI polyfill is needed in Chromium's headless mode. In practice, headless Chrome 112+ supports WAAPI natively. **Verify polyfill requirement with `npx hyperframes@0.6.6 doctor`.**
+The SKILL.md contains no CDN URL — confirming no polyfill is expected.
 
 ### Determinism constraints
 
-- Always use `fill: "both"` (or `fill: "forwards"`) — without it, elements snap back to their natural state outside the animation range, causing frame-capture inconsistencies.
-- `anim.pause()` immediately after construction — no browser-clock playback.
-- No `infinite` iteration counts (`iterations: Infinity`).
+- Always use `fill: "both"` — without it, elements snap back outside the animation range and produce inconsistent frame captures. This is the single most important WAAPI gotcha.
+- `animation.pause()` immediately after construction — the adapter also pauses on every seek, but explicit early pausing is correct.
+- No `iterations: Infinity` — compute a finite repeat count.
 - No `Math.random()` in keyframe values.
-- CSS `animation:` shorthand with `animation-play-state: paused` also works for keyframe-driven animations, which HyperFrames picks up via `document.getAnimations()`.
+- No `requestAnimationFrame`, timers, or `performance.now()` for render-critical state.
+- Do not use `animation.finished` to mutate render-critical DOM — this promise may never resolve during seek-driven rendering.
+- Model clip-local start times with `delay:` in the animation options — the adapter does not automatically subtract `data-start` from `currentTime`.
+- CSS `animation:` with `animation-play-state: paused` is also discoverable via `document.getAnimations()`, but `element.animate()` + explicit `pause()` is the documented pattern.
 
 ---
 
@@ -419,8 +586,8 @@ window.addEventListener("hf-seek", (event) => {
 | Engine | Registration | Seek call | Unit | Paused requirement | Time offset |
 |--------|-------------|-----------|------|--------------------|-------------|
 | **GSAP** | `window.__timelines["<id>"] = tl` | `tl.totalTime(t)` | seconds | `{ paused: true }` in constructor | Position parameter (3rd arg) on each tween |
-| **Anime.js** | `window.__hfAnime.push(instance)` | `instance.seek(t_ms)` | **milliseconds** | `autoplay: false` | Computed offset: `local_ms = global_ms - scene_start_ms` (UNVERIFIED) |
-| **WAAPI** | None — `document.getAnimations()` discovery | `anim.currentTime = t_ms` | **milliseconds** | `.pause()` immediately after `.animate()` | `delay: scene_start_ms` in options (UNVERIFIED) |
+| **Anime.js** | `window.__hfAnime.push(instance)` — Array | `instance.seek(t_ms)` where `t_ms = global_s * 1000` | **milliseconds** | `autoplay: false` | `delay: scene_start_ms` in anime options, or `.add({}, offset)` in timeline |
+| **WAAPI** | None — `document.getAnimations()` auto-discovery | `anim.currentTime = t_ms` then `anim.pause()` | **milliseconds** | `.pause()` immediately after `.animate()` (adapter also pauses on every seek) | `delay: scene_start_ms` in animate options; adapter passes raw global time |
 | **Three.js** | `hf-seek` DOM event listener | `renderer.render()` inside handler | seconds (event payload) | No RAF / no `setAnimationLoop` | Subtract `SCENE_START` from `event.detail.time` |
 
 ---
@@ -441,19 +608,26 @@ These apply regardless of engine:
 
 ## Items requiring confirmation before shipping adapter code
 
-The following are marked UNVERIFIED and must be confirmed against a running HyperFrames 0.6.6 instance before the adapter implementations in Tasks 6–8 are finalised:
+Items 1–6 (Anime.js and WAAPI) are now **fully resolved** from the authoritative GitHub skill files and adapter source code. Only Three.js items remain open.
 
-| # | Engine | Item |
-|---|--------|------|
-| 1 | Anime.js | Exact shape of `window.__hfAnime` — Array (push) vs. keyed object |
-| 2 | Anime.js | Whether HyperFrames offsets `seek()` time by sub-composition `data-start`, or the author must do it |
-| 3 | Anime.js | Confirmed CDN version (v3 vs v4; v4 has breaking module format changes) |
-| 4 | WAAPI | Whether `delay` in animation options creates the correct offset, or HyperFrames adjusts `currentTime` per-animation relative to some baseline |
-| 5 | WAAPI | Whether any polyfill is needed in headless Chrome (likely not, but unverified) |
-| 6 | WAAPI | Whether HyperFrames seeks ALL `document.getAnimations()` or only paused ones |
-| 7 | Three.js | Exact `hf-seek` event payload shape (`event.detail.time`, `event.detail.frame`, other fields?) |
-| 8 | Three.js | Whether `hf-seek` carries global or sub-composition-local time |
-| 9 | Three.js | Pinned Three.js version tested with 0.6.6 |
-| 10 | Three.js | `AnimationMixer` pattern — `mixer.setTime(t)` vs `mixer.update(delta)` recommendation |
+### Resolved (Anime.js + WAAPI) — no further action needed
 
-**Fastest verification method**: `npx hyperframes skills` to install engine-specific skill files (which contain authoritative code examples), or create a minimal test composition for each engine and run `npx hyperframes@0.6.6 render`.
+| # | Engine | Item | Resolution |
+|---|--------|------|------------|
+| 1 | Anime.js | Exact shape of `window.__hfAnime` — Array vs. keyed object | **RESOLVED: Array** — `push()` pattern; adapter iterates as array |
+| 2 | Anime.js | Whether HyperFrames offsets `seek()` by `data-start` | **RESOLVED: No** — adapter passes raw global time; author uses `delay:` option |
+| 3 | Anime.js | Confirmed CDN version (v3 vs v4) | **RESOLVED: v4 is required** — `animejs@4.0.2/lib/anime.iife.min.js` |
+| 4 | WAAPI | Whether `delay` creates correct offset | **RESOLVED: Yes** — adapter sets raw global `currentTime`; WAAPI `delay` shifts the animation's effective start |
+| 5 | WAAPI | Whether polyfill needed in headless Chrome | **RESOLVED: No** — SKILL.md contains no polyfill; native WAAPI is assumed |
+| 6 | WAAPI | Whether ALL `document.getAnimations()` are sought or only paused | **RESOLVED: ALL** — adapter seeks every animation returned, then pauses each |
+
+### Still UNVERIFIED — Three.js only
+
+| # | Engine | Item | How to confirm |
+|---|--------|------|----------------|
+| 7 | Three.js | Exact `hf-seek` event payload shape (`event.detail.time`, `event.detail.frame`, other fields?) | Read `skills/three/SKILL.md` or `packages/core/src/runtime/adapters/three.ts` from the GitHub repo |
+| 8 | Three.js | Whether `hf-seek` carries global or sub-composition-local time | Same sources as #7 |
+| 9 | Three.js | Pinned Three.js version tested with 0.6.6 | `skills/three/SKILL.md` CDN example |
+| 10 | Three.js | `AnimationMixer` pattern — `mixer.setTime(t)` vs `mixer.update(delta)` | `skills/three/SKILL.md` or adapter source |
+
+**To resolve Three.js items:** Fetch `https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/three/SKILL.md` and `https://github.com/heygen-com/hyperframes/blob/main/packages/core/src/runtime/adapters/three.ts` — the same approach that verified Anime.js and WAAPI.
