@@ -24,16 +24,38 @@ import "./app.css";
 // first executes, before any component mounts and fires its first $pageview.
 bootstrapPostHog();
 
-// Organization schema lives at the document root so every page emits it. Wire
-// social profiles into `sameAs` (Twitter/LinkedIn/etc.) as they go live —
+// Brand-entity schema lives at the document root so every page emits it. The
+// @graph pairs an Organization with a WebSite node so Google can resolve
+// "Videly" to a single brand across queries — this directly strengthens
+// branded SERP appearance (the lever behind low branded CTR on a young domain).
+//
+// `alternateName` captures the brand spellings/variants people actually search
+// (GSC shows "videly ai", "videley", "videly.io"); declaring them helps Google
+// match those near-miss queries to this site.
+//
+// Wire social profiles into `sameAs` (Twitter/LinkedIn/etc.) as they go live —
 // Google uses them to associate the brand with its public identities.
-const ORGANIZATION_JSONLD = JSON.stringify({
+const BRAND_JSONLD = JSON.stringify({
   "@context": "https://schema.org",
-  "@type": "Organization",
-  name: SITE_NAME,
-  url: SITE_URL,
-  logo: `${SITE_URL}/logo.svg`,
-  sameAs: [],
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      alternateName: ["Videly AI", "videly.io"],
+      url: SITE_URL,
+      logo: `${SITE_URL}/logo.svg`,
+      sameAs: [],
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      alternateName: ["Videly AI", "videly.io"],
+      url: SITE_URL,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+  ],
 });
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -69,7 +91,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: ORGANIZATION_JSONLD }}
+          dangerouslySetInnerHTML={{ __html: BRAND_JSONLD }}
         />
       </head>
       <body>
