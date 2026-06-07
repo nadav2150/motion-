@@ -98,7 +98,7 @@ test("a mixed gsap+anime+waapi scene emits each engine correctly", () => {
         transitionIn: "hard_cut",
         layers: [
           { id: "bg", engine: "waapi", html: `<div id="box"></div>`, code: `document.getElementById("box").animate([{opacity:0},{opacity:1}],{duration:500,delay:__sceneStartMs+0,fill:"both",iterations:1}).pause();` },
-          { id: "mid", engine: "anime", html: `<h1 class="mark">Hi</h1>`, code: `var anim = anime({targets:".mark",opacity:[0,1],duration:600,delay:__sceneStartMs+0,autoplay:false}); window.__hfAnime.push(anim);` },
+          { id: "mid", engine: "anime", html: `<h1 class="mark">Hi</h1>`, code: `var anim = anime.createTimeline({autoplay:false}).add(".mark",{opacity:{from:0,to:1},duration:600,delay:__sceneStartMs+0}); window.__hfAnime.push(anim);` },
           { id: "fg", engine: "gsap", html: `<p id="cap">Cap</p>`, code: `tl.from("#cap", { y: 10 }, 0);` },
         ],
       },

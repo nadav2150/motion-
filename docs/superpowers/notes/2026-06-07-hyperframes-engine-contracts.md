@@ -178,16 +178,18 @@ Source: `animejs.ts` `discover()` function merges `anime.running` into `__hfAnim
 
 ### Must be created paused?
 
-**Yes — mandatory.** Use `autoplay: false`:
+**Yes — mandatory.** Use `autoplay: false`.
+
+> **API correction (2026-06-07):** The Anime.js v4 IIFE build (`animejs@4.0.2`) exposes `anime` as a **plain object, not a callable function**. The v3-style `anime({...})` call and `anime.timeline({...})` both **throw at runtime**. This was confirmed when `scripts/smoke-multi-engine.ts` rendered a real MP4 using the correct v4 API. Use `anime.createTimeline(...)` or `anime.animate(...)` instead.
+
+Single-animation pattern — use `anime.animate(targets, opts)`:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js"></script>
 <script>
-  const anim = anime({
-    targets: ".mark",
-    translateX: 280,
-    rotate: "1turn",
-    opacity: [0, 1],
+  const anim = anime.animate(".mark", {
+    translateX: { from: -280, to: 0 },
+    opacity: { from: 0, to: 1 },
     duration: 1200,
     easing: "easeOutExpo",
     autoplay: false,          // REQUIRED — HyperFrames owns the clock
@@ -198,27 +200,22 @@ Source: `animejs.ts` `discover()` function merges `anime.running` into `__hfAnim
 </script>
 ```
 
-Timeline pattern:
+Timeline pattern — use `anime.createTimeline({ autoplay: false }).add(targets, opts)`:
 
 ```javascript
-const tl = anime.timeline({
+const tl = anime.createTimeline({
   autoplay: false,            // REQUIRED on the timeline object
   easing: "easeOutCubic",
 });
 
-tl.add({
-  targets: ".title",
-  translateY: [40, 0],
-  opacity: [0, 1],
+tl.add(".title", {
+  translateY: { from: 40, to: 0 },
+  opacity: { from: 0, to: 1 },
   duration: 650,
-}).add(
-  {
-    targets: ".accent",
-    scaleX: [0, 1],
-    duration: 450,
-  },
-  250,
-);
+}).add(".accent", {
+  scaleX: { from: 0, to: 1 },
+  duration: 450,
+}, 250);
 
 window.__hfAnime = window.__hfAnime || [];
 window.__hfAnime.push(tl);
@@ -260,9 +257,8 @@ For a single animation that starts at `SCENE_START` seconds into the composition
 ```javascript
 const SCENE_START_MS = 1860; // data-start="1.86" * 1000
 
-const anim = anime({
-  targets: ".lower-third",
-  opacity: [0, 1],
+const anim = anime.animate(".lower-third", {
+  opacity: { from: 0, to: 1 },
   duration: 500,
   delay: SCENE_START_MS,     // Anime.js delays the start by this many ms
   autoplay: false,
@@ -272,11 +268,11 @@ window.__hfAnime = window.__hfAnime || [];
 window.__hfAnime.push(anim);
 ```
 
-For timelines, use the timeline's `delay` option or `.add({}, offset)` position argument:
+For timelines, use the timeline's `delay` option or the `.add(targets, opts, offset)` position argument:
 
 ```javascript
-const tl = anime.timeline({ autoplay: false });
-tl.add({ targets: ".title", opacity: [0, 1], duration: 500 }, SCENE_START_MS);
+const tl = anime.createTimeline({ autoplay: false });
+tl.add(".title", { opacity: { from: 0, to: 1 }, duration: 500 }, SCENE_START_MS);
 ```
 
 The SKILL.md does not document scene-offset as a built-in HyperFrames feature for Anime.js; the adapter source confirms the seek is global-clock. **Use `delay` or timeline offsets as the offset mechanism.**
@@ -310,12 +306,12 @@ ES module alternative (also documented in SKILL.md):
 
 ### Determinism constraints
 
-- `autoplay: false` — mandatory on every `anime({})` and `anime.timeline({})` call.
+- `autoplay: false` — mandatory on every `anime.createTimeline({})` and `anime.animate()` call.
 - No `loop: true` or infinite animations — compute a finite repeat count.
 - Do not rely on `anime.running` auto-discovery alone — always `push()` explicitly.
 - No `Math.random()` or `Date.now()` in `targets`, `delay`, or `easing` functions.
 - Do not build animations inside timers, promises, event handlers, or after async asset loads — create synchronously during composition init.
-- Adapter also exposes `pause()` and `play()` (called by HyperFrames lifecycle) — ensure the instance has these methods (all `anime()` and `anime.timeline()` return objects do).
+- Adapter also exposes `pause()` and `play()` (called by HyperFrames lifecycle) — ensure the instance has these methods (all `anime.createTimeline()` and `anime.animate()` return objects do).
 
 ---
 

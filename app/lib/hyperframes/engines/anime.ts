@@ -3,7 +3,7 @@
 // window.__hfAnime (instance.seek(ms)) each frame. Layer code must create
 // instances with autoplay:false and push them to window.__hfAnime; scene
 // offset is added to `delay` via the exposed __sceneStartMs (ms). The IIFE
-// build exposes the global `anime` (anime({...}) / anime.timeline({...})).
+// build exposes `anime` as an object (not callable); use anime.createTimeline({ autoplay: false }).add(targets, opts) or anime.animate(targets, opts).
 
 import { stackLayerDom } from "./dom";
 import type { EngineAdapter, Layer, LayerEmitContext } from "./types";
@@ -29,8 +29,8 @@ export const animeAdapter: EngineAdapter = {
     const startMs = Math.round(ctx.start * 1000);
     return [
       `  (function () {`,
-      `    // Anime.js layer "${layer.id}" (scene ${ctx.sceneId}). Author anime({ ...,`,
-      `    // autoplay: false, delay: __sceneStartMs + localDelayMs }) then window.__hfAnime.push(anim).`,
+      `    // Anime.js layer "${layer.id}" (scene ${ctx.sceneId}). Author`,
+      `    // anime.createTimeline({ autoplay: false }).add(targets, { ..., delay: __sceneStartMs + localDelayMs }) then window.__hfAnime.push(tl).`,
       `    var __sceneStartMs = ${startMs};`,
       `    window.__hfAnime = window.__hfAnime || [];`,
       indentLines(body, "    "),

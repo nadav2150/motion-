@@ -6,7 +6,7 @@ const layer: Layer = {
   id: "title",
   engine: "anime",
   html: `<h1 class="mark">Hi</h1>`,
-  code: `var anim = anime({ targets: ".mark", opacity: [0,1], duration: 600, delay: __sceneStartMs + 0, autoplay: false }); window.__hfAnime.push(anim);`,
+  code: `var anim = anime.createTimeline({ autoplay: false }).add(".mark", { opacity: { from: 0, to: 1 }, duration: 600, delay: __sceneStartMs + 0 }); window.__hfAnime.push(anim);`,
 };
 const ctx: LayerEmitContext = { sceneId: "s2", start: 3, duration: 4, index: 0, total: 1 };
 
@@ -28,7 +28,7 @@ test("emitJs exposes __sceneStartMs, inits __hfAnime, and includes the layer cod
   const js = animeAdapter.emitJs(layer, ctx);
   expect(js).toContain(`var __sceneStartMs = 3000;`);
   expect(js).toContain(`window.__hfAnime = window.__hfAnime || [];`);
-  expect(js).toContain(`anime({ targets: ".mark"`);
+  expect(js).toContain(`anime.createTimeline({ autoplay: false })`);
   expect(js).toContain(`window.__hfAnime.push(anim);`);
 });
 
