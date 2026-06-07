@@ -6,11 +6,7 @@ test("getEngineAdapter returns the registered adapters", () => {
   expect(getEngineAdapter("gsap")!.engine).toBe("gsap");
   expect(getEngineAdapter("waapi")!.engine).toBe("waapi");
   expect(getEngineAdapter("anime")!.engine).toBe("anime");
-});
-
-test("getEngineAdapter returns null for an unregistered engine", () => {
-  // three is not registered until Phase 3.
-  expect(getEngineAdapter("three")).toBeNull();
+  expect(getEngineAdapter("three")!.engine).toBe("three");
 });
 
 test("collectExtraCdn returns no extra scripts for gsap/waapi only (both have no extra CDN)", () => {
@@ -32,7 +28,7 @@ test("collectExtraCdn includes the anime CDN once when anime is used", () => {
   ]);
 });
 
-test("collectExtraCdn ignores engines with no registered adapter", () => {
+test("three contributes no CDN tag (ESM import lives in layer code)", () => {
   const layers: Layer[] = [{ id: "a", engine: "three", code: "" }];
   expect(collectExtraCdn(layers)).toEqual([]);
 });

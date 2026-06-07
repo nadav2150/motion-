@@ -55,7 +55,7 @@ test("legacy fills (no layers) still produce the GSAP wiring and scene content",
   expect(html).not.toContain(`three.min.js`);
 });
 
-test("an unregistered engine layer is dropped, GSAP siblings survive", () => {
+test("three + gsap layers coexist: three emitted as module script, gsap siblings survive", () => {
   const fills: FilmFills = {
     cssVariables: {},
     scenes: [
@@ -80,10 +80,14 @@ test("an unregistered engine layer is dropped, GSAP siblings survive", () => {
     ],
   };
   const html = buildFilmSkeleton(storyboard, identity, fills);
-  expect(html).not.toContain(`<canvas id="c">`);
-  expect(html).not.toContain(`/* three */`);
+  // three IS registered — canvas and module code both appear.
+  expect(html).toContain(`<canvas id="c">`);
+  expect(html).toContain(`/* three */`);
+  expect(html).toContain(`<script type="module">`);
+  expect(html).toContain(`const __sceneStartS = 0;`);
+  // GSAP sibling also emitted; layers are stacked (z-index present).
   expect(html).toContain(`<h1 id="t">Hi</h1>`);
-  expect(html).not.toContain(`class="layer"`);
+  expect(html).toContain(`z-index`);
 });
 
 test("a mixed gsap+anime+waapi scene emits each engine correctly", () => {
