@@ -34,6 +34,15 @@ export type EngineAdapter = {
   engine: LayerEngine;
   /** CDN <script> src to inject when this engine is used; null = native (WAAPI). */
   cdn: string | null;
+  /**
+   * How this engine's emitJs output is embedded:
+   *   "inline" (default) — concatenated into the composition's single classic
+   *   inline <script> alongside the GSAP master timeline.
+   *   "module" — emitted as its own <script type="module"> after the inline
+   *   script (required for engines whose code uses top-level ESM imports,
+   *   e.g. Three via jsDelivr +esm).
+   */
+  jsKind?: "inline" | "module";
   /** HTML emitted into .scene-content for this layer. */
   emitDom(layer: Layer, ctx: LayerEmitContext): string;
   /**

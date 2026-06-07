@@ -2373,6 +2373,7 @@ export function buildFilmSkeleton(
       ];
       emittable.forEach((layer, index) => {
         const adapter = getEngineAdapter(layer.engine)!;
+        if ((adapter.jsKind ?? "inline") !== "inline") return;
         const ctx: LayerEmitContext = {
           sceneId: sid,
           start,
@@ -2386,6 +2387,36 @@ export function buildFilmSkeleton(
       return blocks.join("\n");
     })
     .join("\n\n");
+
+  // Module-kind layer scripts (e.g. Three via ESM import). Each becomes its
+  // own <script type="module"> after the main inline script — a module can't
+  // nest inside a classic script, and module scope keeps layers isolated.
+  const moduleScriptBlocks: string[] = [];
+  storyboard.scenes.forEach((scene, i) => {
+    const sid = `s${i + 1}`;
+    const fill = fillById.get(sid) ?? fillById.get(scene.id);
+    const start = starts[i];
+    const layers = resolveLayers({
+      layers: fill?.layers,
+      contentHtml: fill?.contentHtml ?? "",
+      sceneCss: fill?.sceneCss ?? "",
+      timeline: fill?.timeline ?? "",
+    });
+    const emittable = layers.filter((l) => getEngineAdapter(l.engine) !== null);
+    emittable.forEach((layer, index) => {
+      const adapter = getEngineAdapter(layer.engine)!;
+      if ((adapter.jsKind ?? "inline") !== "module") return;
+      const js = adapter.emitJs(layer, {
+        sceneId: sid,
+        start,
+        duration: scene.durationSeconds,
+        index,
+        total: emittable.length,
+      });
+      if (js.trim()) moduleScriptBlocks.push(`<script type="module">\n${js}\n</script>`);
+    });
+  });
+  const moduleScriptsHtml = moduleScriptBlocks.length > 0 ? `\n${moduleScriptBlocks.join("\n")}` : "";
 
   // Visibility / shader-anchor automation written by the merger.
   const visibilityBlock = storyboard.scenes
@@ -2572,7 +2603,7 @@ ${
   } else {
     tl.play();
   }
-</script>
+</script>${moduleScriptsHtml}
 </body>
 </html>
 `;

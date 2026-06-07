@@ -120,3 +120,15 @@ test("a mixed gsap+anime+waapi scene emits each engine correctly", () => {
   expect(html).toContain(`<div id="box"></div>`);
   expect(html).toContain(`<h1 class="mark">Hi</h1>`);
 });
+
+test("no module scripts are emitted when every layer engine is inline", () => {
+  const fills: FilmFills = {
+    cssVariables: {},
+    scenes: [
+      { id: "s1", contentHtml: `<h1 id="a">A</h1>`, sceneCss: "", timeline: `tl.from("#a", {}, 0);`, transitionIn: "hard_cut" },
+      { id: "s2", contentHtml: `<h1 id="b">B</h1>`, sceneCss: "", timeline: "", transitionIn: "hard_cut" },
+    ],
+  };
+  const html = buildFilmSkeleton(storyboard, identity, fills);
+  expect(html).not.toContain(`<script type="module">`);
+});
