@@ -1,7 +1,7 @@
-// End-to-end render smoke for mixed-engine (gsap + anime + waapi) compositions.
+// End-to-end render smoke for mixed-engine (gsap + anime + waapi + three) compositions.
 //
 // What it proves:
-//   HyperFrames 0.6.6 actually SEEKS animations registered via all three
+//   HyperFrames 0.6.6 actually SEEKS animations registered via all four
 //   in-use engines — not just that the adapter emitter writes correct strings.
 //   A real render (Chromium seek-and-capture → ffmpeg → MP4) is required
 //   because the seek contract only works when the live browser runtime
@@ -13,6 +13,17 @@
 //   gone. Use `anime.animate(targets, opts)` or `anime.createTimeline({autoplay:false})`
 //   followed by `.add(targets, opts)`. This script uses `createTimeline` so that
 //   the returned object has `.seek(ms)` (HyperFrames calls this on every frame).
+//
+// Three.js contract (verified from docs/superpowers/notes/2026-06-07-hyperframes-engine-contracts.md):
+//   • ESM import: `import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.2/+esm"`
+//   • Renderer: new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+//     renderer.setSize(1920, 1080, false); renderer.setPixelRatio(1);
+//   • Seek: window.addEventListener("hf-seek", (e) => renderAt(e.detail.time - __sceneStartS))
+//     — e.detail.time is in SECONDS (global). Subtract __sceneStartS for scene-local time.
+//   • Initial frame MANDATORY: renderAt(Math.max(0, (window.__hfThreeTime || 0) - __sceneStartS))
+//     after setup, or the canvas is blank until the first hf-seek fires.
+//   • No rAF / setAnimationLoop — render is a pure function of seek time.
+//   • cdn: null, jsKind: "module" — emitted as <script type="module">.
 //
 // Run: npx tsx scripts/smoke-multi-engine.ts
 //
@@ -49,15 +60,16 @@ import {
 import { hyperframesBin, hyperframesArgs } from "../app/lib/hyperframes/cli";
 
 // ─── Scene parameters ────────────────────────────────────────────────────────
-// One scene, 2.5 s, three engines stacked back-to-front:
-//   layer 0 (waapi) — box fades in AND translates up (opacity 0→1, y 40px→0)
-//   layer 1 (anime) — mark slides in from left (translateX -120px→0, opacity 0→1)
-//   layer 2 (gsap)  — caption drops in (y: 30→0, opacity 0→1)
+// One scene, 2.5 s, four engines stacked back-to-front:
+//   layer 0 (waapi)  — box fades in AND translates up (opacity 0→1, y 40px→0)
+//   layer 1 (anime)  — mark slides in from left (translateX -120px→0, opacity 0→1)
+//   layer 2 (gsap)   — caption drops in (y: 30→0, opacity 0→1)
+//   layer 3 (three)  — torus-knot rotating via hf-seek event (WebGL canvas)
 //
-// All three layers animate continuously across the scene so frame@0ms ≠
+// All four layers animate continuously across the scene so frame@0ms ≠
 // frame@1250ms, giving a detectable pixel diff when ffmpeg is available.
 //
-// Scene starts at t=0 (s1 is always offset 0) so __sceneStartMs = 0.
+// Scene starts at t=0 (s1 is always offset 0) so __sceneStartMs = 0 / __sceneStartS = 0.
 
 const SCENE_DURATION_S = 2.5;
 const SCENE_START_MS = 0; // s1 always starts at 0
@@ -109,11 +121,16 @@ const identity: VisualIdentity = storyboard.visualIdentity;
 //   waapi : el.animate(keyframes, { delay: __sceneStartMs + <local>,
 //             fill:"both", iterations:1 }).pause()
 //   gsap  : tl.from(…) at a scene-local position parameter
+//   three : ESM <script type="module">; import * as THREE from jsDelivr/+esm;
+//             window.addEventListener("hf-seek", (e) => renderAt(e.detail.time - __sceneStartS));
+//             renderAt(Math.max(0, (window.__hfThreeTime || 0) - __sceneStartS));  // initial frame MANDATORY
 //
 // __sceneStartMs is injected by the waapi/anime adapter emitters as:
 //   var __sceneStartMs = <start * 1000>;
-// The code string therefore references it as a variable, matching the
-// integration test in buildFilmSkeleton.test.ts line 100-102.
+// __sceneStartS is injected by the three adapter emitter as:
+//   const __sceneStartS = <start>;
+// The code strings therefore reference these as variables, matching the
+// integration test in buildFilmSkeleton.test.ts.
 
 const fills: FilmFills = {
   cssVariables: {},
@@ -171,10 +188,48 @@ const fills: FilmFills = {
         {
           id: "gsap-caption",
           engine: "gsap",
-          html: `<p id="smoke-cap" style="position:absolute;bottom:60px;left:0;right:0;text-align:center;font-size:24px;font-family:var(--body-font);color:var(--ink-muted);margin:0;">WAAPI + Anime + GSAP</p>`,
+          html: `<p id="smoke-cap" style="position:absolute;bottom:60px;left:0;right:0;text-align:center;font-size:24px;font-family:var(--body-font);color:var(--ink-muted);margin:0;">WAAPI + Anime + GSAP + Three</p>`,
           // For GSAP layers the scene offset is applied via the position
           // parameter (3rd arg). Scene s1 starts at 0s, so position = 0 + local.
           code: `tl.from("#smoke-cap", { y: 30, opacity: 0, duration: 0.7, ease: "power3.out" }, ${SCENE_START_MS / 1000 + 0.3});`,
+        },
+
+        // ── Layer 3: Three.js — torus-knot rotating via hf-seek ───────────
+        // Contract (docs/superpowers/notes/2026-06-07-hyperframes-engine-contracts.md):
+        //   • cdn: null — Three is imported inside the ESM layer itself.
+        //   • jsKind: "module" — skeleton emits <script type="module">.
+        //   • __sceneStartS injected as `const __sceneStartS = <start>;` (seconds).
+        //   • Seek: window "hf-seek" event, e.detail.time in SECONDS (global).
+        //     Subtract __sceneStartS to get scene-local time.
+        //   • Initial render: renderAt(Math.max(0, (window.__hfThreeTime || 0) - __sceneStartS))
+        //     — mandatory, runs synchronously after setup before any hf-seek fires.
+        //   • No rAF / setAnimationLoop — renderer.render() only inside renderAt().
+        {
+          id: "three-torus",
+          engine: "three",
+          html: `<canvas id="smoke-three" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>`,
+          code: [
+            `import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.2/+esm";`,
+            `const canvas = document.getElementById("smoke-three");`,
+            `const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });`,
+            `renderer.setSize(1920, 1080, false);`,
+            `renderer.setPixelRatio(1);`,
+            `const scene3 = new THREE.Scene();`,
+            `const camera = new THREE.PerspectiveCamera(35, 1920 / 1080, 0.1, 100);`,
+            `camera.position.set(0, 0, 6);`,
+            `const mesh = new THREE.Mesh(`,
+            `  new THREE.TorusKnotGeometry(1, 0.3, 96, 16),`,
+            `  new THREE.MeshNormalMaterial(),`,
+            `);`,
+            `scene3.add(mesh);`,
+            `function renderAt(t) {`,
+            `  mesh.rotation.y = t * 0.9;`,
+            `  mesh.rotation.x = t * 0.4;`,
+            `  renderer.render(scene3, camera);`,
+            `}`,
+            `window.addEventListener("hf-seek", (e) => renderAt(Math.max(0, e.detail.time - __sceneStartS)));`,
+            `renderAt(Math.max(0, (window.__hfThreeTime || 0) - __sceneStartS));`,
+          ].join("\n"),
         },
       ],
     },
@@ -226,12 +281,16 @@ async function main() {
   const html = buildFilmSkeleton(storyboard, identity, fills);
   console.log(`[smoke] composition: ${html.length} chars`);
 
-  // Quick sanity: all three engines should appear in the output.
+  // Quick sanity: all four engines should appear in the output.
   const missingEngines: string[] = [];
   if (!html.includes("animejs@4.0.2")) missingEngines.push("anime");
   if (!html.includes("__hfAnime")) missingEngines.push("__hfAnime");
   if (!html.includes("smoke-box")) missingEngines.push("waapi-box");
   if (!html.includes("smoke-cap")) missingEngines.push("gsap-cap");
+  if (!html.includes("smoke-three")) missingEngines.push("three-canvas");
+  if (!html.includes(`<script type="module">`)) missingEngines.push("three-module-script");
+  if (!html.includes("const __sceneStartS = ")) missingEngines.push("three-sceneStartS");
+  if (!html.includes("three@0.181.2")) missingEngines.push("three-cdn");
   if (missingEngines.length > 0) {
     console.error(`SMOKE FAIL: missing expected content: ${missingEngines.join(", ")}`);
     process.exit(1);
