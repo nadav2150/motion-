@@ -48,6 +48,7 @@ test("legacy fills (no layers) still produce the GSAP wiring and scene content",
   expect(html).toContain(`<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`);
   expect(html).toContain(`<h1 id="a">First</h1>`);
   expect(html).not.toContain(`class="layer"`);
+  expect(html).toContain(`<div class="scene-content">`);
   expect(html).toContain(`})(tl, 3);`);
   expect(html).toContain(`tl.from("#b", { y: 20 }, 0);`);
   expect(html).not.toContain(`anime.min.js`);
@@ -82,5 +83,5 @@ test("an unregistered engine layer is dropped, GSAP siblings survive", () => {
   expect(html).not.toContain(`<canvas id="c">`);
   expect(html).not.toContain(`/* three */`);
   expect(html).toContain(`<h1 id="t">Hi</h1>`);
-  expect(html).toContain(`class="layer"`);
+  expect(html).not.toContain(`class="layer"`);
 });

@@ -2310,22 +2310,27 @@ export function buildFilmSkeleton(
         timeline: fill?.timeline ?? "",
       });
 
+      // Warn once per dropped layer (engine with no registered adapter).
+      for (const l of layers) {
+        if (!getEngineAdapter(l.engine)) {
+          console.warn(
+            `[hyperframes] scene ${sid}: dropping layer "${l.id}" — no adapter for engine "${l.engine}"`,
+          );
+        }
+      }
+      // Index/count only over layers that actually render, so z-order and the
+      // single-layer "unwrapped" optimization aren't thrown off by dropped layers.
+      const emittable = layers.filter((l) => getEngineAdapter(l.engine) !== null);
       const domParts: string[] = [];
       const cssParts: string[] = [];
-      layers.forEach((layer, index) => {
-        const adapter = getEngineAdapter(layer.engine);
-        if (!adapter) {
-          console.warn(
-            `[hyperframes] scene ${sid}: dropping layer "${layer.id}" — no adapter for engine "${layer.engine}"`,
-          );
-          return;
-        }
+      emittable.forEach((layer, index) => {
+        const adapter = getEngineAdapter(layer.engine)!;
         const ctx: LayerEmitContext = {
           sceneId: sid,
           start,
           duration: scene.durationSeconds,
           index,
-          total: layers.length,
+          total: emittable.length,
         };
         domParts.push(adapter.emitDom(layer, ctx));
         if (layer.css) cssParts.push(layer.css);
@@ -2362,18 +2367,18 @@ export function buildFilmSkeleton(
         timeline: fill?.timeline ?? "",
       });
 
+      const emittable = layers.filter((l) => getEngineAdapter(l.engine) !== null);
       const blocks: string[] = [
         `  // ── ${sid} (${scene.copy.slice(0, 60).replace(/\s+/g, " ")}) — offset ${start}s ──`,
       ];
-      layers.forEach((layer, index) => {
-        const adapter = getEngineAdapter(layer.engine);
-        if (!adapter) return; // already warned in sectionsHtml
+      emittable.forEach((layer, index) => {
+        const adapter = getEngineAdapter(layer.engine)!;
         const ctx: LayerEmitContext = {
           sceneId: sid,
           start,
           duration: scene.durationSeconds,
           index,
-          total: layers.length,
+          total: emittable.length,
         };
         const js = adapter.emitJs(layer, ctx);
         if (js.trim()) blocks.push(js);
