@@ -85,3 +85,38 @@ test("an unregistered engine layer is dropped, GSAP siblings survive", () => {
   expect(html).toContain(`<h1 id="t">Hi</h1>`);
   expect(html).not.toContain(`class="layer"`);
 });
+
+test("a mixed gsap+anime+waapi scene emits each engine correctly", () => {
+  const fills: FilmFills = {
+    cssVariables: {},
+    scenes: [
+      {
+        id: "s1",
+        contentHtml: "",
+        sceneCss: "",
+        timeline: "",
+        transitionIn: "hard_cut",
+        layers: [
+          { id: "bg", engine: "waapi", html: `<div id="box"></div>`, code: `document.getElementById("box").animate([{opacity:0},{opacity:1}],{duration:500,delay:__sceneStartMs+0,fill:"both",iterations:1}).pause();` },
+          { id: "mid", engine: "anime", html: `<h1 class="mark">Hi</h1>`, code: `var anim = anime({targets:".mark",opacity:[0,1],duration:600,delay:__sceneStartMs+0,autoplay:false}); window.__hfAnime.push(anim);` },
+          { id: "fg", engine: "gsap", html: `<p id="cap">Cap</p>`, code: `tl.from("#cap", { y: 10 }, 0);` },
+        ],
+      },
+      { id: "s2", contentHtml: `<h1 id="b">Second</h1>`, sceneCss: "", timeline: "", transitionIn: "hard_cut" },
+    ],
+  };
+  const html = buildFilmSkeleton(storyboard, identity, fills);
+
+  // Anime CDN injected exactly once; WAAPI has no CDN.
+  expect(html).toContain(`https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js`);
+  expect(html.match(/animejs@4\.0\.2/g)?.length).toBe(1);
+  // Each engine's code present.
+  expect(html).toContain(`window.__hfAnime.push(anim);`);
+  expect(html).toContain(`.animate([{opacity:0},{opacity:1}]`);
+  expect(html).toContain(`tl.from("#cap", { y: 10 }, 0);`);
+  // Scene offset exposed for the code-driven engines (s1 starts at 0ms).
+  expect(html).toContain(`var __sceneStartMs = 0;`);
+  // All three layers stacked (total=3) so each is wrapped.
+  expect(html).toContain(`<div id="box"></div>`);
+  expect(html).toContain(`<h1 class="mark">Hi</h1>`);
+});
