@@ -41,6 +41,7 @@ import {
   VOICE_CATALOG_IDS,
   type TtsModelId,
 } from "../elevenlabs-tts";
+import { hyperframesArgs, hyperframesBin } from "./cli";
 
 const MODEL = "claude-opus-4-8";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
@@ -2150,8 +2151,8 @@ async function lintCompositionHTML(
   try {
     await writeFile(path.join(dir, "index.html"), html, "utf8");
     const isWin = process.platform === "win32";
-    const cmd = isWin ? "npx.cmd" : "npx";
-    const args = ["hyperframes", "lint", ".", "--json"];
+    const cmd = hyperframesBin();
+    const args = hyperframesArgs("lint", [".", "--json"]);
 
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
