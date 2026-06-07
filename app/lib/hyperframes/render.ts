@@ -15,6 +15,7 @@ import {
   type MirroredAsset,
 } from "../storage";
 import type { SceneFiles } from "./types";
+import { hyperframesArgs, hyperframesBin } from "./cli";
 
 export type RenderSceneArgs = {
   jobId: string;
@@ -88,8 +89,8 @@ export async function renderScene(args: RenderSceneArgs): Promise<RenderSceneRes
   // (the cwd) is the scene dir with index.html, style.css, animation.js.
   // Use shell=true on win32 since `npx` is a .cmd shim there.
   const isWin = process.platform === "win32";
-  const cmd = isWin ? "npx.cmd" : "npx";
-  const args2 = ["hyperframes", "render", ".", "--output", "scene.mp4"];
+  const cmd = hyperframesBin();
+  const args2 = hyperframesArgs("render", [".", "--output", "scene.mp4"]);
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(cmd, args2, {
