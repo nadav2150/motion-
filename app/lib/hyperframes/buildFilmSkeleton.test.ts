@@ -136,3 +136,61 @@ test("no module scripts are emitted when every layer engine is inline", () => {
   const html = buildFilmSkeleton(storyboard, identity, fills);
   expect(html).not.toContain(`<script type="module">`);
 });
+
+test("a fill with backgroundLayers stacks the engine layer behind the gsap base", () => {
+  const fills: FilmFills = {
+    cssVariables: {},
+    scenes: [
+      {
+        id: "s1",
+        contentHtml: `<h1 id="hero">Hero</h1>`,
+        sceneCss: `#hero { color: white; }`,
+        timeline: `tl.from("#hero", { opacity: 0 }, 0);`,
+        transitionIn: "hard_cut",
+        backgroundLayers: [
+          { id: "bgw", engine: "waapi", html: `<div id="amb"></div>`, css: `#amb { position: absolute; inset: 0; }`,
+            code: `document.getElementById("amb").animate([{opacity:0.2},{opacity:0.5}],{duration:2000,delay:__sceneStartMs+0,fill:"both",iterations:1}).pause();` },
+        ],
+      },
+      { id: "s2", contentHtml: `<h1 id="b">Second</h1>`, sceneCss: "", timeline: "", transitionIn: "hard_cut" },
+    ],
+  };
+  const html = buildFilmSkeleton(storyboard, identity, fills);
+  // Two stacked layers in s1: background (z-index:0) below the gsap base (z-index:1).
+  expect(html).toContain(`z-index:0"><div id="amb"></div>`);
+  expect(html).toContain(`z-index:1"><h1 id="hero">Hero</h1>`);
+  // Both engines' code present; background css merged into the scene <style>.
+  expect(html).toContain(`document.getElementById("amb").animate`);
+  expect(html).toContain(`tl.from("#hero", { opacity: 0 }, 0);`);
+  expect(html).toContain(`#amb { position: absolute; inset: 0; }`);
+  // The waapi layer got its scene offset (s1 starts at 0).
+  expect(html).toContain(`var __sceneStartMs = 0;`);
+});
+
+test("a layer with an unregistered engine is dropped while siblings survive", () => {
+  // "lottie" is a plausible future engine with no adapter yet — cast to
+  // exercise the skeleton's degradation path (warn + skip, never fail).
+  const fills: FilmFills = {
+    cssVariables: {},
+    scenes: [
+      {
+        id: "s1",
+        contentHtml: "",
+        sceneCss: "",
+        timeline: "",
+        transitionIn: "hard_cut",
+        layers: [
+          { id: "future", engine: "lottie" as unknown as "gsap", html: `<div id="lot"></div>`, code: `/* lottie */` },
+          { id: "fg", engine: "gsap", html: `<h1 id="t">Hi</h1>`, code: `tl.to("#t", {}, 0);` },
+        ],
+      },
+      { id: "s2", contentHtml: `<h1 id="b">B</h1>`, sceneCss: "", timeline: "", transitionIn: "hard_cut" },
+    ],
+  };
+  const html = buildFilmSkeleton(storyboard, identity, fills);
+  expect(html).not.toContain(`<div id="lot">`);
+  expect(html).not.toContain(`/* lottie */`);
+  // Sole surviving layer is emitted unwrapped (emittable total = 1).
+  expect(html).toContain(`<h1 id="t">Hi</h1>`);
+  expect(html).not.toContain(`class="layer"><h1 id="t">`);
+});
