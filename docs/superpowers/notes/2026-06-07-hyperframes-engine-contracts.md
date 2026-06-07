@@ -38,8 +38,12 @@
 | `https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/waapi/SKILL.md` | WebFetch | **OK — verbatim skill file read** |
 | `https://github.com/heygen-com/hyperframes/blob/main/packages/core/src/runtime/adapters/animejs.ts` | WebFetch | **OK — authoritative adapter source code** |
 | `https://github.com/heygen-com/hyperframes/blob/main/packages/core/src/runtime/adapters/waapi.ts` | WebFetch | **OK — authoritative adapter source code** |
+| `https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/three/SKILL.md` | gh API (base64) | **OK — verbatim Three.js skill file** |
+| `packages/core/src/runtime/adapters/three.ts` (sha c7ddfc9f) | gh API (base64) | **OK — verbatim Three.js adapter source** |
+| `packages/core/src/runtime/adapters/seek-dispatch.ts` (sha 6261cc5a) | gh API (base64) | **OK — verbatim seek-dispatch source** |
+| `packages/core/src/runtime/adapters/three.test.ts` (sha eb26beb7) | gh API (base64) | **OK — verbatim Three.js adapter tests** |
 
-**Conclusion on coverage:** GSAP is fully documented. Anime.js and WAAPI are now **fully verified** from two authoritative sources each: the `skills/*/SKILL.md` canonical usage guides and the `packages/core/src/runtime/adapters/*.ts` source code. Three.js remains partially inferred. Dedicated guide pages (`.heygen.com/guides/animejs`, etc.) do not exist in the published docs site but the GitHub skills and source code are definitive.
+**Conclusion on coverage:** GSAP is fully documented. Anime.js, WAAPI, and Three.js are now **fully verified** from two authoritative sources each: the `skills/*/SKILL.md` canonical usage guides and the `packages/core/src/runtime/adapters/*.ts` source code. Dedicated guide pages (`.heygen.com/guides/animejs`, etc.) do not exist in the published docs site but the GitHub skills and source code are definitive.
 
 ---
 
@@ -479,35 +483,151 @@ The SKILL.md contains no CDN URL — confirming no polyfill is expected.
 
 ## Engine 4: Three.js (WebGL)
 
-**Confidence: VERIFIED (seek mechanism) / PARTIALLY UNVERIFIED (full event payload + setup pattern)**
+**Confidence: FULLY VERIFIED** — from `skills/three/SKILL.md` (canonical usage guide), `packages/core/src/runtime/adapters/three.ts` (adapter source), `packages/core/src/runtime/adapters/seek-dispatch.ts` (event dispatch source), and `packages/core/src/runtime/adapters/three.test.ts` (test suite), all from the authoritative `heygen-com/hyperframes` GitHub repo, fetched 2026-06-07.
 
-The `hf-seek` event and `window.__hfThreeTime` are confirmed by both the frame-adapters table and CLAUDE.md. No dedicated guide page exists at 0.6.6. The event payload shape and full scene setup pattern are inferred. **Confirm event payload and RAF replacement pattern against running 0.6.6.**
+### hf-seek event mechanism (VERIFIED)
+
+**Event target: `window`** — the adapter calls `window.dispatchEvent(...)` (not `document`).
+
+**Event construction (verbatim from `seek-dispatch.ts`, sha 6261cc5a):**
+
+```typescript
+window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time } }));
+```
+
+**Payload shape:** `event.detail` has exactly **one field**: `{ time: number }`. There is no `frame` field, no `fps` field, no other fields.
+
+**Unit: seconds** — `time` is the clamped/normalised float in seconds (`Math.max(0, Number(ctx.time) || 0)`).
+
+**Deduplication:** `seek-dispatch.ts` deduplicates by exact float equality — if two adapters (e.g. Three.js and TypeGPU) both seek to the same `time` synchronously, only the first call fires the event. This prevents doubled per-frame work when multiple GPU adapters are active.
+
+**Adapter source (verbatim from `three.ts`, sha c7ddfc9f):**
+
+```typescript
+import type { RuntimeDeterministicAdapter } from "../types";
+import { dispatchSeekEvent } from "./seek-dispatch";
+
+export function createThreeAdapter(): RuntimeDeterministicAdapter {
+  let forcedTime: number | null = null;
+  let lastForcedTime = 0;
+
+  return {
+    name: "three",
+    discover: () => {},
+    seek: (ctx) => {
+      forcedTime = Math.max(0, Number(ctx.time) || 0);
+      lastForcedTime = forcedTime;
+      window.__hfThreeTime = forcedTime;
+      dispatchSeekEvent(forcedTime);
+    },
+    pause: () => {
+      if (forcedTime == null) {
+        forcedTime = Math.max(0, lastForcedTime);
+      }
+    },
+    play: () => {
+      forcedTime = null;
+    },
+    revert: () => {
+      forcedTime = null;
+      lastForcedTime = 0;
+    },
+  };
+}
+```
+
+### `window.__hfThreeTime` semantics (VERIFIED)
+
+**Who sets it:** The HyperFrames adapter (`three.ts`) sets `window.__hfThreeTime = forcedTime` on every `seek()` call, before firing the event.
+
+**Who reads it:** The **composition author's code** reads `window.__hfThreeTime` for the initial render call (before any seek event fires):
+
+```javascript
+renderAt(window.__hfThreeTime || 0);
+```
+
+This provides the correct time on the first synchronous render (which may happen before the first `hf-seek` is dispatched). After the first seek, `window.__hfThreeTime` tracks the current forced time.
+
+**Summary:** HyperFrames writes it; the composition reads it. It is a one-way communication channel from the runtime to the scene.
 
 ### Registration mechanism
 
-Three.js integrates via a **DOM event** rather than a global timeline registry. HyperFrames dispatches an `hf-seek` event on the `window` (or the canvas element — confirm) on each frame. The composition listens for this event and re-renders the Three.js scene to the requested time:
+Three.js integrates via a **DOM event** rather than a global timeline registry. No `window.*` registration step is required. Listen for `"hf-seek"` on `window`:
 
 ```javascript
-const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("canvas"), antialias: true });
-const scene    = new THREE.Scene();
-const camera   = new THREE.PerspectiveCamera(75, 1920 / 1080, 0.1, 1000);
-
-// Optional: expose current time so external code can inspect it
-window.__hfThreeTime = 0;
-
 window.addEventListener("hf-seek", (event) => {
-  const t = event.detail.time; // seconds — VERIFY payload shape
-  window.__hfThreeTime = t;
-
-  // Update scene state to match time t
-  mesh.rotation.y = t * Math.PI;
-
-  // Render a single frame — no animation loop
-  renderer.render(scene, camera);
+  renderAt(event.detail.time);
 });
 ```
 
-> UNVERIFIED: The exact event payload shape. Based on the frame-adapters table and the `window.__hfThreeTime` pattern the likely shape is `{ detail: { time: number, frame: number } }` but **this must be confirmed against 0.6.6 source or a running example.**
+### Canonical authoring pattern (VERIFIED — verbatim from `skills/three/SKILL.md`)
+
+```html
+<canvas id="three-layer"></canvas>
+<script type="module">
+  import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.2/+esm";
+
+  const canvas = document.getElementById("three-layer");
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  // Match these to your composition's frame size.
+  renderer.setSize(1920, 1080, false);
+  renderer.setPixelRatio(1);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, 1920 / 1080, 0.1, 100);
+  camera.position.set(0, 0, 6);
+
+  const mesh = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.4, 4),
+    new THREE.MeshStandardMaterial({ color: 0x64d2ff, roughness: 0.38 }),
+  );
+  scene.add(mesh);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 2));
+
+  function renderAt(time) {
+    mesh.rotation.y = time * 0.7;
+    mesh.rotation.x = Math.sin(time * 0.6) * 0.16;
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener("hf-seek", (event) => {
+    renderAt(event.detail.time);
+  });
+
+  renderAt(window.__hfThreeTime || 0);
+</script>
+```
+
+```css
+#three-layer {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+```
+
+### Initial frame (VERIFIED)
+
+The last line of the setup script handles the initial render before any seek event fires:
+
+```javascript
+renderAt(window.__hfThreeTime || 0);
+```
+
+This is **required**. Without it, the canvas is blank until the first `hf-seek` event. The adapter sets `window.__hfThreeTime` before dispatching the event, but the initial synchronous call uses the pre-set value (or falls back to `0`).
+
+### AnimationMixer pattern (VERIFIED — verbatim from SKILL.md)
+
+For GLTF or authored clip animation, seek the mixer directly:
+
+```javascript
+function renderAt(time) {
+  mixer.setTime(time);
+  renderer.render(scene, camera);
+}
+```
+
+If several mixers exist, seek all of them from the same `time`. The SKILL.md uses `mixer.setTime(time)` — **not** `mixer.update(delta)`. Do not accumulate deltas.
 
 ### Must be created paused?
 
@@ -519,61 +639,62 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
 // CORRECT — event-driven render:
 window.addEventListener("hf-seek", (e) => {
-  updateScene(e.detail.time);
-  renderer.render(scene, camera);
+  renderAt(e.detail.time);
 });
 ```
 
-### How HyperFrames seeks to a given time
+### CDN URL (VERIFIED — pinned from SKILL.md)
 
-HyperFrames dispatches `hf-seek` on each frame with the current time. The composition **must** render synchronously inside the handler (no deferred `Promise` or async operations):
-
-```javascript
-window.addEventListener("hf-seek", (event) => {
-  const t = event.detail.time; // seconds (float)
-  // compute all transforms, uniforms, morph targets from t
-  mixer.setTime(t);            // if using AnimationMixer
-  renderer.render(scene, camera);
-});
+```html
+<!-- ES module import (recommended — from SKILL.md verbatim): -->
+<script type="module">
+  import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.2/+esm";
+</script>
 ```
 
-`window.__hfThreeTime` is a convenience write-back so the HyperFrames runtime can read back the scene's current time — write it at the start of the handler.
+- **Version:** `three@0.181.2`
+- **Format:** ESM via jsDelivr `+esm` suffix — exposes the `THREE` namespace via `import * as THREE`
+- **Global name (IIFE):** The SKILL.md uses ESM only; there is no IIFE CDN URL documented. If an IIFE build is needed (non-module context), use `https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.min.js` which exposes `window.THREE`, but **ESM is the documented pattern**.
 
 ### Time offset (placing animation at a scene's start offset)
 
-Subtract the scene's `data-start` value from the event time to get local scene time:
+The adapter dispatches `hf-seek` with the **global composition time** (same as all other adapters). The SKILL.md does not document a built-in offset mechanism — subtract `data-start` manually:
 
 ```javascript
-const SCENE_START = 1.86; // seconds — matches data-start on the parent div
+const SCENE_START = 1.86; // seconds — matches data-start on the parent element
 
 window.addEventListener("hf-seek", (event) => {
-  const globalT = event.detail.time;
-  const localT  = Math.max(0, globalT - SCENE_START);
-
-  window.__hfThreeTime = globalT;
-  updateScene(localT); // localT goes from 0 when the scene starts
-  renderer.render(scene, camera);
+  const localT = Math.max(0, event.detail.time - SCENE_START);
+  renderAt(localT);
 });
 ```
 
-> UNVERIFIED: Whether HyperFrames fires `hf-seek` with the global composition time or the sub-composition local time when Three.js is embedded in a nested composition. **Assume global time and apply the offset manually unless confirmed otherwise.**
+### Determinism constraints (VERIFIED — from SKILL.md "Avoid" section and "Contract")
 
-### CDN URL
+From the SKILL.md contract (verbatim):
 
-```html
-<script src="https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.min.js"></script>
+> - Create the scene, camera, renderer, materials, and assets synchronously when possible.
+> - Render from HyperFrames time, not wall-clock time.
+> - Listen for the `hf-seek` event and render exactly that time.
+> - Load models, textures, and HDRIs before render-critical seeking. Do not fetch them at seek time.
+> - Avoid `requestAnimationFrame` or `renderer.setAnimationLoop` as the source of truth for render-critical motion.
+
+From the SKILL.md "Avoid" section (verbatim):
+
+> - Using `Date.now()`, `performance.now()`, or clock deltas to update scene state.
+> - Leaving render-critical work inside a free-running animation loop.
+> - Loading remote models or textures at render time.
+> - Device-pixel-ratio dependent output. Pin renderer size and pixel ratio for video renders.
+> - Post-processing passes that depend on previous frame history unless you can reconstruct state from time.
+
+**Renderer settings** (pinned, required for determinism):
+
+```javascript
+renderer.setSize(1920, 1080, false);  // match composition frame size; false = no CSS resize
+renderer.setPixelRatio(1);            // must be 1 — device-dependent ratios break determinism
 ```
 
-> UNVERIFIED: HyperFrames docs do not specify a pinned Three.js version. Use the latest stable r176 (current as of 2026-06-07). Pin the exact version for reproducible renders.
-
-### Determinism constraints
-
-- No `requestAnimationFrame` or `renderer.setAnimationLoop()` — render only in the `hf-seek` handler.
-- No `Date.now()` or `performance.now()` for time — use `event.detail.time` exclusively.
-- No `Math.random()` in shader uniforms, geometry generation, or particle systems — use seeded PRNG or static geometry.
-- No texture loads from the network inside the `hf-seek` handler — all assets must be loaded during `init()`.
-- If using `THREE.AnimationMixer`: call `mixer.update(0)` (not `mixer.update(delta)`) then `mixer.setTime(localT)` to avoid wall-clock delta accumulation.
-- WebGL state must be fully determined by `t` alone — no accumulated stateful transforms.
+No `preserveDrawingBuffer` is mentioned in the SKILL.md or adapter source — this is not required by the HyperFrames contract (HyperFrames captures frames via `HeadlessExperimental.beginFrame`, not via canvas `toDataURL`).
 
 ---
 
@@ -584,7 +705,7 @@ window.addEventListener("hf-seek", (event) => {
 | **GSAP** | `window.__timelines["<id>"] = tl` | `tl.totalTime(t)` | seconds | `{ paused: true }` in constructor | Position parameter (3rd arg) on each tween |
 | **Anime.js** | `window.__hfAnime.push(instance)` — Array | `instance.seek(t_ms)` where `t_ms = global_s * 1000` | **milliseconds** | `autoplay: false` | `delay: scene_start_ms` in anime options, or `.add({}, offset)` in timeline |
 | **WAAPI** | None — `document.getAnimations()` auto-discovery | `anim.currentTime = t_ms` then `anim.pause()` | **milliseconds** | `.pause()` immediately after `.animate()` (adapter also pauses on every seek) | `delay: scene_start_ms` in animate options; adapter passes raw global time |
-| **Three.js** | `hf-seek` DOM event listener | `renderer.render()` inside handler | seconds (event payload) | No RAF / no `setAnimationLoop` | Subtract `SCENE_START` from `event.detail.time` |
+| **Three.js** | `hf-seek` on `window` — `event.detail.time` (seconds, single field) | `renderer.render(scene, camera)` inside handler; `mixer.setTime(t)` for AnimationMixer | **seconds** | No RAF / no `setAnimationLoop`; `renderAt(window.__hfThreeTime \|\| 0)` for initial frame | Subtract `SCENE_START` from `event.detail.time` manually |
 
 ---
 
@@ -604,9 +725,9 @@ These apply regardless of engine:
 
 ## Items requiring confirmation before shipping adapter code
 
-Items 1–6 (Anime.js and WAAPI) are now **fully resolved** from the authoritative GitHub skill files and adapter source code. Only Three.js items remain open.
+All items 1–10 are now **fully resolved** from the authoritative GitHub skill files and adapter source code.
 
-### Resolved (Anime.js + WAAPI) — no further action needed
+### Resolved — all engines — no further action needed
 
 | # | Engine | Item | Resolution |
 |---|--------|------|------------|
@@ -616,14 +737,7 @@ Items 1–6 (Anime.js and WAAPI) are now **fully resolved** from the authoritati
 | 4 | WAAPI | Whether `delay` creates correct offset | **RESOLVED: Yes** — adapter sets raw global `currentTime`; WAAPI `delay` shifts the animation's effective start |
 | 5 | WAAPI | Whether polyfill needed in headless Chrome | **RESOLVED: No** — SKILL.md contains no polyfill; native WAAPI is assumed |
 | 6 | WAAPI | Whether ALL `document.getAnimations()` are sought or only paused | **RESOLVED: ALL** — adapter seeks every animation returned, then pauses each |
-
-### Still UNVERIFIED — Three.js only
-
-| # | Engine | Item | How to confirm |
-|---|--------|------|----------------|
-| 7 | Three.js | Exact `hf-seek` event payload shape (`event.detail.time`, `event.detail.frame`, other fields?) | Read `skills/three/SKILL.md` or `packages/core/src/runtime/adapters/three.ts` from the GitHub repo |
-| 8 | Three.js | Whether `hf-seek` carries global or sub-composition-local time | Same sources as #7 |
-| 9 | Three.js | Pinned Three.js version tested with 0.6.6 | `skills/three/SKILL.md` CDN example |
-| 10 | Three.js | `AnimationMixer` pattern — `mixer.setTime(t)` vs `mixer.update(delta)` | `skills/three/SKILL.md` or adapter source |
-
-**To resolve Three.js items:** Fetch `https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/three/SKILL.md` and `https://github.com/heygen-com/hyperframes/blob/main/packages/core/src/runtime/adapters/three.ts` — the same approach that verified Anime.js and WAAPI.
+| 7 | Three.js | Exact `hf-seek` event payload shape (`event.detail.time`, `event.detail.frame`, other fields?) | **RESOLVED: `{ time: number }` only** — one field, seconds, no `frame` field. Source: `seek-dispatch.ts` sha 6261cc5a |
+| 8 | Three.js | Whether `hf-seek` carries global or sub-composition-local time | **RESOLVED: global time** — adapter passes `ctx.time` (global seconds) directly. Author subtracts `SCENE_START` manually |
+| 9 | Three.js | Pinned Three.js version tested with 0.6.6 | **RESOLVED: `three@0.181.2`** — ESM via `https://cdn.jsdelivr.net/npm/three@0.181.2/+esm`. Source: `skills/three/SKILL.md` |
+| 10 | Three.js | `AnimationMixer` pattern — `mixer.setTime(t)` vs `mixer.update(delta)` | **RESOLVED: `mixer.setTime(time)`** — called directly with global/local seconds. No delta accumulation. Source: `skills/three/SKILL.md` |
