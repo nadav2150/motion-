@@ -42,7 +42,9 @@ import {
   type TtsModelId,
 } from "../elevenlabs-tts";
 import { hyperframesArgs, hyperframesBin } from "./cli";
-import type { Layer } from "./engines/types";
+import type { Layer, LayerEmitContext } from "./engines/types";
+import { resolveLayers } from "./engines/layers";
+import { collectExtraCdn, getEngineAdapter } from "./engines/registry";
 
 const MODEL = "claude-opus-4-8";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
@@ -2290,19 +2292,47 @@ export function buildFilmSkeleton(
     .map(([k, v]) => `    ${k}: ${v};`)
     .join("\n");
 
-  // Per-scene sections.
+  // Per-scene sections — content is the back→front layer stack emitted by each
+  // engine adapter. Layer-level CSS is concatenated into the section <style>.
   const sectionsHtml = storyboard.scenes
     .map((scene, i) => {
       const sid = `s${i + 1}`;
       const fill = fillById.get(sid) ?? fillById.get(scene.id);
       const transitionIn = fill?.transitionIn ?? "hard_cut";
-      // shader anchors use opacity:0; non-anchors use visibility:hidden (merger
-      // will autoAlpha them in/out).
       const initStyle =
         transitionIn === "hard_cut" ? `visibility:hidden` : `opacity:0`;
       const start = starts[i];
-      const content = fill?.contentHtml ?? `<h1>${escapeHtml(scene.copy)}</h1>`;
-      const sceneCss = fill?.sceneCss ?? "";
+
+      const layers = resolveLayers({
+        layers: fill?.layers,
+        contentHtml: fill?.contentHtml ?? `<h1>${escapeHtml(scene.copy)}</h1>`,
+        sceneCss: fill?.sceneCss ?? "",
+        timeline: fill?.timeline ?? "",
+      });
+
+      const domParts: string[] = [];
+      const cssParts: string[] = [];
+      layers.forEach((layer, index) => {
+        const adapter = getEngineAdapter(layer.engine);
+        if (!adapter) {
+          console.warn(
+            `[hyperframes] scene ${sid}: dropping layer "${layer.id}" — no adapter for engine "${layer.engine}"`,
+          );
+          return;
+        }
+        const ctx: LayerEmitContext = {
+          sceneId: sid,
+          start,
+          duration: scene.durationSeconds,
+          index,
+          total: layers.length,
+        };
+        domParts.push(adapter.emitDom(layer, ctx));
+        if (layer.css) cssParts.push(layer.css);
+      });
+
+      const sceneCss = cssParts.join("\n");
+      const content = domParts.join("\n");
       return [
         `  <section id="${sid}" class="scene clip" data-start="${start}" data-duration="${scene.durationSeconds}" data-track-index="0" style="${initStyle}">`,
         sceneCss ? `    <style>${indentLines(sceneCss, "      ")}\n    </style>` : ``,
@@ -2316,36 +2346,39 @@ export function buildFilmSkeleton(
     })
     .join("\n\n");
 
-  // Per-scene GSAP blocks wrapped in IIFEs so locally-declared variables don't
-  // collide across scenes. The IIFE shadows `tl` with a wrapper that adds the
-  // scene's start offset to every numeric position arg — the LLM emits
-  // scene-local positions (0..durationSeconds) per the prompt contract, and
-  // this wrapper turns them into master-timeline positions.
+  // Per-scene JS — each layer's adapter emits a self-contained block. GSAP
+  // layers reproduce the historical offset-IIFE; other engines (follow-on)
+  // register on their own globals.
   const sceneTimelineBlocks = storyboard.scenes
     .map((scene, i) => {
       const sid = `s${i + 1}`;
       const fill = fillById.get(sid) ?? fillById.get(scene.id);
       const start = starts[i];
-      const tlBody = fill?.timeline ?? "";
-      return [
+
+      const layers = resolveLayers({
+        layers: fill?.layers,
+        contentHtml: fill?.contentHtml ?? `<h1>${escapeHtml(scene.copy)}</h1>`,
+        sceneCss: fill?.sceneCss ?? "",
+        timeline: fill?.timeline ?? "",
+      });
+
+      const blocks: string[] = [
         `  // ── ${sid} (${scene.copy.slice(0, 60).replace(/\s+/g, " ")}) — offset ${start}s ──`,
-        `  (function (__tlRoot, t) {`,
-        `    function __p(pos) {`,
-        `      if (pos == null) return t;`,
-        `      return typeof pos === "number" ? pos + t : pos;`,
-        `    }`,
-        `    var tl = {`,
-        `      to:       function (tgt, v, pos)    { __tlRoot.to(tgt, v, __p(pos));       return tl; },`,
-        `      from:     function (tgt, v, pos)    { __tlRoot.from(tgt, v, __p(pos));     return tl; },`,
-        `      fromTo:   function (tgt, f, v, pos) { __tlRoot.fromTo(tgt, f, v, __p(pos)); return tl; },`,
-        `      set:      function (tgt, v, pos)    { __tlRoot.set(tgt, v, __p(pos));      return tl; },`,
-        `      add:      function (a, pos)         { __tlRoot.add(a, __p(pos));           return tl; },`,
-        `      addLabel: function (l, pos)         { __tlRoot.addLabel(l, __p(pos));      return tl; },`,
-        `      call:     function (fn, p2, pos)    { __tlRoot.call(fn, p2, __p(pos));     return tl; },`,
-        `    };`,
-        indentLines(tlBody, "    "),
-        `  })(tl, ${start});`,
-      ].join("\n");
+      ];
+      layers.forEach((layer, index) => {
+        const adapter = getEngineAdapter(layer.engine);
+        if (!adapter) return; // already warned in sectionsHtml
+        const ctx: LayerEmitContext = {
+          sceneId: sid,
+          start,
+          duration: scene.durationSeconds,
+          index,
+          total: layers.length,
+        };
+        const js = adapter.emitJs(layer, ctx);
+        if (js.trim()) blocks.push(js);
+      });
+      return blocks.join("\n");
     })
     .join("\n\n");
 
@@ -2452,6 +2485,23 @@ export function buildFilmSkeleton(
     ? `\n  // Per-scene bg music volume (Sprint 3 — comment-driven ducking).\n${bgVolumeKeyframesJs.join("\n")}\n`
     : "";
 
+  // Extra engine libs (three/anime/…) needed by any layer, injected before the
+  // inline script so they're defined when layer code runs. Empty until the
+  // non-GSAP adapters register (follow-on plan).
+  const allLayers: Layer[] = storyboard.scenes.flatMap((scene, i) => {
+    const sid = `s${i + 1}`;
+    const fill = fillById.get(sid) ?? fillById.get(scene.id);
+    return resolveLayers({
+      layers: fill?.layers,
+      contentHtml: fill?.contentHtml ?? "",
+      sceneCss: fill?.sceneCss ?? "",
+      timeline: fill?.timeline ?? "",
+    });
+  });
+  const extraEngineScripts = collectExtraCdn(allLayers)
+    .map((src) => `<script src="${src}"></script>`)
+    .join("\n");
+
   return `<!doctype html>
 <html lang="${escapeHtml(lang)}" dir="${dir}" data-composition-variables='[]'>
 <head>
@@ -2493,7 +2543,7 @@ ${rootVarsCss}
 <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="${totalSeconds}">
 ${sectionsHtml}${audioBlock}</div>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
-<script>
+${extraEngineScripts ? extraEngineScripts + "\n" : ""}<script>
   var tl = gsap.timeline({ paused: true });
 
   // Per-scene visibility (merger-authored).
