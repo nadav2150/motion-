@@ -42,6 +42,7 @@ import {
   type TtsModelId,
 } from "../elevenlabs-tts";
 import { hyperframesArgs, hyperframesBin } from "./cli";
+import type { Layer } from "./engines/types";
 
 const MODEL = "claude-opus-4-8";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
@@ -1584,6 +1585,12 @@ export type SceneFill = {
    * path (which doesn't emit it) still type-checks against SceneFill.
    */
   continuitySummary?: ContinuitySummary;
+  /**
+   * Optional multi-engine layer stack (back→front). When present it supersedes
+   * contentHtml/sceneCss/timeline. When absent, buildFilmSkeleton synthesizes a
+   * single implicit GSAP layer from those legacy fields (full backward compat).
+   */
+  layers?: Layer[];
 };
 
 // ─── Continuity threading (blueprint + batched scenes) ─────────────────────
