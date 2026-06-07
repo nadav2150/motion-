@@ -104,8 +104,8 @@ const identity: VisualIdentity = storyboard.visualIdentity;
 // Patterns follow the verbatim contracts from
 // docs/superpowers/notes/2026-06-07-hyperframes-engine-contracts.md:
 //
-//   anime : anime({ …, autoplay:false, delay: __sceneStartMs + <local> })
-//           + window.__hfAnime.push(anim)
+//   anime : anime.createTimeline({ autoplay:false }).add(targets, { …,
+//             delay: __sceneStartMs + <local> }) + window.__hfAnime.push(tl)
 //   waapi : el.animate(keyframes, { delay: __sceneStartMs + <local>,
 //             fill:"both", iterations:1 }).pause()
 //   gsap  : tl.from(…) at a scene-local position parameter
