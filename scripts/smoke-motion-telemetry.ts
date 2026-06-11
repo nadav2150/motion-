@@ -7,7 +7,9 @@
 //   not just from synthetic unit-test samples.
 //
 // The fixture timeline:
-//   • #title tweens x 0→800 over 3s with ease:"none"  → mechanical expected
+//   • #title tweens x 0→800 over 3s with ease:"none", starting at t=0.2s
+//     → exercises the boundary-trim path (tween boundaries land mid-interval)
+//     → mechanical detection expected
 //   • #pop (1000×300 ≈ 14.5% of frame) opacity .set() at 2.0s → pop_in gate
 //   • motion ends at 3.2s of a 4s scene                → clean settle
 //
@@ -41,13 +43,10 @@ const HTML = `<!doctype html>
 </div>
 <script>
   const tl = gsap.timeline({ paused: true });
-  // Tween starts at t=0 and has duration=3.16s so that it ends exactly on a
-  // sample boundary: with 16 samples over 4s the step is 3.95/15≈0.263s and
-  // 12 steps = 3.16s. This ensures all 12 moving intervals have identical
-  // per-step displacement (~66.7px), giving CV≈0 so the mechanical check fires.
-  // Partial-interval edge effects (when a tween ends mid-interval) inflate CV
-  // above the 0.15 threshold and would produce a false negative.
-  tl.to("#title", { x: 800, duration: 3.16, ease: "none" }, 0);
+  // 0.2s start offset deliberately exercises the boundary-trim path: tween
+  // boundaries land mid-interval, producing partial-displacement outliers at
+  // run edges that would inflate CV above 0.15 without trimming.
+  tl.to("#title", { x: 800, duration: 3, ease: "none" }, 0.2);
   tl.set("#pop", { opacity: 1 }, 2.0);
   // Pad the timeline to the full 4s scene.
   tl.set({}, {}, 4.0);
@@ -81,7 +80,7 @@ async function main(): Promise<void> {
       `expected #title flagged mechanical, got [${metrics.mechanicalSelectors.join(", ")}]`,
     );
   }
-  if (!gates.some((g) => g.gate === "pop_in" && g.description.includes("pop"))) {
+  if (!gates.some((g) => g.gate === "pop_in" && g.description.includes("h2#pop"))) {
     failures.push("expected a pop_in gate for #pop");
   }
   if (metrics.teleports.length > 0) {

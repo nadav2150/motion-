@@ -385,6 +385,13 @@ export async function captureSceneMotionTelemetry(
         // No timeline — sample whatever static state the page settled into.
       });
 
+    // SAMPLE_SCENE_ELEMENTS_FN must remain a bare `(function(arg){...})`
+    // expression with no trailing semicolon/comment — appending `(args)`
+    // below completes the IIFE call that page.evaluate runs as a string.
+    const samplerCall =
+      SAMPLE_SCENE_ELEMENTS_FN +
+      `(${JSON.stringify({ sceneId: args.sceneId, maxElements: TELEMETRY.maxElements })})`;
+
     const perSample: RawElementSample[][] = [];
     for (const local of localTimes) {
       const seekTime = Math.max(
@@ -405,11 +412,7 @@ export async function captureSceneMotionTelemetry(
         .catch(() => {});
       await page.waitForTimeout(TELEMETRY_SEEK_FLUSH_MS);
       perSample.push(
-        await page.evaluate(
-          // String-based evaluate avoids esbuild __name() injection that breaks
-          // Playwright's function serialization when run via tsx.
-          SAMPLE_SCENE_ELEMENTS_FN + `(${JSON.stringify({ sceneId: args.sceneId, maxElements: TELEMETRY.maxElements })})`,
-        ) as RawElementSample[],
+        await page.evaluate(samplerCall) as RawElementSample[],
       );
     }
 
