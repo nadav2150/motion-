@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeMotionMetrics,
   telemetryGates,
+  renderTelemetryBlock,
   type SceneMotionSamples,
 } from "./motion-telemetry";
 
@@ -402,5 +403,45 @@ describe("telemetryGates", () => {
       }),
     );
     expect(telemetryGates(healthy)).toEqual([]);
+  });
+});
+
+describe("renderTelemetryBlock", () => {
+  it("renders all signal lines for a problematic scene", () => {
+    const m = computeMotionMetrics(
+      makeSamples({
+        elements: [
+          { selector: "div#jumper@0", at: (t) => ({ x: t < 2 ? 100 : 900, y: 300 }) },
+          { selector: "h1#linear@1", at: (t) => ({ x: 100 + t * 200, y: 500 }) },
+        ],
+      }),
+    );
+    const block = renderTelemetryBlock(m);
+    expect(block).toContain("MEASURED MOTION TELEMETRY");
+    expect(block).toContain("elements tracked: 2");
+    expect(block).toContain("teleports");
+    expect(block).toContain("div#jumper@0");
+    expect(block).toContain("mechanical motion");
+    expect(block).toContain("h1#linear@1");
+  });
+
+  it("renders clean lines for a healthy scene", () => {
+    const m = computeMotionMetrics(
+      makeSamples({
+        elements: [
+          {
+            selector: "h1#hero@0",
+            at: (t) => {
+              const p = Math.min(1, t / 3);
+              return { x: 100 + (1 - Math.pow(1 - p, 3)) * 600, y: 200 };
+            },
+          },
+        ],
+      }),
+    );
+    const block = renderTelemetryBlock(m);
+    expect(block).toContain("teleports: none");
+    expect(block).toContain("pop-ins: none");
+    expect(block).toContain("settle: clean");
   });
 });
