@@ -308,6 +308,24 @@ describe("computeMotionMetrics — mechanical motion", () => {
     const m = computeMotionMetrics(samples);
     expect(m.mechanicalSelectors).toEqual([]);
   });
+
+  it("flags linear motion even when the tween starts and ends mid-interval", () => {
+    // Linear x-tween from t=0.2s to t=3.2s — boundaries land inside sample
+    // intervals, producing partial-displacement outliers at the run edges.
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "h1#offsetLinear@0",
+          at: (t) => {
+            const p = Math.max(0, Math.min(1, (t - 0.2) / 3));
+            return { x: 100 + p * 800, y: 200 };
+          },
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.mechanicalSelectors).toEqual(["h1#offsetLinear@0"]);
+  });
 });
 
 describe("computeMotionMetrics — final-frame layout", () => {

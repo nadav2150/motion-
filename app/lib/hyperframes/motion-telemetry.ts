@@ -256,9 +256,22 @@ export function computeMotionMetrics(s: SceneMotionSamples): MotionMetrics {
 
   // ── Mechanical motion: near-constant speed across moving intervals ──
   // Samples are evenly spaced, so per-interval displacement is a speed proxy.
+  // Tweens start/end mid-interval, so the first and last interval of each
+  // contiguous moving run carry partial displacement — trim them before the
+  // CV computation or linear motion with offset boundaries escapes detection.
   const mechanicalSelectors: string[] = [];
   for (const x of series) {
-    const speeds = x.dists.filter((d) => d > TELEMETRY.stillEpsilonPx);
+    const speeds: number[] = [];
+    let runStart = -1;
+    for (let i = 0; i <= x.dists.length; i++) {
+      const moving = i < x.dists.length && x.dists[i] > TELEMETRY.stillEpsilonPx;
+      if (moving && runStart === -1) runStart = i;
+      if (!moving && runStart !== -1) {
+        // Run is [runStart, i-1]; keep interior intervals only.
+        for (let j = runStart + 1; j < i - 1; j++) speeds.push(x.dists[j]);
+        runStart = -1;
+      }
+    }
     if (speeds.length < TELEMETRY.mechanicalMinMovingIntervals) continue;
     const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
     const variance =
