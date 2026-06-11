@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeMotionMetrics,
+  telemetryGates,
   type SceneMotionSamples,
 } from "./motion-telemetry";
 
@@ -335,5 +336,71 @@ describe("computeMotionMetrics — final-frame layout", () => {
     });
     const m = computeMotionMetrics(samples);
     expect(m.textOverlaps).toEqual([]);
+  });
+});
+
+describe("telemetryGates", () => {
+  it("fires teleport, pop_in, dead_air, and fully_static gates", () => {
+    const teleportScene = computeMotionMetrics(
+      makeSamples({
+        elements: [
+          { selector: "div#jumper@0", at: (t) => ({ x: t < 2 ? 100 : 900, y: 300 }) },
+        ],
+      }),
+    );
+    const gates = telemetryGates(teleportScene);
+    const kinds = gates.map((g) => g.gate);
+    expect(kinds).toContain("teleport");
+    // One brief jump in a 4s scene also leaves it mostly motionless.
+    expect(kinds).toContain("dead_air");
+    expect(gates.find((g) => g.gate === "teleport")!.description).toMatch(
+      /div#jumper@0.*teleports/,
+    );
+
+    const staticScene = computeMotionMetrics(
+      makeSamples({
+        elements: [{ selector: "h1#a@0", at: () => ({ x: 100, y: 200 }) }],
+      }),
+    );
+    const staticKinds = telemetryGates(staticScene).map((g) => g.gate);
+    expect(staticKinds).toContain("fully_static");
+  });
+
+  it("fires unsettled_ending only above the count threshold", () => {
+    const restless = (sel: string) => ({
+      selector: sel,
+      at: (t: number) => ({ x: 100 + t * 300, y: 200 }),
+    });
+    const threeRestless = computeMotionMetrics(
+      makeSamples({ elements: [restless("a@0"), restless("b@1"), restless("c@2")] }),
+    );
+    expect(telemetryGates(threeRestless).map((g) => g.gate)).toContain(
+      "unsettled_ending",
+    );
+
+    const twoRestless = computeMotionMetrics(
+      makeSamples({ elements: [restless("a@0"), restless("b@1")] }),
+    );
+    expect(telemetryGates(twoRestless).map((g) => g.gate)).not.toContain(
+      "unsettled_ending",
+    );
+  });
+
+  it("returns no gates for a healthy scene", () => {
+    const healthy = computeMotionMetrics(
+      makeSamples({
+        elements: [
+          {
+            selector: "h1#hero@0",
+            at: (t) => {
+              const p = Math.min(1, t / 3);
+              const progress = 1 - Math.pow(1 - p, 3);
+              return { x: 100 + progress * 600, y: 200 };
+            },
+          },
+        ],
+      }),
+    );
+    expect(telemetryGates(healthy)).toEqual([]);
   });
 });
