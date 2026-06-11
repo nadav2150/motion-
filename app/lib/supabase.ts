@@ -245,6 +245,9 @@ export type ShotRow = {
   // v2 per-scene vision critique (see supabase/migrations/20260524_critique.sql).
   // SceneCritique JSON: scores per dimension, verdict, structured issues.
   scene_critique: unknown;
+  // Motion telemetry (see supabase/migrations/20260611_motion_telemetry.sql).
+  // MotionMetrics JSON measured from the rendered scene at capture time.
+  motion_telemetry: unknown;
   rendered_video_url: string | null;
   render_status: string | null;
   render_duration_ms: number | null;
