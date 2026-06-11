@@ -76,7 +76,13 @@ import {
   type StoryboardScene,
 } from "./hyperframes/llm-director";
 import { renderScene } from "./hyperframes/render";
-import { captureMotionTrailComposite, captureSceneThumbnail } from "./hyperframes/thumbnail";
+import { captureMotionTrailComposite, captureSceneMotionTelemetry, captureSceneThumbnail } from "./hyperframes/thumbnail";
+import {
+  computeMotionMetrics,
+  renderTelemetryBlock,
+  telemetryGates,
+  type MotionMetrics,
+} from "./hyperframes/motion-telemetry";
 import { injectWatermarkOverlay, shouldApplyWatermark } from "./hyperframes/watermark";
 import { sourceAssets, type JobAssetEntry } from "./assets";
 import { resolveAudioPlan, type ResolvedAudio } from "./audio-resolver";
@@ -1365,6 +1371,9 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
   }
   let html = await fetchSceneHTML(compositionAssetUrl);
   const motionTrailUrls: (string | null)[] = insertedScenes.map((s) => s.motion_trail_path);
+  const telemetryByIndex: (MotionMetrics | null)[] = insertedScenes.map(
+    (s) => (s.motion_telemetry ?? null) as MotionMetrics | null,
+  );
   const totalFilmSeconds = storyboard.scenes.reduce((a, s) => a + s.durationSeconds, 0);
 
   // 3. Vision critique (per-scene parallel + film-level).
@@ -1379,7 +1388,12 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
     const settled = await timed(jobId, "vision_critique_per_scene", () =>
       Promise.allSettled(
         critiquableIndices.map((x) =>
-          generateVisionCritique(blueprint, x.i, x.url),
+          generateVisionCritique(
+            blueprint,
+            x.i,
+            x.url,
+            telemetryByIndex[x.i] ? renderTelemetryBlock(telemetryByIndex[x.i]!) : null,
+          ),
         ),
       ),
     );
@@ -1429,7 +1443,21 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
   }
 
   // 4. Refinement: re-fire flagged scenes, rebuild composition, recapture.
-  const refinements = buildRefinementSet(perSceneCritiques, filmCritique);
+  const telemetryIssues = new Map<string, string[]>();
+  blueprint.sceneOutline.forEach((outline, i) => {
+    const metrics = telemetryByIndex[i];
+    if (!metrics) return;
+    const gates = telemetryGates(metrics);
+    if (gates.length > 0) {
+      telemetryIssues.set(outline.id, gates.map((g) => g.description));
+    }
+  });
+  if (telemetryIssues.size > 0) {
+    console.log(
+      `[hyperframes ${jobId}] telemetry gates fired for: ${Array.from(telemetryIssues.keys()).join(", ")}`,
+    );
+  }
+  const refinements = buildRefinementSet(perSceneCritiques, filmCritique, telemetryIssues);
   if (refinements.length > 0) {
     await setJobStatus(jobId, { status: "refining_scenes" });
     console.log(
@@ -1829,6 +1857,24 @@ async function captureScenes(args: {
       console.warn(
         `[hyperframes ${jobId}] motion-trail composite failed for ${scene.id}:`,
         trailErr instanceof Error ? trailErr.message : trailErr,
+      );
+    }
+
+    try {
+      const samples = await captureSceneMotionTelemetry({
+        html,
+        sceneId: scene.id,
+        sceneStartSeconds: sceneStart,
+        sceneDurationSeconds: scene.durationSeconds,
+        totalDurationSeconds: totalFilmSeconds,
+      });
+      const metrics = computeMotionMetrics(samples);
+      await patchShot(shot.id, { motion_telemetry: metrics as unknown as object });
+    } catch (telemetryErr) {
+      // Telemetry is strictly additive — never blocks capture or critique.
+      console.warn(
+        `[hyperframes ${jobId}] motion telemetry failed for ${scene.id}:`,
+        telemetryErr instanceof Error ? telemetryErr.message : telemetryErr,
       );
     }
   });

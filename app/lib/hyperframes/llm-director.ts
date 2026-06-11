@@ -3199,6 +3199,17 @@ A scene that holds still is NOT automatically a failure. The film NEEDS held bea
 
 If you see a held scene, ASK: does this stillness EARN the next beat? If yes → restraintQuality is high. If no → low, flag as a major issue.
 
+═══ MEASURED MOTION TELEMETRY ═══
+
+Some scenes arrive with a "MEASURED MOTION TELEMETRY" block — deterministic measurements sampled from the rendered scene (element rects + opacities at ~4 Hz). The composite image cannot show timing; these numbers can. Trust them over your visual read for jank, pacing, and rhythm:
+
+  • teleports / pop-ins are real rendering defects the sampler measured — file each as an issue (dimension motionClarity) with a concrete suggestedFix, unless the scene's brief clearly intends a hard cut.
+  • "mechanical motion" means near-constant speed = linear easing. File at least a minor motionClarity issue naming the element and the easing fix (e.g. "swap linear for power3.out on h1#title").
+  • high dead air on a build/punch/beat scene is a pacing failure (low motionClarity); on a HOLD/REST/CLIMAX scene it may be earned restraint — use the film rhythm role from the user message.
+  • "still moving in the final 10%" matters most on scenes that should settle; a scene whose transitionInChoice hands off mid-motion may be intentional.
+
+The telemetry block is measurement, not verdict — you still decide severity and whether the scene's role excuses the signal.
+
 ═══ VERDICTS ═══
 
   • ship    — overall ≥ 70 AND no major issues. The scene is good enough to keep.
@@ -3286,6 +3297,7 @@ function renderVisionCritiqueUserPrompt(
   blueprint: FilmBlueprint,
   sceneIndex: number,
   critiqueImageUrl: string,
+  telemetryBlock?: string | null,
 ): { text: string; imageUrl: string } {
   const curr = blueprint.sceneOutline[sceneIndex];
   const r = blueprint.filmRhythm;
@@ -3308,7 +3320,7 @@ function renderVisionCritiqueUserPrompt(
   transitionInChoice: ${curr.transitionInChoice}
 
 The attached image is the motion-trail composite: 4 frames blended with descending alpha. Read it for motion, focal hierarchy, and the dead-frame-vs-restraint distinction. The scene's role above tells you whether stillness should be intentional restraint.
-
+${telemetryBlock ? `\n${telemetryBlock}\n` : ""}
 Emit a SceneCritique JSON now. sceneId MUST be "${sid}".`;
 
   return { text, imageUrl: critiqueImageUrl };
@@ -3322,8 +3334,9 @@ export async function generateVisionCritique(
   blueprint: FilmBlueprint,
   sceneIndex: number,
   critiqueImageUrl: string,
+  telemetryBlock?: string | null,
 ): Promise<SceneCritique> {
-  const { text, imageUrl } = renderVisionCritiqueUserPrompt(blueprint, sceneIndex, critiqueImageUrl);
+  const { text, imageUrl } = renderVisionCritiqueUserPrompt(blueprint, sceneIndex, critiqueImageUrl, telemetryBlock);
 
   const response = await getClient().messages.create({
     model: SONNET_MODEL,
