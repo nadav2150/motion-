@@ -348,6 +348,10 @@ const SAMPLE_SCENE_ELEMENTS_FN = /* js */ `
  * Sample one scene's rendered motion: seek the master timeline to N evenly
  * spaced timepoints across the scene window and read element rects/opacities
  * at each. Same seek machinery as captureMotionTrailComposite; own context.
+ * Sampling spans [0.05s, max(0.1s, d − 0.05s)] — the 0.05s leading trim
+ * avoids GSAP boundary ambiguity at t=0 (the merger's zero-duration autoAlpha
+ * set coincides with scene-start); the 0.05s trailing trim avoids the hard
+ * timeline end. Both ends are symmetric.
  * Throws on page-load failure — callers treat telemetry as non-fatal.
  */
 export async function captureSceneMotionTelemetry(
@@ -358,9 +362,11 @@ export async function captureSceneMotionTelemetry(
     TELEMETRY.minSamples,
     Math.min(TELEMETRY.maxSamples, Math.round(d * TELEMETRY.samplesPerSecond)),
   );
+  const firstSample = 0.05;
+  const lastSample = Math.max(firstSample + 0.05, d - 0.05);
   const localTimes = Array.from(
     { length: sampleCount },
-    (_, i) => (i / (sampleCount - 1)) * Math.max(0.1, d - 0.05),
+    (_, i) => firstSample + (i / (sampleCount - 1)) * (lastSample - firstSample),
   );
 
   const browser = await getBrowser();

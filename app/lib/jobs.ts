@@ -1383,6 +1383,22 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
     .map((url, i) => ({ url, i }))
     .filter((x): x is { url: string; i: number } => x.url !== null);
 
+  // Telemetry is strictly additive: a malformed motion_telemetry row must
+  // degrade to "no telemetry", never fail the critique/polish pass.
+  const safeTelemetryBlock = (i: number): string | null => {
+    const metrics = telemetryByIndex[i];
+    if (!metrics) return null;
+    try {
+      return renderTelemetryBlock(metrics);
+    } catch (err) {
+      console.warn(
+        `[hyperframes ${jobId}] telemetry block render failed for scene index ${i}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    }
+  };
+
   const perSceneCritiques: SceneCritique[] = [];
   if (critiquableIndices.length > 0) {
     const settled = await timed(jobId, "vision_critique_per_scene", () =>
@@ -1392,7 +1408,7 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
             blueprint,
             x.i,
             x.url,
-            telemetryByIndex[x.i] ? renderTelemetryBlock(telemetryByIndex[x.i]!) : null,
+            safeTelemetryBlock(x.i),
           ),
         ),
       ),
@@ -1447,9 +1463,16 @@ export async function critiqueAndPolishJob(jobId: string): Promise<void> {
   blueprint.sceneOutline.forEach((outline, i) => {
     const metrics = telemetryByIndex[i];
     if (!metrics) return;
-    const gates = telemetryGates(metrics);
-    if (gates.length > 0) {
-      telemetryIssues.set(outline.id, gates.map((g) => g.description));
+    try {
+      const gates = telemetryGates(metrics);
+      if (gates.length > 0) {
+        telemetryIssues.set(outline.id, gates.map((g) => g.description));
+      }
+    } catch (err) {
+      console.warn(
+        `[hyperframes ${jobId}] telemetry gates failed for ${outline.id}:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   });
   if (telemetryIssues.size > 0) {

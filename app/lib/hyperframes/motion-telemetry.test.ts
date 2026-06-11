@@ -11,7 +11,7 @@ import {
  * scene-local time t → rect + opacity. Defaults: 16 samples over 4s,
  * 1920×1080 viewport.
  */
-export function makeSamples(opts: {
+function makeSamples(opts: {
   duration?: number;
   n?: number;
   elements: Array<{

@@ -357,35 +357,34 @@ export type TelemetryIssue = { gate: TelemetryGate; description: string };
 export function telemetryGates(m: MotionMetrics): TelemetryIssue[] {
   const issues: TelemetryIssue[] = [];
 
-  {
-    const shown = m.teleports.slice(0, 3);
-    shown.forEach((t, idx) => {
-      const isLast = idx === shown.length - 1;
+  const pushTruncated = <T>(
+    items: readonly T[],
+    gate: TelemetryGate,
+    describe: (item: T) => string,
+  ): void => {
+    const shown = items.slice(0, 3);
+    shown.forEach((item, idx) => {
       const suffix =
-        isLast && m.teleports.length > shown.length
-          ? ` (showing 3 of ${m.teleports.length})`
+        idx === shown.length - 1 && items.length > shown.length
+          ? ` (showing 3 of ${items.length})`
           : "";
-      issues.push({
-        gate: "teleport",
-        description: `element ${t.selector} teleports ${t.distancePx}px at ~${t.atSeconds.toFixed(1)}s — tween the move or remove the jump${suffix}`,
-      });
+      issues.push({ gate, description: describe(item) + suffix });
     });
-  }
+  };
 
-  {
-    const shown = m.popIns.slice(0, 3);
-    shown.forEach((p, idx) => {
-      const isLast = idx === shown.length - 1;
-      const suffix =
-        isLast && m.popIns.length > shown.length
-          ? ` (showing 3 of ${m.popIns.length})`
-          : "";
-      issues.push({
-        gate: "pop_in",
-        description: `element ${p.selector} (≈${Math.round(p.areaFraction * 100)}% of frame) pops in at ~${p.atSeconds.toFixed(1)}s with no transition — fade or scale it in over ≥250ms${suffix}`,
-      });
-    });
-  }
+  pushTruncated(
+    m.teleports,
+    "teleport",
+    (t) =>
+      `element ${t.selector} teleports ${t.distancePx}px at ~${t.atSeconds.toFixed(1)}s — tween the move or remove the jump`,
+  );
+
+  pushTruncated(
+    m.popIns,
+    "pop_in",
+    (p) =>
+      `element ${p.selector} (≈${Math.round(p.areaFraction * 100)}% of frame) pops in at ~${p.atSeconds.toFixed(1)}s with no transition — fade or scale it in over ≥250ms`,
+  );
 
   if (m.unsettledSelectors.length > TELEMETRY.unsettledGateCount) {
     issues.push({

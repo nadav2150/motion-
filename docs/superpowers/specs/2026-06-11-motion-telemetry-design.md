@@ -48,7 +48,7 @@ Metrics → compact text block (~300–600 tokens) injected into the **existing*
 
 ### 4. `telemetryGates(metrics)` — pure function
 
-Hard thresholds → synthesized refinement issues that force a scene into the existing refinement set even when the vision critique verdict is `ship`. Stays within the existing refinement-set cap; telemetry-gated scenes take priority within it. No new rounds, no new calls.
+Hard thresholds → synthesized refinement issues that force a scene into the existing refinement set even when the vision critique verdict is `ship`. No new critique rounds or calls are added; like critique-flagged scenes, each telemetry-gated scene costs one scene-fill refinement call within the existing single refinement round. There is no upper cap on the refinement set (pre-existing behavior); a cap is possible follow-on work if gate volume warrants it.
 
 ## Gate thresholds (initial — tune from real runs)
 
