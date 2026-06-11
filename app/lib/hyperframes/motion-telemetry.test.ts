@@ -257,3 +257,47 @@ describe("computeMotionMetrics — pop-ins", () => {
     expect(m.popIns).toHaveLength(0);
   });
 });
+
+describe("computeMotionMetrics — mechanical motion", () => {
+  it("flags constant-speed (linear) motion", () => {
+    const samples = makeSamples({
+      elements: [
+        { selector: "h1#linear@0", at: (t) => ({ x: 100 + t * 200, y: 200 }) },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.mechanicalSelectors).toEqual(["h1#linear@0"]);
+  });
+
+  it("does not flag eased (power3.out-like) motion", () => {
+    // progress = 1 - (1-p)^3 over the first 3s — speed varies 3x..0x.
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "h1#eased@0",
+          at: (t) => {
+            const p = Math.min(1, t / 3);
+            const progress = 1 - Math.pow(1 - p, 3);
+            return { x: 100 + progress * 600, y: 200 };
+          },
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.mechanicalSelectors).toEqual([]);
+  });
+
+  it("ignores short movements (fewer than 6 moving intervals)", () => {
+    // Moves linearly but only for ~3 intervals.
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "h1#blip@0",
+          at: (t) => ({ x: t < 0.8 ? 100 + t * 400 : 420, y: 200 }),
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.mechanicalSelectors).toEqual([]);
+  });
+});
