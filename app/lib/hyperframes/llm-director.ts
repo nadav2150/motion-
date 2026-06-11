@@ -2973,8 +2973,11 @@ const SCENE_FILL_SCHEMA = {
       },
     },
     backgroundLayers: {
+      // NOTE: no maxItems — Anthropic structured outputs reject it ("For
+      // 'array' type, property 'maxItems' is not supported", seen 2026-06-07).
+      // The ≤1 cap is enforced post-parse (slice(0,1) in generateSceneFill)
+      // and in the prompt ("exactly 0 or 1 entries").
       type: "array",
-      maxItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
@@ -5384,14 +5387,22 @@ export async function refineScenes(
 /**
  * Translate critique outputs into a single refinement set: scenes flagged
  * for refine/reject at the per-scene level, PLUS scenes referenced by film-
- * level major-issue affectedSceneIds. Per-scene + film-level feedback for
- * the SAME scene is concatenated into one labeled feedback block.
+ * level major-issue affectedSceneIds, PLUS scenes whose measured motion
+ * telemetry tripped a hard gate (telemetryGates) — telemetry can force a
+ * refinement even when the vision critic said "ship", because the critic
+ * judges a still composite and cannot see timing defects. Per-scene, film-
+ * level, and telemetry feedback for the SAME scene is concatenated into one
+ * labeled feedback block.
  */
 export function buildRefinementSet(
   perSceneCritiques: SceneCritique[],
   filmCritique: FilmCritique | null,
+  telemetryIssuesBySceneId?: Map<string, string[]>,
 ): SceneRefinementRequest[] {
-  const bySceneId = new Map<string, { sceneIssues: string[]; filmIssues: string[] }>();
+  const bySceneId = new Map<
+    string,
+    { sceneIssues: string[]; filmIssues: string[]; telemetryIssues: string[] }
+  >();
 
   for (const c of perSceneCritiques) {
     const needsRefine =
@@ -5403,7 +5414,7 @@ export function buildRefinementSet(
       (i) =>
         `  [${i.severity}] ${i.dimension}: ${i.description} → ${i.suggestedFix}`,
     );
-    bySceneId.set(c.sceneId, { sceneIssues: lines, filmIssues: [] });
+    bySceneId.set(c.sceneId, { sceneIssues: lines, filmIssues: [], telemetryIssues: [] });
   }
 
   if (filmCritique) {
@@ -5411,24 +5422,44 @@ export function buildRefinementSet(
       if (f.severity !== "major" && filmCritique.verdict !== "redesign_rhythm") continue;
       const line = `  [${f.severity}] ${f.dimension}: ${f.description} → ${f.suggestedFix}`;
       for (const sid of f.affectedSceneIds) {
-        const entry = bySceneId.get(sid) ?? { sceneIssues: [], filmIssues: [] };
+        const entry =
+          bySceneId.get(sid) ?? { sceneIssues: [], filmIssues: [], telemetryIssues: [] };
         entry.filmIssues.push(line);
         bySceneId.set(sid, entry);
       }
     }
   }
 
-  return Array.from(bySceneId.entries()).map(([sceneId, { sceneIssues, filmIssues }]) => {
-    const parts: string[] = [];
-    if (sceneIssues.length > 0) {
-      parts.push("PER-SCENE ISSUES (from this scene's own vision critique):");
-      parts.push(...sceneIssues);
+  if (telemetryIssuesBySceneId) {
+    for (const [sid, issues] of telemetryIssuesBySceneId) {
+      if (issues.length === 0) continue;
+      const entry =
+        bySceneId.get(sid) ?? { sceneIssues: [], filmIssues: [], telemetryIssues: [] };
+      entry.telemetryIssues.push(...issues.map((i) => `  [major] ${i}`));
+      bySceneId.set(sid, entry);
     }
-    if (filmIssues.length > 0) {
-      if (parts.length > 0) parts.push("");
-      parts.push("FILM-LEVEL ISSUES (this scene contributes to a film-level problem):");
-      parts.push(...filmIssues);
-    }
-    return { sceneId, feedbackText: parts.join("\n") };
-  });
+  }
+
+  return Array.from(bySceneId.entries()).map(
+    ([sceneId, { sceneIssues, filmIssues, telemetryIssues }]) => {
+      const parts: string[] = [];
+      if (sceneIssues.length > 0) {
+        parts.push("PER-SCENE ISSUES (from this scene's own vision critique):");
+        parts.push(...sceneIssues);
+      }
+      if (filmIssues.length > 0) {
+        if (parts.length > 0) parts.push("");
+        parts.push("FILM-LEVEL ISSUES (this scene contributes to a film-level problem):");
+        parts.push(...filmIssues);
+      }
+      if (telemetryIssues.length > 0) {
+        if (parts.length > 0) parts.push("");
+        parts.push(
+          "MEASURED MOTION ISSUES (deterministic telemetry from the rendered scene — these are measured facts, fix them all):",
+        );
+        parts.push(...telemetryIssues);
+      }
+      return { sceneId, feedbackText: parts.join("\n") };
+    },
+  );
 }
