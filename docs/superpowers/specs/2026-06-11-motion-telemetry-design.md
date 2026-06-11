@@ -68,7 +68,7 @@ Soft signals (mechanical/linear easing, low motion energy, overlaps) appear only
 
 1. **Capture:** `captureScenes` (`app/lib/jobs.ts`) runs telemetry sampling in the same pass as motion-trail capture → `patchShot` writes metrics to a new **`motion_telemetry JSONB`** column on `shots` (one Supabase migration).
 2. **Critique:** `critiqueAndPolishJob` loads per-shot telemetry, passes the rendered block into `generateVisionCritique` (signature gains an optional telemetry-block parameter).
-3. **Refinement targeting:** `buildRefinementSet` merges `telemetryGates` issues with critique-driven refinements, respecting the existing cap with telemetry issues prioritized.
+3. **Refinement targeting:** `buildRefinementSet` merges `telemetryGates` issues with critique-driven refinements (see §4 — no cap; one scene-fill call per flagged scene within the existing single round).
 
 ## Known limitations
 
