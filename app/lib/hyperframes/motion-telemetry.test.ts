@@ -301,3 +301,39 @@ describe("computeMotionMetrics — mechanical motion", () => {
     expect(m.mechanicalSelectors).toEqual([]);
   });
 });
+
+describe("computeMotionMetrics — final-frame layout", () => {
+  it("flags a visible element that ends mostly offscreen", () => {
+    const samples = makeSamples({
+      elements: [
+        // Ends at x=1900 with w=300 → only 20px of 300 visible (≈6%).
+        { selector: "h1#gone@0", at: (t) => ({ x: 100 + t * 450, y: 200 }) },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.offscreenSelectors).toEqual(["h1#gone@0"]);
+  });
+
+  it("flags two text elements colliding at the final frame", () => {
+    const samples = makeSamples({
+      elements: [
+        { selector: "h1#a@0", at: () => ({ x: 100, y: 200 }) },
+        { selector: "h2#b@1", at: () => ({ x: 150, y: 230 }) },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.textOverlaps).toEqual([{ a: "h1#a@0", b: "h2#b@1" }]);
+  });
+
+  it("ignores overlaps involving hidden or media elements", () => {
+    const samples = makeSamples({
+      elements: [
+        { selector: "h1#a@0", at: () => ({ x: 100, y: 200 }) },
+        { selector: "h2#hidden@1", at: () => ({ x: 150, y: 230, opacity: 0 }) },
+        { selector: "img#bg@2", kind: "media", at: () => ({ x: 100, y: 200, w: 1920, h: 1080 }) },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.textOverlaps).toEqual([]);
+  });
+});
