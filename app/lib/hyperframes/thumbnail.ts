@@ -11,6 +11,12 @@
 
 import { chromium, type Browser, type Page } from "playwright";
 import sharp from "sharp";
+import {
+  TELEMETRY,
+  type ElementKind,
+  type ElementMotionSamples,
+  type SceneMotionSamples,
+} from "./motion-telemetry";
 
 const VIEWPORT_W = 1920;
 const VIEWPORT_H = 1080;
@@ -233,6 +239,208 @@ export async function captureMotionTrailComposite(
       .toBuffer();
 
     return composite;
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
+// ─── Motion telemetry sampling ───────────────────────────────────────────
+
+export type CaptureSceneTelemetryArgs = {
+  html: string;
+  /** Matches the scene <section id> in the film skeleton. */
+  sceneId: string;
+  /** Master-timeline start of the scene, seconds. */
+  sceneStartSeconds: number;
+  sceneDurationSeconds: number;
+  /** Total master timeline length, seconds (for seek clamping). */
+  totalDurationSeconds: number;
+};
+
+// Layout reads don't need the screenshot compositor flush (80ms) — style
+// application after seek is synchronous; a small wait covers WAAPI/rAF lag.
+const TELEMETRY_SEEK_FLUSH_MS = 30;
+
+type RawElementSample = {
+  selector: string;
+  kind: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  opacity: number;
+};
+
+// Runs IN THE PAGE via page.evaluate — passed as a string to avoid esbuild
+// __name() helper injection that breaks Playwright's function serialization.
+// First call tags up to maxElements visual leaves (direct-text elements +
+// media) with data-hf-telemetry so the same element set is sampled at every
+// timepoint regardless of visibility changes.
+const SAMPLE_SCENE_ELEMENTS_FN = /* js */ `
+(function(arg) {
+  var root =
+    document.getElementById(arg.sceneId) ||
+    document.querySelector('[data-composition-id="' + arg.sceneId + '"]') ||
+    document.body;
+
+  var tagged = Array.from(root.querySelectorAll("[data-hf-telemetry]"));
+  if (tagged.length === 0) {
+    var all = Array.from(root.querySelectorAll("*"));
+    function isMedia(el) {
+      return ["IMG", "SVG", "CANVAS", "VIDEO"].includes(el.tagName.toUpperCase());
+    }
+    function hasDirectText(el) {
+      return Array.from(el.childNodes).some(function(nd) {
+        return nd.nodeType === 3 && (nd.textContent || "").trim().length > 0;
+      });
+    }
+    var candidates = all.filter(function(el) {
+      return !["SCRIPT", "STYLE"].includes(el.tagName.toUpperCase()) &&
+        (isMedia(el) || hasDirectText(el));
+    });
+    candidates.sort(function(a, b) {
+      var ra = a.getBoundingClientRect();
+      var rb = b.getBoundingClientRect();
+      return rb.width * rb.height - ra.width * ra.height;
+    });
+    var chosen = candidates.slice(0, arg.maxElements);
+    chosen = chosen.filter(function(el) {
+      return !chosen.some(function(other) { return other !== el && other.contains(el); });
+    });
+    chosen.forEach(function(el, i) {
+      var cls = typeof el.className === "string" && el.className.trim()
+        ? "." + el.className.trim().split(/\\s+/)[0]
+        : "";
+      var id = el.id ? "#" + el.id : "";
+      el.setAttribute(
+        "data-hf-telemetry",
+        el.tagName.toLowerCase() + id + cls + "@" + i
+      );
+      el.setAttribute("data-hf-kind", isMedia(el) ? "media" : "text");
+    });
+    tagged = chosen;
+  }
+
+  return tagged.map(function(el) {
+    var r = el.getBoundingClientRect();
+    var eff = 1;
+    var node = el;
+    while (node && node !== root.parentElement) {
+      var cs = getComputedStyle(node);
+      eff *= parseFloat(cs.opacity || "1");
+      if (cs.visibility === "hidden" || cs.display === "none") eff = 0;
+      node = node.parentElement;
+    }
+    return {
+      selector: el.getAttribute("data-hf-telemetry") || "?",
+      kind: el.getAttribute("data-hf-kind") || "text",
+      x: r.x,
+      y: r.y,
+      w: r.width,
+      h: r.height,
+      opacity: eff,
+    };
+  });
+})
+`;
+
+/**
+ * Sample one scene's rendered motion: seek the master timeline to N evenly
+ * spaced timepoints across the scene window and read element rects/opacities
+ * at each. Same seek machinery as captureMotionTrailComposite; own context.
+ * Throws on page-load failure — callers treat telemetry as non-fatal.
+ */
+export async function captureSceneMotionTelemetry(
+  args: CaptureSceneTelemetryArgs,
+): Promise<SceneMotionSamples> {
+  const d = args.sceneDurationSeconds;
+  const sampleCount = Math.max(
+    TELEMETRY.minSamples,
+    Math.min(TELEMETRY.maxSamples, Math.round(d * TELEMETRY.samplesPerSecond)),
+  );
+  const localTimes = Array.from(
+    { length: sampleCount },
+    (_, i) => (i / (sampleCount - 1)) * Math.max(0.1, d - 0.05),
+  );
+
+  const browser = await getBrowser();
+  const context = await browser.newContext({
+    viewport: { width: VIEWPORT_W, height: VIEWPORT_H },
+    deviceScaleFactor: 1,
+  });
+  const page: Page = await context.newPage();
+
+  try {
+    await page.setContent(args.html, { waitUntil: "load" });
+    await page
+      .waitForFunction(
+        () => {
+          const tls = (window as unknown as { __timelines?: Record<string, unknown> })
+            .__timelines;
+          return !!(tls && Object.keys(tls).length > 0);
+        },
+        { timeout: TIMELINE_WAIT_MS },
+      )
+      .catch(() => {
+        // No timeline — sample whatever static state the page settled into.
+      });
+
+    const perSample: RawElementSample[][] = [];
+    for (const local of localTimes) {
+      const seekTime = Math.max(
+        0,
+        Math.min(args.totalDurationSeconds - 0.1, args.sceneStartSeconds + local),
+      );
+      await page
+        .evaluate((t: number) => {
+          const tls = (window as unknown as {
+            __timelines?: Record<string, { pause: () => void; seek: (s: number) => void }>;
+          }).__timelines;
+          if (!tls) return;
+          const tl = tls[Object.keys(tls)[0]];
+          if (!tl) return;
+          tl.pause();
+          tl.seek(t);
+        }, seekTime)
+        .catch(() => {});
+      await page.waitForTimeout(TELEMETRY_SEEK_FLUSH_MS);
+      perSample.push(
+        await page.evaluate(
+          // String-based evaluate avoids esbuild __name() injection that breaks
+          // Playwright's function serialization when run via tsx.
+          SAMPLE_SCENE_ELEMENTS_FN + `(${JSON.stringify({ sceneId: args.sceneId, maxElements: TELEMETRY.maxElements })})`,
+        ) as RawElementSample[],
+      );
+    }
+
+    // Assemble per-element series keyed by the minted selector. Tagging is
+    // sticky, so misses should not happen; zero-rect fallback keeps series
+    // aligned if they somehow do.
+    const keys = perSample[0].map((raw) => raw.selector);
+    const elements: ElementMotionSamples[] = keys.map((key) => {
+      const rects = perSample.map((arr) => {
+        const hit = arr.find((raw) => raw.selector === key);
+        return hit
+          ? { x: hit.x, y: hit.y, w: hit.w, h: hit.h }
+          : { x: 0, y: 0, w: 0, h: 0 };
+      });
+      const opacities = perSample.map(
+        (arr) => arr.find((raw) => raw.selector === key)?.opacity ?? 0,
+      );
+      const kind: ElementKind =
+        perSample[0].find((raw) => raw.selector === key)?.kind === "media"
+          ? "media"
+          : "text";
+      return { selector: key, kind, rects, opacities };
+    });
+
+    return {
+      sceneId: args.sceneId,
+      sampleTimesSeconds: localTimes.map((t) => Number(t.toFixed(3))),
+      durationSeconds: d,
+      viewport: { w: VIEWPORT_W, h: VIEWPORT_H },
+      elements,
+    };
   } finally {
     await context.close().catch(() => {});
   }
