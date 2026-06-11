@@ -93,6 +93,12 @@ describe("computeMotionMetrics — movement census", () => {
     const samples = makeSamples({ n: 1, elements: [] });
     expect(() => computeMotionMetrics(samples)).toThrow(/need/);
   });
+
+  it("throws on a zero-size viewport", () => {
+    const samples = makeSamples({ elements: [] });
+    samples.viewport = { w: 0, h: 0 };
+    expect(() => computeMotionMetrics(samples)).toThrow(/viewport diagonal/);
+  });
 });
 
 describe("computeMotionMetrics — dead air", () => {
@@ -340,6 +346,26 @@ describe("computeMotionMetrics — final-frame layout", () => {
   });
 });
 
+describe("telemetryGates — truncation note", () => {
+  it("appends 'showing 3 of N' on the last emitted gate when there are 4+ teleports", () => {
+    // Compute a 1-teleport scene, grab the single teleport event, then
+    // synthesise a 4-teleport MotionMetrics by spreading.
+    const base = computeMotionMetrics(
+      makeSamples({
+        elements: [
+          { selector: "div#jumper@0", at: (t) => ({ x: t < 2 ? 100 : 900, y: 300 }) },
+        ],
+      }),
+    );
+    const t = base.teleports[0];
+    const m = { ...base, teleports: [t, t, t, t] };
+    const issues = telemetryGates(m);
+    const teleportIssues = issues.filter((i) => i.gate === "teleport");
+    expect(teleportIssues).toHaveLength(3);
+    expect(teleportIssues[2].description).toMatch(/showing 3 of 4/);
+  });
+});
+
 describe("telemetryGates", () => {
   it("fires teleport, pop_in, dead_air, and fully_static gates", () => {
     const teleportScene = computeMotionMetrics(
@@ -403,6 +429,22 @@ describe("telemetryGates", () => {
       }),
     );
     expect(telemetryGates(healthy)).toEqual([]);
+  });
+});
+
+describe("renderTelemetryBlock — dead air rendering", () => {
+  it("shows dead-air percentage when deadAirFraction > 0 even with no deadAirWindow", () => {
+    const base = computeMotionMetrics(
+      makeSamples({
+        elements: [
+          { selector: "div#jumper@0", at: (t) => ({ x: t < 2 ? 100 : 900, y: 300 }) },
+        ],
+      }),
+    );
+    const m = { ...base, deadAirFraction: 0.2, deadAirWindow: null };
+    const block = renderTelemetryBlock(m);
+    expect(block).toContain("dead air: 20%");
+    expect(block).not.toContain("dead air: none");
   });
 });
 

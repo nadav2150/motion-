@@ -128,6 +128,11 @@ export function computeMotionMetrics(s: SceneMotionSamples): MotionMetrics {
     throw new Error(`computeMotionMetrics(${s.sceneId}): need ≥2 samples, got ${n}`);
   }
   const diag = Math.hypot(s.viewport.w, s.viewport.h);
+  if (diag === 0) {
+    throw new Error(
+      `computeMotionMetrics(${s.sceneId}): viewport diagonal is 0 — check sampler output`,
+    );
+  }
 
   const series: ElementSeries[] = s.elements.map((el) => {
     const dists: number[] = [];
@@ -339,17 +344,33 @@ export type TelemetryIssue = { gate: TelemetryGate; description: string };
 export function telemetryGates(m: MotionMetrics): TelemetryIssue[] {
   const issues: TelemetryIssue[] = [];
 
-  for (const t of m.teleports.slice(0, 3)) {
-    issues.push({
-      gate: "teleport",
-      description: `element ${t.selector} teleports ${t.distancePx}px at ~${t.atSeconds.toFixed(1)}s — tween the move or remove the jump`,
+  {
+    const shown = m.teleports.slice(0, 3);
+    shown.forEach((t, idx) => {
+      const isLast = idx === shown.length - 1;
+      const suffix =
+        isLast && m.teleports.length > shown.length
+          ? ` (showing 3 of ${m.teleports.length})`
+          : "";
+      issues.push({
+        gate: "teleport",
+        description: `element ${t.selector} teleports ${t.distancePx}px at ~${t.atSeconds.toFixed(1)}s — tween the move or remove the jump${suffix}`,
+      });
     });
   }
 
-  for (const p of m.popIns.slice(0, 3)) {
-    issues.push({
-      gate: "pop_in",
-      description: `element ${p.selector} (≈${Math.round(p.areaFraction * 100)}% of frame) pops in at ~${p.atSeconds.toFixed(1)}s with no transition — fade or scale it in over ≥250ms`,
+  {
+    const shown = m.popIns.slice(0, 3);
+    shown.forEach((p, idx) => {
+      const isLast = idx === shown.length - 1;
+      const suffix =
+        isLast && m.popIns.length > shown.length
+          ? ` (showing 3 of ${m.popIns.length})`
+          : "";
+      issues.push({
+        gate: "pop_in",
+        description: `element ${p.selector} (≈${Math.round(p.areaFraction * 100)}% of frame) pops in at ~${p.atSeconds.toFixed(1)}s with no transition — fade or scale it in over ≥250ms${suffix}`,
+      });
     });
   }
 
@@ -390,11 +411,16 @@ export function renderTelemetryBlock(m: MotionMetrics): string {
     `  elements tracked: ${m.elementCount} (${m.elementCount - m.movingElementCount} never move)`,
   );
   lines.push(`  motion energy: ${m.totalMotionEnergy.toFixed(1)} (≈0 = static scene)`);
-  lines.push(
-    m.deadAirWindow
-      ? `  dead air: ${Math.round(m.deadAirFraction * 100)}% of pre-settle intervals motionless; longest still stretch ${m.deadAirWindow.fromSeconds.toFixed(1)}s–${m.deadAirWindow.toSeconds.toFixed(1)}s`
-      : "  dead air: none — something is always moving",
-  );
+  if (m.deadAirFraction > 0) {
+    const stretch = m.deadAirWindow
+      ? `; longest still stretch ${m.deadAirWindow.fromSeconds.toFixed(1)}s–${m.deadAirWindow.toSeconds.toFixed(1)}s`
+      : "";
+    lines.push(
+      `  dead air: ${Math.round(m.deadAirFraction * 100)}% of pre-settle intervals motionless${stretch}`,
+    );
+  } else {
+    lines.push("  dead air: none — something is always moving");
+  }
   lines.push(
     m.unsettledSelectors.length > 0
       ? `  settle: ${m.unsettledSelectors.length} element(s) still moving in the final 10% (${m.unsettledSelectors.slice(0, 4).join(", ")})`
