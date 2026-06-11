@@ -154,3 +154,106 @@ describe("computeMotionMetrics — unsettled ending", () => {
     expect(m.unsettledSelectors).toEqual([]);
   });
 });
+
+describe("computeMotionMetrics — teleports", () => {
+  it("detects a position jump with still neighbors", () => {
+    // Static at x=100 until 2.0s, then instantly at x=900 (800px jump,
+    // > 15% of the 2203px viewport diagonal), static after.
+    const samples = makeSamples({
+      elements: [
+        { selector: "div#jumper@0", at: (t) => ({ x: t < 2 ? 100 : 900, y: 300 }) },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.teleports).toHaveLength(1);
+    expect(m.teleports[0].selector).toBe("div#jumper@0");
+    expect(m.teleports[0].distancePx).toBeGreaterThan(700);
+    expect(m.teleports[0].atSeconds).toBeGreaterThan(1.8);
+    expect(m.teleports[0].atSeconds).toBeLessThan(2.4);
+  });
+
+  it("does not flag smooth fast motion as a teleport", () => {
+    // 800px over the whole scene — every interval moves, neighbors not still.
+    const samples = makeSamples({
+      elements: [
+        { selector: "div#smooth@0", at: (t) => ({ x: 100 + t * 200, y: 300 }) },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.teleports).toHaveLength(0);
+  });
+
+  it("ignores jumps while the element is hidden", () => {
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "div#offstage@0",
+          at: (t) => ({ x: t < 2 ? 100 : 900, y: 300, opacity: 0 }),
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.teleports).toHaveLength(0);
+  });
+});
+
+describe("computeMotionMetrics — pop-ins", () => {
+  it("detects a large element appearing instantly mid-scene", () => {
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "h2#pop@0",
+          // 1000×300 = 14.5% of the viewport; opacity snaps 0→1 at 2s.
+          at: (t) => ({ x: 400, y: 400, w: 1000, h: 300, opacity: t < 2 ? 0 : 1 }),
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.popIns).toHaveLength(1);
+    expect(m.popIns[0].selector).toBe("h2#pop@0");
+    expect(m.popIns[0].atSeconds).toBeGreaterThan(1.8);
+  });
+
+  it("allows instant appearance within the first 300ms grace window", () => {
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "h2#opener@0",
+          at: (t) => ({ x: 400, y: 400, w: 1000, h: 300, opacity: t < 0.2 ? 0 : 1 }),
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.popIns).toHaveLength(0);
+  });
+
+  it("ignores small elements popping in", () => {
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "span#chip@0",
+          // 200×50 ≈ 0.5% of viewport — too small to gate.
+          at: (t) => ({ x: 400, y: 400, w: 200, h: 50, opacity: t < 2 ? 0 : 1 }),
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.popIns).toHaveLength(0);
+  });
+
+  it("does not flag a gradual fade as a pop-in", () => {
+    const samples = makeSamples({
+      elements: [
+        {
+          selector: "h2#fader@0",
+          at: (t) => ({
+            x: 400, y: 400, w: 1000, h: 300,
+            opacity: Math.max(0, Math.min(1, (t - 1) / 1.5)),
+          }),
+        },
+      ],
+    });
+    const m = computeMotionMetrics(samples);
+    expect(m.popIns).toHaveLength(0);
+  });
+});
