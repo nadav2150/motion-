@@ -11,8 +11,10 @@
 // item is dropped from the resolved bundle so the film still ships if one
 // SFX search fails or ElevenLabs hiccups on one scene.
 
-import { generateVoiceover } from "./elevenlabs-tts";
+import { ElevenLabsError, generateVoiceover } from "./elevenlabs-tts";
 import { searchSfx, type FreesoundLicense } from "./freesound-search";
+import { getMeterContext } from "./billing/meter";
+import { getPostHog } from "./posthog";
 import {
   type AudioPlan,
   type AudioPlanSfxCue,
@@ -107,13 +109,15 @@ const SFX_VOLUME: Record<SfxKind, number> = {
   ambient: 0.45,
 };
 
-// ElevenLabs PAYG caps at 6 concurrent requests per API key — exceeding the
-// cap returns 429 concurrent_limit_exceeded and drops the voiceover. Cap
-// our parallelism at 5 by default (one slot of headroom). Tune via env if
-// you're on a higher tier.
+// ElevenLabs caps concurrent requests per SUBSCRIPTION TIER — exceeding the
+// cap returns 429 concurrent_limit_exceeded. Observed on this account: the
+// limit is 3 (a 2026-06 8-scene job lost 4 voiceovers when this was 5). The
+// generateVoiceover retry/backoff is the real safety net; this cap just keeps
+// us at or under the tier limit so retries rarely fire. Default 3 matches the
+// current tier — raise via env on a higher tier (Creator=5, Pro=10, Scale=15).
 const ELEVENLABS_VO_CONCURRENCY = Math.max(
   1,
-  Number(process.env.ELEVENLABS_VO_CONCURRENCY ?? 5),
+  Number(process.env.ELEVENLABS_VO_CONCURRENCY ?? 3),
 );
 
 async function resolveBgMusic(
@@ -184,10 +188,35 @@ async function resolveVoiceover(
       startOffsetSeconds: v.startOffsetSeconds ?? 0.3,
     };
   } catch (err) {
+    const status = err instanceof ElevenLabsError ? err.status : null;
     console.warn(
-      `[audio resolve] voiceover ${v.sceneId} failed: ` +
+      `[audio resolve] voiceover ${v.sceneId} failed${status ? ` (HTTP ${status})` : ""}: ` +
         (err instanceof Error ? err.message : String(err)),
     );
+    // Observability: a dropped voiceover used to be invisible (the error
+    // throws before any cost telemetry). Emit a dedicated event so 4/8-style
+    // drops are catchable in PostHog instead of only by eye. No-ops outside a
+    // runJob meter context (scripts/tests have no userId).
+    const ctx = getMeterContext();
+    if (ctx.userId) {
+      try {
+        getPostHog().capture({
+          distinctId: ctx.userId,
+          event: "voiceover_failed",
+          properties: {
+            job_id: ctx.jobId,
+            scene_id: v.sceneId,
+            http_status: status,
+            message: err instanceof Error ? err.message : String(err),
+          },
+        });
+      } catch (phErr) {
+        console.error(
+          "[posthog] capture voiceover_failed failed:",
+          phErr instanceof Error ? phErr.message : phErr,
+        );
+      }
+    }
     return null;
   }
 }

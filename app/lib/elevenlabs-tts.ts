@@ -19,6 +19,33 @@ export const TTS_MODELS = [
 export type TtsModelId = (typeof TTS_MODELS)[number];
 export const TTS_MODEL_IDS = new Set<string>(TTS_MODELS);
 
+// Typed error so callers can branch on the HTTP status (retry decision +
+// observability) instead of regex-matching the message.
+export class ElevenLabsError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ElevenLabsError";
+  }
+}
+
+// Retry tuning. ElevenLabs returns 429 `concurrent_limit_exceeded` when more
+// requests run in parallel than the subscription allows; those clear in well
+// under a second as in-flight calls finish, so a short exponential backoff
+// recovers them. 5xx are transient too. Everything else (401 auth/quota, 422
+// bad input) is non-retryable — failing fast avoids burning time and spend.
+export type VoiceoverRetryOpts = { maxAttempts?: number; baseDelayMs?: number };
+const DEFAULT_MAX_ATTEMPTS = 4;
+const DEFAULT_BASE_DELAY_MS = 600;
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export type ElevenLabsVoiceoverArgs = {
   text: string;
   // Voice IDs are 20-char ElevenLabs identifiers (e.g. "21m00Tcm4TlvDq8ikWAM").
@@ -181,62 +208,86 @@ function getDefaultVoiceId(): string {
 
 export async function generateVoiceover(
   args: ElevenLabsVoiceoverArgs,
+  opts: VoiceoverRetryOpts = {},
 ): Promise<Buffer> {
   const apiKey = getApiKey();
   const voiceId = args.voiceId ?? getDefaultVoiceId();
   const modelId = args.modelId ?? DEFAULT_MODEL_ID;
+  const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const baseDelayMs = opts.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
 
-  const startedAt = Date.now();
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
     voiceId,
   )}?output_format=mp3_44100_128`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "xi-api-key": apiKey,
-      "Content-Type": "application/json",
-      Accept: "audio/mpeg",
+  const body = JSON.stringify({
+    text: args.text,
+    model_id: modelId,
+    voice_settings: {
+      stability: args.stability ?? 0.5,
+      similarity_boost: args.similarityBoost ?? 0.75,
+      style: args.style ?? 0,
+      use_speaker_boost: args.useSpeakerBoost ?? true,
     },
-    body: JSON.stringify({
-      text: args.text,
-      model_id: modelId,
-      voice_settings: {
-        stability: args.stability ?? 0.5,
-        similarity_boost: args.similarityBoost ?? 0.75,
-        style: args.style ?? 0,
-        use_speaker_boost: args.useSpeakerBoost ?? true,
-      },
-    }),
   });
 
-  if (!res.ok) {
+  let lastErr: ElevenLabsError | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const startedAt = Date.now();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg",
+      },
+      body,
+    });
+
+    if (res.ok) {
+      const audio = Buffer.from(await res.arrayBuffer());
+
+      // Cost telemetry — fires only inside a runJob() meter context. ElevenLabs
+      // charges per CHARACTER (the audio endpoint doesn't return usage metadata,
+      // so we use input text length, which equals what ElevenLabs bills). Only
+      // the successful attempt records cost — retries never double-bill.
+      const chars = args.text.length;
+      void recordModelCost({
+        provider: "elevenlabs",
+        model: modelId,
+        reason: "elevenlabs_tts",
+        unitKind: "characters",
+        units: chars,
+        costUsdMicros: usdMicrosForElevenLabs(modelId, chars),
+        latencyMs: Date.now() - startedAt,
+        extra: { voice_id: voiceId, attempts: attempt },
+      });
+
+      return audio;
+    }
+
     let detail = "";
     try {
-      const body = (await res.json()) as { detail?: unknown };
-      if (body.detail) detail = `: ${JSON.stringify(body.detail)}`;
+      const errBody = (await res.json()) as { detail?: unknown };
+      if (errBody.detail) detail = `: ${JSON.stringify(errBody.detail)}`;
     } catch {
       // ignore
     }
-    throw new Error(`ElevenLabs TTS failed (${res.status})${detail}`);
+    lastErr = new ElevenLabsError(res.status, `ElevenLabs TTS failed (${res.status})${detail}`);
+
+    // Non-retryable status, or no attempts left → surface immediately.
+    if (!isRetryableStatus(res.status) || attempt === maxAttempts) {
+      throw lastErr;
+    }
+
+    // Honor Retry-After when present; otherwise exponential backoff with jitter.
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const backoff =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : baseDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random());
+    await sleep(backoff);
   }
 
-  const audio = Buffer.from(await res.arrayBuffer());
-
-  // Cost telemetry — fires only inside a runJob() meter context. ElevenLabs
-  // charges per CHARACTER (the audio endpoint doesn't return usage metadata,
-  // so we use input text length, which equals what ElevenLabs bills).
-  const chars = args.text.length;
-  void recordModelCost({
-    provider: "elevenlabs",
-    model: modelId,
-    reason: "elevenlabs_tts",
-    unitKind: "characters",
-    units: chars,
-    costUsdMicros: usdMicrosForElevenLabs(modelId, chars),
-    latencyMs: Date.now() - startedAt,
-    extra: { voice_id: voiceId },
-  });
-
-  return audio;
+  // Unreachable (the loop either returns or throws), but satisfies the type.
+  throw lastErr ?? new ElevenLabsError(0, "ElevenLabs TTS failed");
 }
