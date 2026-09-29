@@ -93,6 +93,56 @@ function getModel(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
 }
 
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/**
+ * https://www.youtube.com/watch?v=ID for any single-video YouTube link
+ * (watch?v=, youtu.be/, /shorts/, /embed/, /live/, music.youtube.com), dropping
+ * playlist, timestamp and tracking parameters. null when there is no video id.
+ */
+export function canonicalYouTubeUrl(raw: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^www\.|^m\./, "");
+  let id: string | null = null;
+  if (host === "youtu.be") {
+    id = u.pathname.split("/")[1] ?? null;
+  } else if (host === "youtube.com" || host === "music.youtube.com") {
+    id = u.searchParams.get("v");
+    if (!id) {
+      const m = u.pathname.match(/^\/(?:shorts|embed|live|v)\/([^/?#]+)/);
+      id = m?.[1] ?? null;
+    }
+  }
+  return id && YOUTUBE_ID.test(id) ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
+// Gemini returns 503 "model is currently experiencing high demand" and 429 in
+// bursts; those are worth waiting out. Everything else is returned as-is.
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+const RETRY_DELAYS_MS = [3_000, 8_000, 20_000];
+
+async function generateWithRetry(model: string, apiKey: string, body: unknown): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
+    });
+    if (res.ok || !RETRY_STATUSES.has(res.status) || attempt >= RETRY_DELAYS_MS.length) return res;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 30_000) : RETRY_DELAYS_MS[attempt]!;
+    console.warn(`[reference-video] Gemini HTTP ${res.status}, retrying in ${Math.round(wait / 1000)}s (attempt ${attempt + 2})`);
+    await res.body?.cancel().catch(() => {});
+    await new Promise((r) => setTimeout(r, wait));
+  }
+}
+
 export function isYouTubeUrl(raw: string): boolean {
   try {
     const host = new URL(raw).hostname.replace(/^www\.|^m\./, "");
@@ -346,8 +396,13 @@ export async function analyzeReferenceVideo(
 
   let videoPart: Record<string, unknown>;
   let uploadedName: string | null = null;
-  if (isYouTubeUrl(videoUrl)) {
-    videoPart = { file_data: { file_uri: videoUrl } };
+  const youtube = isYouTubeUrl(videoUrl);
+  if (youtube) {
+    // Gemini rejects anything but a plain video link (a &list= playlist
+    // parameter returns 400 INVALID_ARGUMENT), so always send watch?v=ID.
+    const canonical = canonicalYouTubeUrl(videoUrl);
+    if (!canonical) throw new Error("That YouTube link doesn't point to a single video. Paste the link of one video.");
+    videoPart = { file_data: { file_uri: canonical } };
   } else {
     const { bytes, mimeType } = await downloadVideo(videoUrl);
     const file = await uploadToGemini(bytes, mimeType, apiKey);
@@ -357,17 +412,18 @@ export async function analyzeReferenceVideo(
 
   const startedAt = Date.now();
   try {
-    const res = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [videoPart, { text: ANALYSIS_PROMPT }] }],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
-      signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
+    const res = await generateWithRetry(model, apiKey, {
+      contents: [{ role: "user", parts: [videoPart, { text: ANALYSIS_PROMPT }] }],
+      generationConfig: { responseMimeType: "application/json" },
     });
     if (!res.ok) {
-      throw new Error(`Gemini analysis failed (HTTP ${res.status}): ${(await res.text()).slice(0, 500)}`);
+      const body = (await res.text()).slice(0, 500);
+      if (youtube && res.status === 400) {
+        throw new Error(
+          "Gemini couldn't open that YouTube video. Make sure it's public (not private, unlisted-only or age-restricted), or upload the file instead.",
+        );
+      }
+      throw new Error(`Gemini analysis failed (HTTP ${res.status}): ${body}`);
     }
     const data = (await res.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalYouTubeUrl,
   fetchPublicUrl,
   formatReferenceBrief,
   isPrivateIp,
@@ -8,6 +9,33 @@ import {
   validateReferenceUrl,
   type ReferenceAnalysis,
 } from "./reference-video";
+
+describe("canonicalYouTubeUrl", () => {
+  it("drops playlist, timestamp and tracking parameters", () => {
+    expect(canonicalYouTubeUrl("https://www.youtube.com/watch?v=mtPqxJBMXCQ&list=PLvr0s6WLGo2bCGXjB5ecHQ-JLPgmxMULe")).toBe(
+      "https://www.youtube.com/watch?v=mtPqxJBMXCQ",
+    );
+    expect(canonicalYouTubeUrl("https://m.youtube.com/watch?t=42&v=mtPqxJBMXCQ&si=abc")).toBe(
+      "https://www.youtube.com/watch?v=mtPqxJBMXCQ",
+    );
+  });
+  it("handles short, shorts, embed and live links", () => {
+    for (const url of [
+      "https://youtu.be/mtPqxJBMXCQ?si=xyz",
+      "https://www.youtube.com/shorts/mtPqxJBMXCQ",
+      "https://www.youtube.com/embed/mtPqxJBMXCQ",
+      "https://www.youtube.com/live/mtPqxJBMXCQ?feature=share",
+      "https://music.youtube.com/watch?v=mtPqxJBMXCQ&list=RD",
+    ]) {
+      expect(canonicalYouTubeUrl(url)).toBe("https://www.youtube.com/watch?v=mtPqxJBMXCQ");
+    }
+  });
+  it("returns null without a single video id", () => {
+    expect(canonicalYouTubeUrl("https://www.youtube.com/playlist?list=PLvr0s6WLGo2bCGXjB5ecHQ-JLPgmxMULe")).toBeNull();
+    expect(canonicalYouTubeUrl("https://www.youtube.com/@somechannel")).toBeNull();
+    expect(canonicalYouTubeUrl("not a url")).toBeNull();
+  });
+});
 
 describe("isYouTubeUrl", () => {
   it("recognises youtube hosts", () => {
