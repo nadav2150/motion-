@@ -13,7 +13,12 @@ describe.runIf(process.env.RUN_RENDER_TESTS === "1")("ensureVidelyMeta in a real
     ["overwritten later", ""],
   ] as const) {
     it(name, async () => {
-      const late = name === "overwritten later" ? `<script>window.__videly = { timeline: null };</script>` : "";
+      // Mirrors real documents: a GSAP-like timeline (circular, full of
+      // functions) and a ready Promise hang off window.__videly.
+      const late =
+        name === "overwritten later"
+          ? `<script>var tl = { kill: function () {} }; tl.self = tl; window.__videly = { timeline: tl, ready: Promise.resolve() };</script>`
+          : `<script>var t2 = { seek: function () {} }; t2.parent = t2; window.__videly.timeline = t2; window.__videly.ready = Promise.resolve();</script>`;
       const html = ensureVidelyMeta(`<!DOCTYPE html><html><head>${head}</head>${body.replace("</body>", `${late}</body>`)}</html>`, want);
       const r = await captureFrames({ html, ...want, seed: 1, allowedHosts: [] }, [0, 1]);
       expect(r.meta).toEqual(want);

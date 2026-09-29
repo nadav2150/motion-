@@ -226,7 +226,13 @@ async function openSession(input: RenderInput): Promise<Session> {
     sc.setDocument(input.html);
     await loadDocument(s);
 
-    s.meta = validateMeta(await pageCall(s, "window.__videly", SEEK_TIMEOUT_MS, "reading window.__videly").catch(() => null), input, s.issues);
+    // Read only the numeric fields: documents also hang the GSAP master timeline
+    // and a ready Promise on window.__videly, and serialising that object throws
+    // (which used to surface as "window.__videly is missing").
+    const META_EXPR =
+      "(function () { var v = window.__videly; if (!v || typeof v !== 'object') return null;" +
+      " return { duration: v.duration, fps: v.fps, width: v.width, height: v.height }; })()";
+    s.meta = validateMeta(await pageCall(s, META_EXPR, SEEK_TIMEOUT_MS, "reading window.__videly").catch(() => null), input, s.issues);
     s.webglAvailable = await pageCall<boolean>(
       s,
       `(function () {
