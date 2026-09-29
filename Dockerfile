@@ -47,8 +47,19 @@ ENV NODE_ENV=production \
 # FFMPEG_BIN="ffmpeg") both shell out to it. The Playwright base image ships
 # Chromium but no system ffmpeg, so renders fail with "FFmpeg not found".
 # Installed as root here, before the image drops to the pwuser user below.
+#
+# Fonts for the Studio (v2) renderer, which screenshots generated documents in
+# this image's Chromium. The Playwright base already ships Liberation, Noto
+# Color Emoji, IPA Gothic / WenQuanYi (CJK fallbacks) and FreeFont. Added:
+#   fonts-noto-core  Noto Sans/Serif for Hebrew, Arabic, Devanagari, Thai, Greek,
+#                    Cyrillic... so non-Latin captions and on-screen text get a
+#                    real typeface instead of FreeFont or tofu.
+#   fonts-inter      system Inter, the fallback when a document names Inter but
+#                    does not load /studio-libs/fonts/inter/inter.css.
+# libass (for burning subtitles) comes with the ffmpeg package.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg fonts-noto-core fonts-inter \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
