@@ -2,8 +2,8 @@
 // composition HTML. Template-first single-composition pipeline. No per-scene
 // HTML generation; no ffmpeg stitch.
 //
-// Uses Anthropic Claude Opus 4.8 via @anthropic-ai/sdk. Key notes:
-//   • Opus 4.8 removes `temperature` / `top_p` / `top_k` (400 if sent) and
+// Uses Anthropic Claude Opus 5.5 via @anthropic-ai/sdk. Key notes:
+//   • Opus 5.5 removes `temperature` / `top_p` / `top_k` (400 if sent) and
 //     removes manual `budget_tokens` thinking. We use adaptive thinking
 //     and `output_config.effort` to control depth instead.
 //   • Two LLM calls per job: generateStoryboard (script analysis + identity
@@ -47,10 +47,10 @@ import { resolveLayers } from "./engines/layers";
 import { collectExtraCdn, getEngineAdapter } from "./engines/registry";
 import { validateLayer } from "./engines/validate";
 
-const MODEL = "claude-opus-4-8";
+const MODEL = "claude-opus-5-5";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
 // level). Critique is judgmental + structured, not generative — Sonnet is
-// fast here and we reserve Opus 4.8 wall-time for the creative passes
+// fast here and we reserve Opus 5.5 wall-time for the creative passes
 // (storyboard, blueprint, scene fills, refinement).
 const SONNET_MODEL = "claude-sonnet-4-6";
 
@@ -561,6 +561,8 @@ export type BrandHints = {
   logoUrl?: string | null;
   /** Free-text brand style direction the user typed (optional). */
   brandStyle?: string | null;
+  /** Gemini breakdown of a user-supplied reference video (formatReferenceBrief). */
+  referenceBrief?: string | null;
   /** Per-plan minimum scene count for the storyboard. Defaults to 4. */
   minScenes?: number;
   /** Per-plan maximum scene count for the storyboard. Defaults to 8.
@@ -574,6 +576,8 @@ export type Storyboard = {
   title: string;
   visualIdentity: VisualIdentity;
   scenes: StoryboardScene[];
+  /** Reference-video brief carried from the storyboard call into the blueprint call. */
+  referenceBrief?: string | null;
 };
 
 const STORYBOARD_SYSTEM_PROMPT = `You are an art-director shaping ONE coherent film from a script.
@@ -1403,6 +1407,7 @@ export async function generateStoryboard(
     colors: cleanColors,
     logoUrl: brand?.logoUrl ?? null,
     brandStyle: brand?.brandStyle ?? null,
+    referenceBrief: brand?.referenceBrief ?? null,
     minScenes,
     maxScenes,
   });
@@ -1476,6 +1481,7 @@ export async function generateStoryboard(
     title: parsed.title || "Untitled",
     visualIdentity: identity,
     scenes,
+    referenceBrief: brand?.referenceBrief ?? null,
   };
 }
 
@@ -1577,6 +1583,7 @@ function renderStoryboardUserPrompt(
     colors: string[];
     logoUrl: string | null;
     brandStyle: string | null;
+    referenceBrief?: string | null;
     minScenes?: number;
     maxScenes?: number;
   },
@@ -1611,6 +1618,14 @@ function renderStoryboardUserPrompt(
     if (brand.brandStyle) {
       lines.push(`  brandStyle: ${brand.brandStyle.trim()}`);
     }
+    lines.push("");
+  }
+
+  if (brand.referenceBrief) {
+    lines.push(brand.referenceBrief);
+    lines.push(
+      "When a REFERENCE VIDEO is given, it outranks the AESTHETIC SEED below: derive visualIdentity (palette, fonts, motionLanguage, signatureMove) and scene pacing/durations from the reference, then apply the BRAND ANCHOR on top.",
+    );
     lines.push("");
   }
 
@@ -3529,6 +3544,7 @@ FILM PLAN — ${storyboard.scenes.length} scenes · ${totalSeconds}s total
 ══════════════════════════════════════════════════════════════════════════════
 ${sceneLines}
 ${renderLockedAssetsForBlueprint(storyboard, assetCatalog)}
+${storyboard.referenceBrief ? `${storyboard.referenceBrief}\nMirror the reference's motion vocabulary, transitions and camera moves in every scene brief (content stays original).\n` : ""}
 Produce the FilmBlueprint JSON now. Scene ids MUST be "s1" .. "s${storyboard.scenes.length}" in that order. Durations MUST match the storyboard above. Copy MUST be echoed verbatim. Plan continuity forward through the scenes — read your own endStateHint and check it lines up with the next scene's transitionInIntent.${assetCatalog && Object.keys(assetCatalog.scenes).length > 0 ? ` Design each scene's brief AROUND its locked assets — the renderer will embed those URLs verbatim, so your brief should reference them by role.` : ""}
 `;
 }

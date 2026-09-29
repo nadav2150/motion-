@@ -32,6 +32,8 @@ export type JobRow = {
   brand_logo_url: string | null;
   brand_logo_storage_path: string | null;
   brand_colors: string[] | null;
+  reference_video_url?: string | null;
+  reference_analysis?: unknown;
   title: string | null;
   status: JobStatus;
   shot_count: number | null;

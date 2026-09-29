@@ -19,6 +19,8 @@ type Env = {
   // Server-side secrets (set via `wrangler secret bulk`).
   OPEN_AI_API_KEY: string;
   ANTROPIC_API_KEY: string;
+  GEMINI_API_KEY: string;
+  GEMINI_MODEL?: string;
   REPLICATE_API_TOKEN: string;
   MOTIONFLOW_LLM_DIRECTOR: string;
   MOTIONGLASS_AUTO_AUDIO: string;
@@ -72,6 +74,8 @@ export class VidelyContainer extends Container<Env> {
     NODE_ENV: "production",
     OPEN_AI_API_KEY: this.env.OPEN_AI_API_KEY,
     ANTROPIC_API_KEY: this.env.ANTROPIC_API_KEY,
+    GEMINI_API_KEY: this.env.GEMINI_API_KEY,
+    GEMINI_MODEL: this.env.GEMINI_MODEL ?? "",
     REPLICATE_API_TOKEN: this.env.REPLICATE_API_TOKEN,
     MOTIONFLOW_LLM_DIRECTOR: this.env.MOTIONFLOW_LLM_DIRECTOR,
     MOTIONGLASS_AUTO_AUDIO: this.env.MOTIONGLASS_AUTO_AUDIO,

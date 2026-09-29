@@ -37,6 +37,8 @@ import { useBrand } from "../editor/hooks/use-brand";
 import { useJobAssets } from "../editor/hooks/use-job-assets";
 import { usePlayback } from "../editor/hooks/use-playback";
 import { useJob } from "../editor/hooks/use-job";
+import { useReferenceVideo } from "../editor/hooks/use-reference-video";
+import { ReferenceVideoSection } from "../editor/components/sidebar/ReferenceVideoSection";
 import { BrandSection } from "../editor/components/sidebar/BrandSection";
 import { AssetsSection } from "../editor/components/sidebar/AssetsSection";
 import { MusicSection } from "../editor/components/sidebar/MusicSection";
@@ -91,6 +93,8 @@ export const EditorScreen = ({
     handleGenerateClip,
   } = useJob({ initialJobId });
 
+  const reference = useReferenceVideo();
+
   const {
     script,
     setScript,
@@ -109,8 +113,11 @@ export const EditorScreen = ({
         brandLogoStoragePath: brandLogoStoragePath ?? null,
         brandColors: brandColors.length > 0 ? brandColors : null,
         audioTracks,
+        referenceVideoUrl: reference.referenceVideoUrl,
       }),
   });
+
+  const canGenerate = Boolean(script.trim() || reference.referenceVideoUrl);
 
   const {
     brandLogoUrl,
@@ -179,6 +186,7 @@ export const EditorScreen = ({
       brandLogoStoragePath: brandLogoStoragePath ?? null,
       brandColors: brandColors.length > 0 ? brandColors : null,
       audioTracks,
+      referenceVideoUrl: reference.referenceVideoUrl,
     });
 
   useEffect(() => {
@@ -317,7 +325,7 @@ export const EditorScreen = ({
           <GenerateButton
             onClick={handlePrimaryAction}
             loading={generating || (showStoryboard && !TERMINAL.includes(status))}
-            disabled={!script.trim()}
+            disabled={!canGenerate}
           />
           {status === "completed" && finalVideoUrl ? (
             <>
@@ -433,6 +441,25 @@ export const EditorScreen = ({
                   </div>
                 )}
             </AccordionSection>
+
+            <ReferenceVideoSection
+              open={openSections.has("reference")}
+              onToggle={() => toggleSection("reference")}
+              locked={audioLocked}
+              referenceLink={reference.referenceLink}
+              setReferenceLink={reference.setReferenceLink}
+              uploadedName={reference.uploadedName}
+              uploading={reference.uploading}
+              referenceError={reference.referenceError}
+              referenceInputRef={reference.referenceInputRef}
+              onReferenceFileChange={(e) => void reference.onReferenceFileChange(e)}
+              clearUpload={reference.clearUpload}
+              analysis={
+                job?.reference_analysis && typeof job.reference_analysis === "object"
+                  ? (job.reference_analysis as { summary?: string; model?: string; error?: string })
+                  : null
+              }
+            />
 
             <AccordionSection
               label="SCENES"
@@ -570,7 +597,7 @@ export const EditorScreen = ({
 
           <button
             onClick={handlePrimaryAction}
-            disabled={!script.trim() || generating}
+            disabled={!canGenerate || generating}
             style={{
               padding: "10px 14px", borderRadius: 10,
               border: "1px solid rgba(167,139,250,0.45)",

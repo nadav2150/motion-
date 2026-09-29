@@ -126,6 +126,11 @@ export type JobRow = {
   brand_logo_url: string | null;
   brand_logo_storage_path: string | null;
   brand_colors: string[] | null;
+  // Reference video (see supabase/migrations/20260929_reference_video.sql).
+  // reference_analysis is the Gemini breakdown (ReferenceAnalysis) or
+  // { error } when analysis failed and the film was directed without it.
+  reference_video_url: string | null;
+  reference_analysis: unknown;
   // Project-level asset library (see supabase/migrations/20260520_job_assets.sql).
   // Each entry: { id, kind, url, storage_path, name, mime, size_bytes, created_at }.
   assets: unknown;

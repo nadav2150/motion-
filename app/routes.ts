@@ -43,6 +43,7 @@ export default [
   route("api/jobs/:id/sfx", "routes/api.jobs.$id.sfx.tsx"),
   route("api/jobs/:id/assets", "routes/api.jobs.$id.assets.tsx"),
   route("api/brand/logo", "routes/api.brand.logo.tsx"),
+  route("api/reference-video", "routes/api.reference-video.tsx"),
   route("api/brand/scrape", "routes/api.brand.scrape.tsx"),
   route("api/music/search", "routes/api.music.search.tsx"),
   route("api/sfx/search", "routes/api.sfx.search.tsx"),

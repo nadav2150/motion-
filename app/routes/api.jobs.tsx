@@ -6,6 +6,7 @@ import {
   runJob,
 } from "../lib/jobs";
 import { requireUserApi } from "../lib/auth";
+import { validateReferenceUrl } from "../lib/reference-video";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -27,6 +28,7 @@ export async function action({ request }: Route.ActionArgs) {
     brandLogoStoragePath,
     brandColors,
     audioTracks,
+    referenceVideoUrl,
   } = (body ?? {}) as {
     script?: unknown;
     productDescription?: unknown;
@@ -35,10 +37,26 @@ export async function action({ request }: Route.ActionArgs) {
     brandLogoStoragePath?: unknown;
     brandColors?: unknown;
     audioTracks?: unknown;
+    referenceVideoUrl?: unknown;
   };
 
-  if (typeof script !== "string" || !script.trim()) {
-    return Response.json({ error: "script (string) is required" }, { status: 400 });
+  const cleanedReferenceUrl =
+    typeof referenceVideoUrl === "string" && referenceVideoUrl.trim()
+      ? referenceVideoUrl.trim()
+      : null;
+  if (cleanedReferenceUrl) {
+    const urlError = validateReferenceUrl(cleanedReferenceUrl);
+    if (urlError) return Response.json({ error: urlError }, { status: 400 });
+  }
+
+  // Script is optional when a reference video is supplied — Gemini's
+  // suggested copy fills it in at directing time.
+  const scriptText = typeof script === "string" ? script : "";
+  if (!scriptText.trim() && !cleanedReferenceUrl) {
+    return Response.json(
+      { error: "Provide a script, a reference video, or both." },
+      { status: 400 },
+    );
   }
 
   const cleanedColors = Array.isArray(brandColors)
@@ -64,7 +82,8 @@ export async function action({ request }: Route.ActionArgs) {
 
   try {
     const { jobId } = await createJob({
-      script,
+      script: scriptText,
+      referenceVideoUrl: cleanedReferenceUrl,
       productDescription: typeof productDescription === "string" ? productDescription : undefined,
       brandStyle: typeof brandStyle === "string" ? brandStyle : undefined,
       brandLogoUrl: typeof brandLogoUrl === "string" ? brandLogoUrl : null,

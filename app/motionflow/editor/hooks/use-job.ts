@@ -14,6 +14,8 @@ export type GeneratePayload = {
     music: boolean;
     sfx: boolean;
   };
+  // Optional reference video (link or uploaded file URL) for Gemini analysis.
+  referenceVideoUrl: string | null;
 };
 
 export function useJob({
@@ -43,7 +45,7 @@ export function useJob({
 
   const handleGenerate = async (payload: GeneratePayload) => {
     const trimmed = payload.script.trim();
-    if (!trimmed || generating) return;
+    if ((!trimmed && !payload.referenceVideoUrl) || generating) return;
     setGenerating(true);
     setError(null);
     setJob(null);
@@ -61,6 +63,7 @@ export function useJob({
           brandLogoStoragePath: payload.brandLogoStoragePath,
           brandColors: payload.brandColors,
           audioTracks: payload.audioTracks,
+          referenceVideoUrl: payload.referenceVideoUrl,
         }),
       });
       const data = (await res.json()) as { jobId?: string; error?: string };
