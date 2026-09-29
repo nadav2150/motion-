@@ -1,15 +1,62 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* Videly v2 palette (dark UI only). */
+  --color-ink: #2d3142;       /* Jet Black: cards, inputs, sidebar */
+  --color-ink-800: #262a38;   /* raised surfaces */
+  --color-ink-900: #1f222e;   /* app background */
+  --color-ink-950: #181a24;   /* deepest wells (player letterbox, footer) */
+  --color-slate: #4f5d75;     /* Blue Slate: borders, chips, hover/active nav */
+  --color-silver: #bfc0c0;    /* secondary text, icons, placeholders */
+  --color-paper: #ffffff;     /* headings, primary text */
+  --color-coral: #ef8354;     /* Coral Glow: primary actions, progress, highlights */
+  --color-coral-400: #f39a73; /* coral hover */
+  --color-coral-600: #d96c3d; /* coral pressed */
+  --color-ready: #6fcf97;     /* "Ready" status dot */
+  --color-danger: #f07167;
+
+  --shadow-soft: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 10px 30px -12px rgb(0 0 0 / 0.55);
+  --shadow-lift: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 24px 60px -18px rgb(0 0 0 / 0.7);
+}
+
+/* Videly v2 — shared bits Tailwind utilities can't express cleanly. */
+.vd-root {
+  font-family: var(--font-sans);
+  background: var(--color-ink-900);
+  color: var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: normal;
+}
+.vd-root ::selection { background: rgb(239 131 84 / 0.35); }
+.vd-scroll-x { scrollbar-width: thin; scrollbar-color: rgb(79 93 117 / 0.6) transparent; }
+.vd-noscrollbar { scrollbar-width: none; }
+.vd-noscrollbar::-webkit-scrollbar { display: none; }
+.vd-range { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+.vd-range::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: linear-gradient(to right, var(--color-coral) var(--vd-fill, 0%), rgb(255 255 255 / 0.25) var(--vd-fill, 0%)); }
+.vd-range::-moz-range-track { height: 4px; border-radius: 999px; background: linear-gradient(to right, var(--color-coral) var(--vd-fill, 0%), rgb(255 255 255 / 0.25) var(--vd-fill, 0%)); }
+.vd-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 999px; background: #fff; border: 3px solid var(--color-coral); }
+.vd-range::-moz-range-thumb { width: 10px; height: 10px; border-radius: 999px; background: #fff; border: 3px solid var(--color-coral); }
+.vd-range:focus-visible { outline: 2px solid var(--color-coral); outline-offset: 4px; border-radius: 4px; }
+@keyframes vd-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.vd-skeleton { background: linear-gradient(90deg, rgb(45 49 66 / 0.8) 0px, rgb(79 93 117 / 0.35) 160px, rgb(45 49 66 / 0.8) 320px); background-size: 800px 100%; animation: vd-shimmer 1.4s linear infinite; }
+@keyframes vd-spin { to { transform: rotate(360deg); } }
+.vd-spin { animation: vd-spin 1s linear infinite; }
+@keyframes vd-pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.vd-pulse { animation: vd-pulse-dot 1.2s ease-in-out infinite; }
+@keyframes vd-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.vd-toast { animation: vd-toast-in 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .vd-skeleton, .vd-spin, .vd-pulse { animation: none; }
 }
 
 /* Videly AI — design system */
 :root {
-  --bg-0: #06070A;
-  --bg-1: #0A0B10;
-  --bg-2: #0E1018;
+  --bg-0: #1f222e;
+  --bg-1: #262a38;
+  --bg-2: #2d3142;
   --ink-0: #FAFAFC;
   --ink-1: rgba(250,250,252,0.86);
   --ink-2: rgba(250,250,252,0.62);
@@ -20,11 +67,12 @@
   --glass: rgba(255,255,255,0.04);
   --glass-2: rgba(255,255,255,0.06);
 
-  --blue: oklch(0.72 0.18 250);
-  --violet: oklch(0.68 0.20 295);
-  --cyan: oklch(0.85 0.14 210);
+  /* v2: legacy accent vars remapped onto the Coral Glow palette. */
+  --blue: #ef8354;
+  --violet: #f39a73;
+  --cyan: #f6b896;
 
-  --grad-aurora: linear-gradient(135deg, oklch(0.72 0.18 250) 0%, oklch(0.68 0.20 295) 50%, oklch(0.85 0.14 210) 100%);
+  --grad-aurora: linear-gradient(135deg, #ef8354 0%, #f39a73 50%, #f6b896 100%);
   --grad-soft: linear-gradient(180deg, rgba(122,162,255,0.10), rgba(167,139,250,0.04));
 
   --r-sm: 8px;

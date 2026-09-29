@@ -1,4 +1,4 @@
-import { data, useLoaderData, useNavigate, useRevalidator } from "react-router";
+import { data, useLoaderData, useRevalidator } from "react-router";
 import type { Route } from "./+types/settings";
 import {
   SettingsScreen,
@@ -6,13 +6,13 @@ import {
   type SettingsBilling,
   type SettingsSubscription,
 } from "../motionflow/screens/settings";
-import type { NavKey } from "../motionflow/primitives";
 import { requireUserOrRedirect } from "../lib/auth";
 import { getOrCreateBilling } from "../lib/billing/credits";
 import { getSupabase } from "../lib/supabase";
+import { isMockRequest, MOCK_USER } from "../motionflow/ui/session.server";
 
 export function meta(_: Route.MetaArgs) {
-  return [{ title: "Settings — Videly AI" }];
+  return [{ title: "Settings — Videly" }];
 }
 
 type LoaderData = {
@@ -22,6 +22,20 @@ type LoaderData = {
 };
 
 export async function loader({ request }: Route.LoaderArgs) {
+  if (isMockRequest(request)) {
+    return data({
+      account: MOCK_USER,
+      billing: {
+        planTier: "pro",
+        creditsBalance: 12_400,
+        creditsReserved: 1_800,
+        monthlyGrant: 30_000,
+        periodEnd: new Date(Date.now() + 18 * 86_400_000).toISOString(),
+      },
+      subscription: { status: "active", cancelAtPeriodEnd: false, currentPeriodEnd: new Date(Date.now() + 18 * 86_400_000).toISOString() },
+    } satisfies LoaderData);
+  }
+
   const { user, headers } = await requireUserOrRedirect(request);
   const billing = await getOrCreateBilling(user.id);
 
@@ -59,14 +73,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   );
 }
 
-const navPath: Record<NavKey, string> = {
-  home: "/home",
-  projects: "/projects",
-  settings: "/settings",
-};
-
 export default function SettingsRoute() {
-  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { account, billing, subscription } = useLoaderData() as LoaderData;
   return (
@@ -74,8 +81,6 @@ export default function SettingsRoute() {
       account={account}
       billing={billing}
       subscription={subscription}
-      onNav={(k) => navigate(navPath[k])}
-      onManagePlan={() => navigate("/pricing")}
       onSubscriptionChanged={() => revalidator.revalidate()}
     />
   );
