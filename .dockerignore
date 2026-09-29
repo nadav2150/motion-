@@ -35,5 +35,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Scripts that don't need to run inside the container.
-scripts
+# Scripts that don't need to run inside the container — except the Studio
+# worker + container supervisor entries, which `npm run build` bundles into
+# build/worker/.
+scripts/*
+!scripts/studio-worker.ts
+!scripts/studio-worker-env.ts
+!scripts/container-supervisor.ts
