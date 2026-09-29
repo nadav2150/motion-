@@ -45,6 +45,19 @@ export type StudioPlanRecord = {
     logoUrl: string | null;
   } | null;
   generatedAssets?: { id: string; url: string; path: string; description: string }[];
+  // Resume checkpoints of the generate / regenerate run that wrote this record
+  // (runStudioJob). A re-claimed task with the same runId skips what is done.
+  run?: StudioRunCheckpoint | null;
+};
+
+export type StudioRunCheckpoint = {
+  runId: string; // studio_tasks.id
+  kind: "initial" | "regenerate";
+  planned?: boolean; // `plan` is this run's plan
+  assetsReady?: boolean; // audio, generatedAssets, timed plan and finalDuration are this run's
+  draftPath?: string | null; // the code call's document, saved before validation
+  reviewDone?: boolean; // self-review finished (with or without a polished revision)
+  finalRevision?: number | null; // the revision this run produced (to render)
 };
 
 // jobs.audio
