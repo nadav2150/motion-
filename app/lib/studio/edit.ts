@@ -11,6 +11,7 @@ import { withMeterContext } from "../billing/meter";
 import { getPlanFeatures } from "../billing/plan-features";
 import { flushPostHog, getPostHog } from "../posthog";
 import { uploadBuffer } from "../storage";
+import { markDone, markRunning } from "./active";
 import { callOpus, extractHtmlDocument, newTokenBudget } from "./anthropic";
 import {
   claimJob,
@@ -231,9 +232,11 @@ export async function withStudioOperation<T>(
   return withMeterContext(
     { userId: row.user_id, jobId: row.id, planTier, tokenBudget: newTokenBudget() },
     async () => {
+      markRunning(row.id);
       try {
         return await fn();
       } finally {
+        markDone(row.id);
         await reconcileJob(row.id).catch((err) =>
           console.error(`[studio ${row.id}] reconcile failed:`, err instanceof Error ? err.message : err),
         );

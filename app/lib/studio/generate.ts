@@ -676,7 +676,12 @@ export async function runStudioJob(
       const stamp = Date.now().toString(36);
       const [vo, generated, music] = await Promise.all([
         voiceOn && plan.voiceover.length
-          ? recordVoiceover({ lines: plan.voiceover.map((l) => l.text), voiceId: row.voice_id! })
+          ? recordVoiceover({ lines: plan.voiceover.map((l) => l.text), voiceId: row.voice_id! }).catch((err) => {
+              // A failed voiceover should not cost the user the whole video:
+              // continue without narration (beats keep the plan's timing).
+              console.warn(`[studio ${jobId}] voiceover failed, continuing without it:`, err instanceof Error ? err.message : err);
+              return null;
+            })
           : Promise.resolve(null),
         generateImages(jobId, plan, preset.width, preset.height),
         plan.musicMood
