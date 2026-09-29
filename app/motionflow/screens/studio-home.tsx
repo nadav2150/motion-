@@ -337,7 +337,7 @@ export function StudioHomeScreen({
       { value: "off", label: "AI Voice: Off" },
       ...voices.map((v) => ({
         value: v.id,
-        label: `${v.label}${v.accent ? ` · ${v.accent[0]!.toUpperCase()}${v.accent.slice(1)}` : ""}${v.gender ? ` ${v.gender}` : ""}`,
+        label: `${v.label}${v.accent ? ` · ${v.accent[0]!.toUpperCase()}${v.accent.slice(1)}` : ""}`,
       })),
     ],
     [voices],
@@ -609,9 +609,9 @@ export function StudioHomeScreen({
                 options={FORMAT_OPTIONS.map((o) => ({
                   ...o,
                   disabled: o.value === "match" && !hasVideoRef,
-                  label: o.value === "match" && !hasVideoRef ? "Match reference (add a video)" : o.label,
+                  label: o.label,
                 }))}
-                className="sm:w-[124px]"
+                className="sm:w-[166px]"
               />
               <div className="col-span-2 flex items-center gap-1.5 sm:col-span-1">
                 <Select
@@ -624,7 +624,7 @@ export function StudioHomeScreen({
                   }}
                   icon={<Mic className="size-4" aria-hidden />}
                   options={voiceOptions}
-                  className="min-w-0 flex-1 sm:w-[190px] sm:flex-none"
+                  className="min-w-0 flex-1 sm:w-[214px] sm:flex-none"
                 />
                 {selectedVoice?.previewUrl && (
                   <IconButton label={sampling ? "Stop voice sample" : `Play ${selectedVoice.label} sample`} onClick={toggleSample}>

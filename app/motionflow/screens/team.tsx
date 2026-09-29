@@ -19,7 +19,7 @@ export function TeamScreen({ user, planTier, credits }: { user: ShellUser; planT
           </Button>
         }
       />
-      <Card className="relative overflow-hidden">
+      <Card className="relative min-h-[400px] overflow-hidden">
         <div className="pointer-events-none select-none opacity-40" aria-hidden>
           <div className="grid grid-cols-[1.5fr_1.5fr_1fr] gap-4 border-b border-slate/40 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-silver max-sm:grid-cols-[1fr_1fr]">
             <span>Name</span>

@@ -167,8 +167,9 @@ export function ExportModal({
 
           {phase === "options" || phase === "failed" ? (
             <>
-              <div className="mt-5 grid gap-3 sm:grid-cols-[1.3fr_1.2fr_1fr]">
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Select
+                  className="sm:col-span-2"
                   label="Format"
                   hideLabel={false}
                   value="mp4"
