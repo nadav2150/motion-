@@ -3,6 +3,12 @@ import type { Route } from "./+types/landing";
 import { LandingScreen } from "../motionflow/screens/landing";
 import { getUserFromRequest } from "../lib/auth";
 import { SITE_URL, buildMeta } from "../lib/seo";
+import { SHOWCASE } from "../motionflow/ui/showcase";
+
+// Only the hero poster is preloaded; everything below the fold is lazy.
+export const links: Route.LinksFunction = () => [
+  { rel: "preload", as: "image", href: SHOWCASE.heroPoster, fetchPriority: "high" },
+];
 
 export function meta(_: Route.MetaArgs) {
   return buildMeta({

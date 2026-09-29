@@ -1,1337 +1,625 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+// Public landing page "/" (Videly v2). SEO meta + JSON-LD live in
+// app/routes/landing.tsx. Every external image URL is in ui/showcase.ts.
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import {
-  Button,
-  CinemaPreview,
-  IconArrowRight,
-  IconCheck,
-  IconClose,
-  IconPlay,
-  IconSparkle,
-  IconWand,
-  Marquee,
-  Pill,
-  TopNav,
-  useFrame,
-} from "../primitives";
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Download,
+  LayoutTemplate,
+  Maximize,
+  Mic,
+  Palette,
+  PenLine,
+  Play,
+  Plus,
+  RectangleHorizontal,
+  Repeat,
+  Share2,
+  SlidersHorizontal,
+  Sparkles,
+  Volume2,
+  Wand2,
+} from "lucide-react";
+import type { StudioTemplate, TemplateCategory } from "../../lib/studio/types";
+import { api } from "../ui/api";
+import { ButtonLink, focusRing } from "../ui/Button";
+import { Tabs } from "../ui/controls";
+import { LogoMark } from "../ui/Logo";
+import { MarketingFooter, MarketingHeader } from "../ui/marketing";
+import { TemplateCard } from "../ui/TemplateCard";
+import { cn, formatClock } from "../ui/format";
+import {
+  FALLBACK_TEMPLATES,
+  SHOWCASE,
+  STATS,
+  TEMPLATE_CATEGORY_LABELS,
+  TESTIMONIALS,
+  TRUSTED_LOGOS,
+} from "../ui/showcase";
 
-const useScrollY = (ref: RefObject<HTMLDivElement | null>) => {
-  const [y, setY] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const onScroll = () => setY(el.scrollTop);
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [ref]);
-  return y;
-};
+// ------------------------------------------------------------------ helpers
 
-// Container-width based mobile detection. We measure the scroll container,
-// not the viewport — keeps the landing page responsive even when embedded
-// inside fixed-width artboards or split layouts.
-const useIsMobile = (ref: RefObject<HTMLDivElement | null>, threshold = 720) => {
-  const [m, setM] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const apply = (w: number) => setM(w < threshold);
-    apply(el.clientWidth);
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
-      ro.observe(el);
-      return () => ro.disconnect();
-    }
-  }, [ref, threshold]);
-  return m;
-};
-
-const FloatingCard = ({
-  children,
-  pos,
-  delay = 0,
-}: {
-  children?: ReactNode;
-  pos: CSSProperties;
-  delay?: number;
-}) => (
-  <div
-    className="mf-glass mf-float"
-    style={{
-      position: "absolute",
-      ...pos,
-      padding: "14px 16px",
-      minWidth: 220,
-      zIndex: 4,
-      animationDelay: `${delay}s`,
-      borderRadius: 14,
-    }}
-  >
-    {children}
-  </div>
-);
-
-/* ─────── HERO ─────── */
-const HeroStage = ({ f, m }: { f: number; m: boolean; onCta?: () => void }) => {
-  const scenes = [
-    { c: "linear-gradient(135deg, #1F2937, #06070A)", l: "01 · COLD OPEN" },
-    { c: "linear-gradient(135deg, #5468FF, #2D3340)", l: "02 · LOGO REVEAL" },
-    { c: "linear-gradient(135deg, #7AA2FF, #A78BFA)", l: "03 · HERO" },
-    { c: "linear-gradient(135deg, #A78BFA, #67E8F9)", l: "04 · WORKFLOW" },
-    { c: "linear-gradient(135deg, #67E8F9, #7AA2FF)", l: "05 · CTA" },
-  ];
+function Eyebrow({ children, pill }: { children: ReactNode; pill?: boolean }) {
   return (
-    <div style={{ marginTop: m ? 40 : 80, position: "relative" }}>
-      <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
-        <CinemaPreview aspect={m ? "1.6 / 1" : "2.4 / 1"} frame={f} label="VIDELY · LIVE PREVIEW · 4K · 24FPS">
-          <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", textAlign: "center", color: "white", width: "90%" }}>
-            <div className="mf-mono" style={{ fontSize: m ? 9 : 11, letterSpacing: "0.18em", color: "rgba(255,255,255,0.55)", marginBottom: m ? 10 : 14 }}>{m ? "SCENE 03 · 00:04.21" : "SCENE 03 · 00:04.21 → 00:07.80"}</div>
-            <div style={{ fontSize: m ? 24 : 56, fontWeight: 500, letterSpacing: "-0.03em", textShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>Your launch, in motion.</div>
-          </div>
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "20px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(0deg, rgba(0,0,0,0.6), transparent)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#67E8F9", boxShadow: "0 0 16px #67E8F9" }}/>
-              <span className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.16em", color: "rgba(255,255,255,0.7)" }}>RECORDING · MOTION ENGINE LIVE</span>
-            </div>
-            <div className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.12em", color: "rgba(255,255,255,0.55)" }}>{(8.2 + Math.sin(f / 30) * 0.6).toFixed(2)}s · {Math.round(122 + Math.sin(f / 40) * 4)} fps</div>
-          </div>
-        </CinemaPreview>
-
-        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 14, background: "rgba(8,9,13,0.6)", border: "1px solid var(--line)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
-          {scenes.map((s, i) => (
-            <div key={i} style={{ flex: 1, position: "relative" }}>
-              <div style={{ height: 38, borderRadius: 6, background: s.c, position: "relative", overflow: "hidden" }}>
-                <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.2), transparent 60%)" }}/>
-                {i === 2 && <div style={{ position: "absolute", inset: 0, border: "1.5px solid rgba(122,162,255,0.7)", borderRadius: 6, boxShadow: "0 0 20px rgba(122,162,255,0.4)" }}/>}
-              </div>
-              <div className="mf-mono" style={{ fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.08em", marginTop: 6, textAlign: "center" }}>{s.l}</div>
-            </div>
-          ))}
-          <div style={{ position: "absolute", top: 4, bottom: 4, left: `${(((f / 4) % 100))}%`, width: 1.5, background: "#7AA2FF", boxShadow: "0 0 12px #7AA2FF", pointerEvents: "none" }}/>
-        </div>
-      </div>
-
-      {!m && (
-        <FloatingCard pos={{ left: -10, top: 120 }} delay={0}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--grad-aurora)", display: "grid", placeItems: "center" }}>
-              <IconWand size={14} stroke={2} style={{ color: "white" }}/>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 500 }}>Motion path · Easing</div>
-              <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.05em" }}>cubic-bezier(.2,.8,.2,1)</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 24 }}>
-            {Array.from({ length: 28 }).map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  width: 2, height: `${30 + Math.sin((f + i * 8) / 12) * 40 + 30}%`,
-                  background: i < 18 ? "linear-gradient(180deg, #7AA2FF, #A78BFA)" : "rgba(255,255,255,0.15)",
-                  borderRadius: 1,
-                }}
-              />
-            ))}
-          </div>
-        </FloatingCard>
+    <p
+      className={cn(
+        "text-xs font-semibold uppercase tracking-[0.16em] text-coral",
+        pill && "inline-flex items-center gap-2 rounded-full border border-slate/70 bg-ink/60 px-3.5 py-1.5",
       )}
-
-      {!m && (
-        <FloatingCard pos={{ right: -10, top: 200 }} delay={2}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <span className="mf-pill mf-pill-success" style={{ padding: "3px 8px" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#67E8F9", boxShadow: "0 0 10px #67E8F9" }}/>
-              LIVE
-            </span>
-            <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em" }}>RENDER · 4K</span>
-          </div>
-          <div style={{ fontSize: 13, marginBottom: 6 }}>Generating motion…</div>
-          <div style={{ height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ width: `${(Math.sin(f / 30) * 0.4 + 0.6) * 100}%`, height: "100%", background: "var(--grad-aurora)" }}/>
-          </div>
-          <div className="mf-mono" style={{ marginTop: 8, fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.05em", display: "flex", justifyContent: "space-between" }}>
-            <span>FRAME 1,284 / 2,160</span><span>{(8 + Math.sin(f / 30) * 1.2).toFixed(1)}s</span>
-          </div>
-        </FloatingCard>
-      )}
-    </div>
+    >
+      {pill && <Sparkles className="size-3.5" aria-hidden />}
+      {children}
+    </p>
   );
-};
+}
 
-const Hero = ({ f, y, onCta, ctaLabel = "Start Creating Free", m }: { f: number; y: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => {
-  const parallax = Math.min(y * 0.4, 200);
+function CheckList({ items, className }: { items: string[]; className?: string }) {
   return (
-    <section style={{ position: "relative", padding: m ? "16px 20px 56px" : "32px 56px 96px", overflow: "hidden", isolation: "isolate" }}>
-      <div className="mf-bg-bloom"/>
-      <div className="mf-bg-grid" style={{ transform: `translateY(${parallax * 0.3}px)` }}/>
-      <div className="mf-bg-noise"/>
-
-      <div style={{ position: "absolute", left: "8%", top: 200, width: 360, height: 360, borderRadius: "50%", background: "oklch(0.72 0.18 250 / 0.20)", filter: "blur(80px)", transform: `translate(${Math.sin(f / 80) * 30}px, ${Math.cos(f / 100) * 40 - parallax * 0.5}px)`, pointerEvents: "none", zIndex: 0 }}/>
-      <div style={{ position: "absolute", right: "10%", top: 80, width: 280, height: 280, borderRadius: "50%", background: "oklch(0.68 0.20 295 / 0.20)", filter: "blur(80px)", transform: `translate(${Math.cos(f / 70) * 40}px, ${Math.sin(f / 90) * 30 - parallax * 0.4}px)`, pointerEvents: "none", zIndex: 0 }}/>
-
-      <div style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", paddingTop: m ? 36 : 80 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: m ? 18 : 28 }}>
-          <Pill tone="glow" icon={<IconSparkle size={11}/>}>
-            <span className="mf-mono" style={{ fontSize: m ? 9.5 : 11, letterSpacing: "0.08em" }}>{m ? "NEW · MOTION ENGINE v2" : "NEW · MOTION ENGINE v2 · 4K RENDER"}</span>
-          </Pill>
-
-          <h1 className="mf-display" style={{ margin: 0, maxWidth: 1100, fontSize: m ? 42 : 96, lineHeight: m ? 1.05 : 1.0, letterSpacing: m ? "-0.03em" : "-0.04em" }}>
-            You bring the product.<br/>
-            <span className="mf-grad-text">We bring the motion.</span>
-          </h1>
-
-          <p className="mf-body" style={{ maxWidth: 640, fontSize: m ? 15 : 19, color: "var(--ink-2)" }}>
-            Transform screenshots, launches, and product updates into motion stories
-            designed to feel world-class.
-          </p>
-
-          <div style={{ display: "flex", flexDirection: m ? "column" : "row", width: m ? "100%" : "auto", gap: m ? 10 : 12, marginTop: 6 }}>
-            <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
-            <Button variant="ghost" size={m ? "md" : "lg"} icon={<IconPlay size={14}/>}>Watch Demo</Button>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14, color: "var(--ink-3)", fontSize: m ? 11.5 : 13, textAlign: m ? "left" : "center" }}>
-            <div style={{ display: "flex", flexShrink: 0 }}>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: m ? 20 : 24, height: m ? 20 : 24, borderRadius: "50%",
-                    background: `linear-gradient(135deg, oklch(0.72 0.18 ${230 + i * 30}), oklch(0.55 0.18 ${280 + i * 20}))`,
-                    border: "2px solid #06070A", marginLeft: i === 0 ? 0 : -7,
-                  }}
-                />
-              ))}
-            </div>
-            {m ? "For startups & founders obsessed with taste." : "Built for startups, founders, and product teams obsessed with taste."}
-          </div>
-        </div>
-
-        <HeroStage f={f} onCta={onCta} m={m}/>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── SCROLL REEL ─────── */
-const ScrollReel = ({ f, y, m }: { f: number; y: number; m: boolean }) => {
-  const start = 700, span = 600;
-  const t = Math.max(0, Math.min(1, (y - start) / span));
-  const messages = ["screen recordings.", "generic trailers.", "rushed edits.", "low-quality motion."];
-  const idx = Math.min(3, Math.floor(t * 4));
-  return (
-    <section style={{ padding: m ? "72px 20px" : "120px 56px", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)", background: "linear-gradient(180deg, #06070A, #0A0B14)", position: "relative", overflow: "hidden" }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto", display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 40 : 80, alignItems: "center" }}>
-        <div>
-          <div className="mf-eyebrow" style={{ marginBottom: m ? 16 : 24 }}>THE STATUS QUO</div>
-          <h2 style={{ margin: 0, fontSize: m ? 34 : 64, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.05 }}>
-            Product launches deserve more than{" "}
-            <span style={{ background: "linear-gradient(135deg, #FF6B6B, #FCA5A5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{messages[idx]}</span>
-          </h2>
-          <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 14 : 17, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 460 }}>
-            Most teams ship incredible products — then announce them with content that
-            doesn't match the work that went in.
-          </p>
-        </div>
-
-        <div style={{ position: "relative", height: m ? 280 : 480 }}>
-          {[
-            { l: "PNG · screen-rec-final-v3.mov", c: "linear-gradient(135deg, #2A2620, #1A1812)", off: 0 },
-            { l: "MP4 · launch_cut_DRAFT.mp4",   c: "linear-gradient(135deg, #1F2A2A, #0F1818)", off: 1 },
-            { l: "GIF · feature_demo_v2.gif",    c: "linear-gradient(135deg, #2A1F2A, #181018)", off: 2 },
-            { l: "MOV · ship_it_announce.mov",   c: "linear-gradient(135deg, #221F2A, #121018)", off: 3 },
-          ].map((v, i) => (
-            <div
-              key={i}
-              style={{
-                position: "absolute",
-                top: (m ? 16 : 30) + i * (m ? 14 : 24),
-                left: (m ? 12 : 30) + i * (m ? 12 : 24),
-                right: (m ? 36 : 90) - i * (m ? 10 : 22),
-                height: m ? 140 : 240,
-                borderRadius: 18, overflow: "hidden",
-                background: v.c, border: "1px solid var(--line-2)",
-                boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)",
-                transform: idx >= v.off ? `translate(${(v.off + 1) * 40}px, ${v.off * 8}px) rotate(${(v.off + 1) * 3}deg)` : "none",
-                opacity: idx >= v.off ? 0.3 : 1,
-                filter: idx >= v.off ? "blur(2px) grayscale(0.7)" : "none",
-                transition: "all 800ms cubic-bezier(.2,.8,.2,1)",
-                zIndex: 10 - i,
-              }}
-            >
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 50%, rgba(255,255,255,0.04), transparent 60%)" }}/>
-              <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", display: "grid", placeItems: "center", paddingLeft: 3 }}>
-                  <IconPlay size={16} style={{ color: "rgba(255,255,255,0.5)" }}/>
-                </div>
-              </div>
-              <div style={{ position: "absolute", left: 14, bottom: 10, right: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="mf-mono" style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: "0.05em" }}>{v.l}</span>
-                {idx >= v.off && <span style={{ fontSize: 18, color: "#FF6B6B" }}>×</span>}
-              </div>
-            </div>
-          ))}
-          <div
-            style={{
-              position: "absolute", inset: m ? "30px 12px 12px 50px" : "60px 30px 30px 100px",
-              opacity: t > 0.85 ? 1 : 0, transform: t > 0.85 ? "scale(1)" : "scale(0.92)",
-              transition: "all 700ms cubic-bezier(.2,.8,.2,1)", zIndex: 20,
-            }}
-          >
-            <CinemaPreview aspect="16 / 10" frame={f} label="VIDELY · LAUNCH MOTION"/>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── PROBLEM BAND ─────── */
-const ProblemBand = ({ m }: { m: boolean }) => {
-  const items = ["LAUNCHES", "PRODUCT REVEALS", "SOCIAL CONTENT", "FEATURE DROPS", "DEMOS", "ANNOUNCEMENTS"];
-  return (
-    <section style={{ padding: m ? "72px 0" : "120px 0", overflow: "hidden", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ maxWidth: 1100, margin: m ? "0 auto 40px" : "0 auto 64px", padding: m ? "0 20px" : "0 56px", textAlign: "center" }}>
-        <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>THE PROBLEM</div>
-        <h2 style={{ margin: 0, fontSize: m ? 38 : 72, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.02 }}>
-          Great products are still <span className="mf-grad-text">presented badly.</span>
-        </h2>
-      </div>
-
-      <Marquee speed={40}>
-        {items.concat(items).map((it, i) => (
-          <span
-            key={i}
-            style={{
-              fontSize: m ? 30 : 56, fontWeight: 500, letterSpacing: "-0.02em",
-              color: i % 3 === 0 ? "var(--ink-0)" : "var(--ink-4)",
-              padding: m ? "0 18px" : "0 32px",
-            }}
-          >
-            {it}
+    <ul className={cn("flex flex-wrap gap-x-6 gap-y-2.5", className)}>
+      {items.map((t) => (
+        <li key={t} className="flex items-center gap-2 text-sm text-silver">
+          <span className="flex size-5 items-center justify-center rounded-full bg-coral/15 text-coral">
+            <Check className="size-3" strokeWidth={3} aria-hidden />
           </span>
-        ))}
-      </Marquee>
-
-      <div style={{ maxWidth: 1100, margin: m ? "56px auto 0" : "80px auto 0", padding: m ? "0 20px" : "0 56px", display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: 0, border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
-        {[
-          { t: "Expensive",    d: "Premium motion design starts at $15K and rarely fits a launch cycle." },
-          { t: "Slow",         d: "Two weeks of revisions before your launch can even ship." },
-          { t: "Hard to scale", d: "Every feature needs its own brief, designer, and approval loop." },
-        ].map((c, i) => (
-          <div key={i} style={{ padding: m ? "22px 22px" : "32px 28px", background: "rgba(8,9,13,0.6)", borderRight: !m && i < 2 ? "1px solid var(--line)" : "none", borderBottom: m && i < 2 ? "1px solid var(--line)" : "none" }}>
-            <div className="mf-mono" style={{ fontSize: 10, color: "#FF6B6B", letterSpacing: "0.16em" }}>0{i + 1}</div>
-            <div style={{ fontSize: m ? 18 : 22, fontWeight: 500, letterSpacing: "-0.02em", marginTop: m ? 10 : 14 }}>{c.t}</div>
-            <div style={{ fontSize: m ? 13 : 14, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.5 }}>{c.d}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ maxWidth: 700, margin: m ? "48px auto 0" : "80px auto 0", padding: m ? "0 20px" : "0 56px", textAlign: "center", fontSize: m ? 16 : 22, color: "var(--ink-2)", letterSpacing: "-0.015em" }}>
-        So most companies settle for content that{" "}
-        <span style={{ position: "relative" }}>
-          looks forgettable.
-          <span style={{ position: "absolute", left: 0, right: 0, bottom: 6, height: 1, background: "rgba(255,107,107,0.6)" }}/>
-        </span>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── SOLUTION PIPELINE ─────── */
-const SolutionPipeline = ({ f, m }: { f: number; m: boolean }) => {
-  const stages = [
-    { l: "Scene composition", c: "linear-gradient(135deg, #5468FF, #2D3340)" },
-    { l: "Motion pacing",     c: "linear-gradient(135deg, #7AA2FF, #5468FF)" },
-    { l: "Transitions",       c: "linear-gradient(135deg, #A78BFA, #7AA2FF)" },
-    { l: "Motion systems",    c: "linear-gradient(135deg, #67E8F9, #A78BFA)" },
-    { l: "Captions",          c: "linear-gradient(135deg, #67E8F9, #34D399)" },
-    { l: "Visual rhythm",     c: "linear-gradient(135deg, #FCD34D, #67E8F9)" },
-    { l: "Storytelling flow", c: "linear-gradient(135deg, #F472B6, #FCD34D)" },
-  ];
-  return (
-    <section style={{ padding: m ? "80px 20px" : "140px 56px", borderBottom: "1px solid var(--line)", position: "relative" }}>
-      <div className="mf-bg-bloom"/>
-      <div style={{ position: "relative", maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 36 : 80, alignItems: "center" }}>
-          <div>
-            <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>THE SOLUTION</div>
-            <h2 style={{ margin: 0, fontSize: m ? 38 : 72, fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.02 }}>
-              Your AI <span className="mf-grad-text">motion designer.</span>
-            </h2>
-            <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 15 : 18, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 480 }}>
-              Upload screenshots, paste a short script, and Videly AI creates launch-ready
-              motion automatically.
-            </p>
-
-            <div style={{ marginTop: m ? 24 : 36, display: "flex", flexDirection: "column", gap: 12 }}>
-              {[
-                { l: "No editing timeline" },
-                { l: "No After Effects" },
-                { l: "No motion designer required" },
-              ].map((it, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,0.025)", border: "1px solid var(--line)" }}>
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(122,162,255,0.15)", border: "1px solid rgba(122,162,255,0.4)", display: "grid", placeItems: "center", color: "#7AA2FF" }}>
-                    <IconClose size={11}/>
-                  </div>
-                  <span style={{ fontSize: 15, color: "var(--ink-1)" }}>{it.l}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ position: "relative", padding: "32px 28px", borderRadius: 24, background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)", backdropFilter: "blur(40px)", overflow: "hidden" }}>
-            <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em", marginBottom: 18 }}>VIDELY PIPELINE · LIVE</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {stages.map((s, i) => {
-                const phase = (f / 6 + i * 0.5) % stages.length;
-                const active = Math.floor(phase) === 0;
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 14,
-                      padding: "12px 14px", borderRadius: 10,
-                      background: active ? "rgba(122,162,255,0.08)" : "rgba(255,255,255,0.025)",
-                      border: `1px solid ${active ? "rgba(122,162,255,0.30)" : "var(--line)"}`,
-                      transition: "all 600ms",
-                    }}
-                  >
-                    <div style={{ width: 36, height: 24, borderRadius: 5, background: s.c, flexShrink: 0 }}/>
-                    <div style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>{s.l}</div>
-                    <div style={{ flex: 1.2, height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden" }}>
-                      <div style={{ width: `${40 + Math.abs(Math.sin((f + i * 30) / 40)) * 55}%`, height: "100%", background: "var(--grad-aurora)" }}/>
-                    </div>
-                    <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em", minWidth: 36, textAlign: "right" }}>
-                      {Math.round(60 + Math.abs(Math.sin((f + i * 30) / 40)) * 38)}%
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── HOW IT WORKS ─────── */
-const UploadVisual = ({ f }: { f: number }) => (
-  <div style={{ position: "relative", height: "100%", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-    {Array.from({ length: 8 }).map((_, i) => {
-      const hue = 220 + (i * 22) % 90;
-      const lift = Math.sin((f + i * 20) / 40) * 4;
-      return (
-        <div
-          key={i}
-          style={{
-            borderRadius: 8,
-            background: `linear-gradient(135deg, oklch(0.5 0.12 ${hue}), oklch(0.25 0.08 ${hue + 30}))`,
-            border: "1px solid rgba(255,255,255,0.08)",
-            transform: `translateY(${lift}px)`,
-            transition: "transform 200ms",
-          }}
-        />
-      );
-    })}
-  </div>
-);
-
-const ScriptVisual = () => (
-  <div style={{ height: "100%", padding: "16px 18px", borderRadius: 12, background: "rgba(0,0,0,0.35)", border: "1px solid var(--line)", fontFamily: "'Geist Mono', monospace", fontSize: 11, color: "var(--ink-2)", lineHeight: 1.7, overflow: "hidden" }}>
-    <div style={{ color: "var(--ink-3)" }}>// release-notes.md</div>
-    <div><span style={{ color: "#7AA2FF" }}>#</span> Your product launch</div>
-    <div><span style={{ color: "#A78BFA" }}>-</span> Headline feature one</div>
-    <div><span style={{ color: "#A78BFA" }}>-</span> The big improvement</div>
-    <div><span style={{ color: "#A78BFA" }}>-</span> One more delight</div>
-    <div style={{ marginTop: 8, color: "var(--ink-3)" }}># cta</div>
-    <div>Ship the moment, not just the build.</div>
-  </div>
-);
-
-const GenerateVisual = ({ f }: { f: number }) => (
-  <div style={{ position: "relative", height: "100%", borderRadius: 12, overflow: "hidden", background: "linear-gradient(135deg, #1F2937, #06070A)", border: "1px solid var(--line)" }}>
-    <div style={{ position: "absolute", inset: 0 }}>
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute", borderRadius: "50%", filter: "blur(40px)",
-            width: "60%", height: "100%",
-            background: ["oklch(0.72 0.18 250 / 0.6)", "oklch(0.68 0.20 295 / 0.5)", "oklch(0.85 0.14 210 / 0.4)"][i],
-            left: `${20 + Math.sin((f + i * 50) / 40) * 30}%`,
-            top: `${10 + Math.cos((f + i * 40) / 35) * 20}%`,
-          }}
-        />
-      ))}
-    </div>
-    <div style={{ position: "absolute", left: 14, bottom: 10, display: "flex", alignItems: "center", gap: 8, color: "white" }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#67E8F9", boxShadow: "0 0 10px #67E8F9" }}/>
-      <span className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "rgba(255,255,255,0.7)" }}>RENDERING · {Math.round(60 + Math.sin(f / 30) * 30)}%</span>
-    </div>
-  </div>
-);
-
-const ExportVisual = () => (
-  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, height: "100%" }}>
-    {["X", "in", "PH", "App Store", "Web", "Ads"].map((l, i) => (
-      <div
-        key={i}
-        style={{
-          borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)",
-          display: "grid", placeItems: "center", fontSize: 12, fontWeight: 500, color: "var(--ink-2)",
-        }}
-      >
-        {l}
-      </div>
-    ))}
-  </div>
-);
-
-const HowItWorks = ({ f, m }: { f: number; m: boolean }) => {
-  const steps = [
-    { n: "01", t: "Upload your product",   d: "Drop screenshots, UI flows, or product URLs.",                                                        visual: <UploadVisual f={f}/> },
-    { n: "02", t: "Tell the story",        d: "Add a short script, release notes, or feature bullets.",                                               visual: <ScriptVisual/> },
-    { n: "03", t: "Generate the motion",       d: "Videly AI builds scenes, transitions, pacing, and animations automatically.",                  visual: <GenerateVisual f={f}/> },
-    { n: "04", t: "Export everywhere",     d: "Publish launch-ready content for X, LinkedIn, Product Hunt, App Store, websites, and ads.",            visual: <ExportVisual/> },
-  ];
-  return (
-    <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: m ? 44 : 80 }}>
-          <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>HOW IT WORKS</div>
-          <h2 style={{ margin: 0, fontSize: m ? 34 : 64, fontWeight: 500, letterSpacing: "-0.035em" }}>
-            From product to motion in <span className="mf-grad-text">four moves.</span>
-          </h2>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: m ? 14 : 16 }}>
-          {steps.map((s, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: m ? "1fr" : "120px 1fr 1fr",
-                gap: m ? 16 : 32,
-                alignItems: m ? "flex-start" : "center",
-                padding: m ? "22px 22px" : "32px 36px", borderRadius: 18,
-                background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)",
-              }}
-            >
-              <div className="mf-mono" style={{ fontSize: m ? 32 : 56, fontWeight: 500, color: "var(--ink-3)", letterSpacing: "-0.04em", lineHeight: 1 }}>{s.n}</div>
-              <div>
-                <div style={{ fontSize: m ? 22 : 28, fontWeight: 500, letterSpacing: "-0.02em" }}>{s.t}</div>
-                <div style={{ marginTop: m ? 8 : 10, fontSize: m ? 13.5 : 15, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 420 }}>{s.d}</div>
-              </div>
-              <div style={{ height: m ? 120 : 160 }}>{s.visual}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── TASTE ─────── */
-const TasteSection = ({ m }: { m: boolean }) => (
-  <section style={{ padding: m ? "100px 20px" : "160px 56px", borderBottom: "1px solid var(--line)", textAlign: "center", position: "relative", overflow: "hidden" }}>
-    <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 80% at 50% 50%, rgba(122,162,255,0.10), transparent 70%)", pointerEvents: "none" }}/>
-    <div style={{ position: "relative", maxWidth: 1100, margin: "0 auto" }}>
-      <div className="mf-eyebrow" style={{ marginBottom: m ? 18 : 24 }}>THE DIFFERENCE</div>
-      <h2 style={{ margin: 0, fontSize: m ? 40 : 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
-        Most AI tools generate <span style={{ color: "var(--ink-3)" }}>content.</span><br/>
-        Videly generates <span className="mf-grad-text">taste.</span>
-      </h2>
-      <p style={{ marginTop: m ? 24 : 36, fontSize: m ? 15 : 18, color: "var(--ink-2)", maxWidth: 620, margin: m ? "24px auto 0" : "36px auto 0", lineHeight: 1.55 }}>
-        Built around curated motion systems inspired by modern startup launches, premium
-        product reveals, and refined UI storytelling.
-      </p>
-
-      <div style={{ marginTop: m ? 36 : 56, display: "flex", justifyContent: "center", gap: m ? 8 : 12, flexWrap: "wrap" }}>
-        {["Not AI slop", "Not random animations", "Not template videos"].map((l, i) => (
-          <div
-            key={i}
-            style={{
-              padding: m ? "9px 14px" : "12px 22px", borderRadius: 999,
-              background: "rgba(255,255,255,0.025)", border: "1px solid var(--line)",
-              fontSize: m ? 12.5 : 14, color: "var(--ink-2)",
-              display: "inline-flex", alignItems: "center", gap: 10,
-            }}
-          >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,107,107,0.6)" }}/>
-            {l}
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-);
-
-/* ─────── PRESET GALLERY ─────── */
-const LinearMotion = ({ f }: { f: number }) => (
-  <div style={{ position: "absolute", inset: 0 }}>
-    {[0, 1, 2, 3, 4].map((i) => (
-      <div
-        key={i}
-        style={{
-          position: "absolute", left: 0, right: 0, height: 1, top: `${20 + i * 15}%`,
-          background: "rgba(255,255,255,0.4)",
-          transform: `translateX(${Math.sin((f + i * 30) / 30) * 30}%)`,
-        }}
-      />
-    ))}
-  </div>
-);
-const AppleMotion = ({ f }: { f: number }) => (
-  <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-    <div
-      style={{
-        width: `${50 + Math.sin(f / 40) * 8}%`, aspectRatio: 1, borderRadius: "50%",
-        background: "radial-gradient(circle at 35% 35%, rgba(255,255,255,0.4), rgba(255,255,255,0) 60%)",
-        border: "1px solid rgba(255,255,255,0.12)",
-      }}
-    />
-  </div>
-);
-const HyperMotion = ({ f }: { f: number }) => (
-  <div style={{ position: "absolute", inset: 0 }}>
-    {Array.from({ length: 14 }).map((_, i) => (
-      <div
-        key={i}
-        style={{
-          position: "absolute",
-          left: `${(i * 7 + f / 2) % 100}%`, top: `${10 + (i * 13) % 80}%`,
-          width: 30, height: 1.5, background: "rgba(255,255,255,0.7)",
-          transform: "rotate(-25deg)",
-        }}
-      />
-    ))}
-  </div>
-);
-const GlassMotion = ({ f }: { f: number }) => (
-  <div style={{ position: "absolute", inset: 0 }}>
-    {[0, 1, 2].map((i) => (
-      <div
-        key={i}
-        style={{
-          position: "absolute", inset: `${10 + i * 10}%`, borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.18)",
-          transform: `rotate(${Math.sin((f + i * 40) / 50) * 8}deg)`,
-          transition: "transform 200ms",
-        }}
-      />
-    ))}
-  </div>
-);
-const NoirMotion = ({ f }: { f: number }) => (
-  <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${f % 360}deg, rgba(252,211,77,0) 40%, rgba(252,211,77,0.5) 50%, rgba(252,211,77,0) 60%)` }}/>
-);
-
-const PresetGallery = ({ f, m }: { f: number; m: boolean }) => {
-  const presets = [
-    { n: "Linear", d: "Minimal, sharp, technical motion.",     c: "linear-gradient(135deg, #5468FF, #1F2937)", accent: "#7AA2FF" },
-    { n: "Apple",  d: "Elegant pacing with refined reveals.",   c: "linear-gradient(135deg, #1F2937, #000)",     accent: "#FAFAFC" },
-    { n: "Hyper",  d: "Fast, energetic, launch-first motion.",  c: "linear-gradient(135deg, #F472B6, #7AA2FF)",  accent: "#F472B6" },
-    { n: "Glass",  d: "Soft gradients, layered depth.",          c: "linear-gradient(135deg, #67E8F9, #A78BFA)",  accent: "#67E8F9" },
-    { n: "Noir",   d: "Dark, dramatic, contrast-heavy.",         c: "linear-gradient(135deg, #1A1A1A, #000)",     accent: "#FCD34D" },
-  ];
-  return (
-    <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "space-between", alignItems: m ? "flex-start" : "flex-end", gap: m ? 12 : 0, marginBottom: m ? 32 : 56 }}>
-          <div>
-            <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>MOTION PRESETS</div>
-            <h2 style={{ margin: 0, fontSize: m ? 32 : 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
-              Designed like <span className="mf-grad-text">creative identities.</span>
-            </h2>
-          </div>
-          <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>05 · STYLE SYSTEMS</div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: m ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: m ? 10 : 14 }}>
-          {presets.map((p, i) => (
-            <div
-              key={i}
-              style={{
-                borderRadius: 18, overflow: "hidden",
-                background: "rgba(8,9,13,0.6)", border: "1px solid var(--line)",
-                transition: "all 280ms cubic-bezier(.2,.8,.2,1)",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-4px)";
-                e.currentTarget.style.borderColor = `${p.accent}66`;
-                e.currentTarget.style.boxShadow = `0 30px 60px -20px ${p.accent}40`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                e.currentTarget.style.borderColor = "var(--line)";
-                e.currentTarget.style.boxShadow = "";
-              }}
-            >
-              <div style={{ aspectRatio: "4/5", background: p.c, position: "relative", overflow: "hidden" }}>
-                <div style={{ position: "absolute", inset: 0 }}>
-                  {p.n === "Linear" && <LinearMotion f={f}/>}
-                  {p.n === "Apple"  && <AppleMotion f={f}/>}
-                  {p.n === "Hyper"  && <HyperMotion f={f}/>}
-                  {p.n === "Glass"  && <GlassMotion f={f}/>}
-                  {p.n === "Noir"   && <NoirMotion f={f}/>}
-                </div>
-                <div style={{ position: "absolute", left: 14, top: 14, padding: "4px 8px", borderRadius: 5, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(10px)", fontSize: 10, color: "white", letterSpacing: "0.06em", fontWeight: 500 }}>0{i + 1}</div>
-              </div>
-              <div style={{ padding: "20px 18px" }}>
-                <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: p.accent }}>{p.n}</div>
-                <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.45 }}>{p.d}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── USE CASES ─────── */
-const UseCaseGrid = ({ m }: { m: boolean }) => {
-  // Each card links to a use-case landing page (in-content internal links —
-  // these carry more crawl weight than footer links, so they help Google
-  // discover and index the SEO cluster faster). Six cards map onto the three
-  // dedicated pages by closest intent.
-  const cases = [
-    { t: "Launch Videos",      d: "Turn feature launches into premium reveals.",            href: "/launch-videos" },
-    { t: "Product Updates",    d: "Transform release notes into engaging motion content.",  href: "/feature-announcement-videos" },
-    { t: "Founder Marketing",  d: "Create premium social content without a creative team.",  href: "/launch-videos" },
-    { t: "SaaS Storytelling",  d: "Show your product like world-class companies do.",        href: "/product-demo-videos" },
-    { t: "App Store Videos",   d: "Generate polished previews optimized for conversion.",    href: "/product-demo-videos" },
-    { t: "Onboarding Visuals", d: "Welcome new users with motion that feels considered.",    href: "/feature-announcement-videos" },
-  ];
-  return (
-    <section style={{ padding: m ? "72px 20px" : "140px 56px", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "space-between", alignItems: m ? "flex-start" : "flex-end", gap: m ? 12 : 0, marginBottom: m ? 32 : 56 }}>
-          <h2 style={{ margin: 0, fontSize: m ? 32 : 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05, maxWidth: 600 }}>
-            One tool. Every <span className="mf-grad-text">launch surface.</span>
-          </h2>
-          <div className="mf-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>USE CASES</div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 18, overflow: "hidden" }}>
-          {cases.map((c, i) => (
-            <a
-              key={i}
-              href={c.href}
-              style={{
-                padding: m ? "24px 22px" : "36px 32px", background: "rgba(8,9,13,0.6)",
-                display: "flex", flexDirection: "column", gap: 12,
-                minHeight: m ? 140 : 220, position: "relative", cursor: "pointer", transition: "background 200ms",
-                textDecoration: "none", color: "inherit",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(122,162,255,0.04)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(8,9,13,0.6)"; }}
-            >
-              <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em" }}>0{i + 1}</div>
-              <div style={{ fontSize: m ? 18 : 22, fontWeight: 500, letterSpacing: "-0.02em" }}>{c.t}</div>
-              <div className="mf-body" style={{ fontSize: m ? 13 : 14, color: "var(--ink-3)", marginTop: "auto" }}>{c.d}</div>
-              <IconArrowRight size={14} style={{ position: "absolute", right: m ? 22 : 28, bottom: m ? 22 : 32, color: "var(--ink-3)" }}/>
-            </a>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── WHY NOW ─────── */
-const WhyNow = ({ f, m }: { f: number; m: boolean }) => {
-  const beats = ["narratives", "reveals", "moments", "motion", "atmosphere"];
-  const demand = ["launch videos", "social clips", "product storytelling", "feature demos", "ads", "onboarding visuals"];
-  return (
-    <section style={{ padding: m ? "80px 20px" : "140px 56px", borderBottom: "1px solid var(--line)", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 80% 50% at 50% 50%, rgba(167,139,250,0.08), transparent 70%)" }}/>
-      <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
-        <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>WHY NOW</div>
-        <h2 style={{ margin: 0, fontSize: m ? 44 : 88, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
-          Software became <span className="mf-grad-text">visual.</span>
-        </h2>
-
-        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: m ? 40 : 80, marginTop: m ? 40 : 80 }}>
-          <div>
-            <div style={{ fontSize: m ? 14 : 16, color: "var(--ink-3)", marginBottom: m ? 18 : 24, letterSpacing: "-0.005em" }}>The best startups no longer just ship features. They ship:</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: m ? 4 : 6 }}>
-              {beats.map((b, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontSize: m ? 24 : 36, fontWeight: 500, letterSpacing: "-0.025em",
-                    color: i === Math.floor(f / 40) % beats.length ? "var(--ink-0)" : "var(--ink-3)",
-                    transition: "color 400ms",
-                  }}
-                >
-                  {b}.
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: m ? 14 : 16, color: "var(--ink-3)", marginBottom: m ? 18 : 24, letterSpacing: "-0.005em" }}>And content demand exploded. Teams now need:</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {demand.map((d, i) => (
-                <span
-                  key={i}
-                  style={{
-                    padding: m ? "8px 13px" : "10px 16px", borderRadius: 999,
-                    background: "rgba(255,255,255,0.025)", border: "1px solid var(--line)",
-                    fontSize: m ? 12.5 : 14, color: "var(--ink-1)",
-                  }}
-                >
-                  {d}
-                </span>
-              ))}
-            </div>
-            <div style={{ marginTop: m ? 24 : 32, fontSize: m ? 14 : 16, color: "var(--ink-2)", lineHeight: 1.6 }}>
-              Every single week.
-            </div>
-            <div style={{ marginTop: 12, fontSize: m ? 17 : 22, fontWeight: 500, letterSpacing: "-0.02em" }}>
-              Videly makes premium startup storytelling <span className="mf-grad-text">scalable.</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── BUILT FOR ─────── */
-const BuiltFor = ({ m }: { m: boolean }) => {
-  const groups = ["founders", "indie hackers", "SaaS teams", "product marketers", "agencies", "launch-obsessed startups"];
-  return (
-    <section style={{ padding: m ? "72px 0" : "120px 0", borderBottom: "1px solid var(--line)", overflow: "hidden", textAlign: "center" }}>
-      <div style={{ maxWidth: 900, margin: m ? "0 auto 36px" : "0 auto 56px", padding: m ? "0 20px" : "0 56px" }}>
-        <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>SOCIAL PROOF</div>
-        <h2 style={{ margin: 0, fontSize: m ? 30 : 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
-          Built for the new generation of <span className="mf-grad-text">startup marketing.</span>
-        </h2>
-      </div>
-      <Marquee speed={50}>
-        {groups.concat(groups).map((g, i) => (
-          <span
-            key={i}
-            style={{
-              fontSize: m ? 22 : 36, fontWeight: 500, letterSpacing: "-0.02em",
-              color: i % 2 === 0 ? "var(--ink-1)" : "var(--ink-3)",
-              padding: m ? "0 18px" : "0 28px",
-            }}
-          >
-            {g} <span style={{ color: "var(--ink-4)", margin: "0 4px" }}>·</span>
-          </span>
-        ))}
-      </Marquee>
-    </section>
-  );
-};
-
-/* ─────── PRICING ─────── */
-type Tier = {
-  n: string;
-  price: number | null;
-  priceLabel?: string;
-  sub: string;
-  desc: string;
-  cta: string;
-  variant: "primary" | "ghost";
-  accent: string;
-  featured?: boolean;
-  badge?: string;
-  bg: string;
-  heading?: string;
-  features: string[];
-};
-
-const PricingTable = () => {
-  // Columns must stay aligned with the four real plan keys in
-  // app/motionflow/screens/pricing.tsx (free / starter / pro / studio) and
-  // the monthly USD + monthlyGrant in app/lib/billing/polar.ts. If a plan
-  // is added or renamed, update all three places together.
-  const cols = ["Free", "Starter", "Pro", "Studio"];
-  const rows: [string, string[]][] = [
-    ["Monthly credits",          ["3,100", "8,000", "20,000", "60,000"]],
-    ["Scenes per video",         ["2", "10", "14", "14"]],
-    ["Concurrent jobs",          ["1", "2", "5", "10"]],
-    ["Watermark-free export",    ["—", "✓", "✓", "✓"]],
-    ["Commercial use",           ["—", "✓", "✓", "✓"]],
-    ["Voiceover · music · SFX",  ["—", "✓", "✓", "✓"]],
-    ["Vision critique",          ["—", "✓", "✓", "✓"]],
-    ["Brand kit (logo + colors)",["—", "✓", "✓", "✓"]],
-    ["4K export",                ["—", "—", "✓", "✓"]],
-    ["One-click polish",         ["—", "—", "✓", "✓"]],
-    ["Team seats",               ["—", "—", "—", "3"]],
-    ["Programmatic API access",  ["—", "—", "—", "✓"]],
-  ];
-  // Index 2 (Pro) is the featured column — matches the popular plan in
-  // PLANS and the featured/badge tier card above the table.
-  const accents = ["rgba(255,255,255,0.4)", "#7AA2FF", "#A78BFA", "#67E8F9"];
-  const FEATURED_COL = 2;
-
-  const Cell = ({ v, accent, featured }: { v: string; accent: string; featured?: boolean }) => {
-    const isCheck = v === "✓";
-    const isDash = v === "—";
-    return (
-      <div
-        style={{
-          padding: "16px 20px", textAlign: "center",
-          background: featured ? "rgba(122,162,255,0.04)" : "transparent",
-          fontSize: 13, color: isDash ? "var(--ink-4)" : "var(--ink-1)",
-          display: "flex", justifyContent: "center", alignItems: "center",
-        }}
-      >
-        {isCheck ? (
-          <span style={{ width: 18, height: 18, borderRadius: "50%", background: `${accent}20`, border: `1px solid ${accent}55`, display: "grid", placeItems: "center", color: accent }}>
-            <IconCheck size={10} stroke={2.5}/>
-          </span>
-        ) : isDash ? (
-          <span style={{ width: 12, height: 1, background: "var(--ink-4)" }}/>
-        ) : (
-          <span style={{ fontSize: 12, color: accent, fontWeight: 500, letterSpacing: "-0.005em" }}>{v}</span>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr)" }}>
-      <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)" }}>
-        <span className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em" }}>FEATURES</span>
-      </div>
-      {cols.map((c, i) => (
-        <div
-          key={i}
-          style={{
-            padding: "20px 16px", textAlign: "center",
-            borderBottom: "1px solid var(--line)",
-            background: i === FEATURED_COL ? "rgba(122,162,255,0.06)" : "transparent",
-            borderLeft: "1px solid var(--line)",
-          }}
-        >
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: accents[i] }}/>
-            <span style={{ fontSize: 13, fontWeight: 500, color: accents[i], letterSpacing: "-0.005em" }}>{c}</span>
-          </div>
-        </div>
-      ))}
-
-      {rows.map(([label, vals], rIdx) => (
-        <Fragment key={rIdx}>
-          <div
-            style={{
-              padding: "16px 24px", fontSize: 14, color: "var(--ink-1)",
-              borderTop: rIdx === 0 ? "none" : "1px solid var(--line-2)",
-              display: "flex", alignItems: "center",
-            }}
-          >
-            {label}
-          </div>
-          {vals.map((v, cIdx) => (
-            <div
-              key={cIdx}
-              style={{
-                borderTop: rIdx === 0 ? "none" : "1px solid var(--line-2)",
-                borderLeft: "1px solid var(--line)",
-              }}
-            >
-              <Cell v={v} accent={accents[cIdx]} featured={cIdx === FEATURED_COL}/>
-            </div>
-          ))}
-        </Fragment>
-      ))}
-    </div>
-  );
-};
-
-const Pricing = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => {
-  // Tier cards mirror the real PLANS in app/motionflow/screens/pricing.tsx.
-  // Keep monthlyUsd / baseCredits / perks in sync across this file, that
-  // one, and the Polar catalog in app/lib/billing/polar.ts.
-  const tiers: Tier[] = [
-    {
-      n: "Free", price: 0, sub: "Try Videly with a starter grant — no card.",
-      desc: "Generate your first launch videos in minutes, on us.",
-      cta: "Start Free", variant: "ghost",
-      accent: "rgba(255,255,255,0.4)",
-      bg: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))",
-      features: [
-        "3,100 credits / month",
-        "Up to 2 scenes per video",
-        "Videly watermark",
-        "Community templates",
-        "1 concurrent job",
-      ],
-    },
-    {
-      n: "Starter", price: 19, sub: "For founders shipping launch videos solo.",
-      desc: "Premium launch videos, product reveals, and social content — without a motion team.",
-      cta: "Start Starter", variant: "ghost",
-      accent: "#7AA2FF",
-      bg: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
-      features: [
-        "8,000 credits / month",
-        "Up to 10 scenes per video",
-        "Voiceover · music · SFX",
-        "Vision critique on every scene",
-        "Brand kit (logo + colors)",
-        "No watermark · commercial use",
-        "2 concurrent jobs",
-      ],
-    },
-    {
-      n: "Pro", price: 49, sub: "For teams iterating on launches every week.",
-      desc: "Premium motion at scale: 4K export, vision critique, one-click polish, and priority renders.",
-      cta: "Start Pro", variant: "primary",
-      accent: "#A78BFA", featured: true, badge: "MOST POPULAR",
-      bg: "linear-gradient(180deg, oklch(0.30 0.13 280 / 0.55), oklch(0.18 0.10 290 / 0.35))",
-      heading: "Everything in Starter, plus",
-      features: [
-        "20,000 credits / month",
-        "Up to 14 scenes per video",
-        "One-click polish from comments",
-        "4K export",
-        "5 concurrent jobs",
-      ],
-    },
-    {
-      n: "Studio", price: 149, sub: "For agencies and in-house content engines.",
-      desc: "Team seats, programmatic API, and the headroom to run multiple launches at once.",
-      cta: "Start Studio", variant: "ghost",
-      accent: "#67E8F9",
-      bg: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
-      heading: "Everything in Pro, plus",
-      features: [
-        "60,000 credits / month",
-        "3 team seats included",
-        "Programmatic API access",
-        "10 concurrent jobs",
-      ],
-    },
-  ];
-
-  return (
-    <section style={{ padding: m ? "80px 20px" : "160px 56px", borderBottom: "1px solid var(--line)", position: "relative", overflow: "hidden" }}>
-      <div className="mf-bg-bloom"/>
-      <div style={{ position: "absolute", left: "10%", top: 200, width: 400, height: 400, borderRadius: "50%", background: "oklch(0.72 0.18 250 / 0.12)", filter: "blur(100px)", transform: `translate(${Math.sin(f / 80) * 30}px, ${Math.cos(f / 100) * 40}px)`, pointerEvents: "none" }}/>
-      <div style={{ position: "absolute", right: "8%", top: 600, width: 320, height: 320, borderRadius: "50%", background: "oklch(0.68 0.20 295 / 0.12)", filter: "blur(100px)", transform: `translate(${Math.cos(f / 70) * 40}px, ${Math.sin(f / 90) * 30}px)`, pointerEvents: "none" }}/>
-
-      <div style={{ position: "relative", maxWidth: 1320, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: m ? 40 : 64 }}>
-          <div className="mf-eyebrow" style={{ marginBottom: m ? 14 : 20 }}>PRICING</div>
-          <h2 style={{ margin: 0, fontSize: m ? 40 : 80, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0 }}>
-            Pricing built for <span className="mf-grad-text">teams that ship.</span>
-          </h2>
-          <p style={{ marginTop: m ? 18 : 24, fontSize: m ? 14.5 : 18, color: "var(--ink-2)", maxWidth: 580, margin: m ? "18px auto 0" : "24px auto 0", lineHeight: 1.55 }}>
-            From first launch videos to full-scale product storytelling.
-          </p>
-
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(4, 1fr)", gap: m ? 14 : 16 }}>
-          {tiers.map((t, i) => (
-            <div
-              key={i}
-              style={{
-                position: "relative",
-                padding: t.featured ? 1.5 : 1,
-                borderRadius: 22,
-                background: t.featured
-                  ? "linear-gradient(180deg, rgba(122,162,255,0.5), rgba(167,139,250,0.2) 60%, rgba(122,162,255,0.05))"
-                  : "var(--line)",
-                transform: !m && t.featured ? "translateY(-8px)" : "none",
-              }}
-            >
-              {t.badge && (
-                <div
-                  style={{
-                    position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)",
-                    padding: "5px 12px", borderRadius: 999,
-                    background: "var(--grad-aurora)", color: "white",
-                    fontSize: 10, fontWeight: 600, letterSpacing: "0.14em",
-                    fontFamily: "'Geist Mono', monospace",
-                    boxShadow: "0 8px 24px -6px rgba(122,162,255,0.6)",
-                    zIndex: 2,
-                  }}
-                >
-                  {t.badge}
-                </div>
-              )}
-
-              <div
-                style={{
-                  position: "relative",
-                  borderRadius: 21,
-                  background: t.bg,
-                  backdropFilter: "blur(40px)",
-                  padding: m ? "28px 22px 26px" : "36px 28px 32px",
-                  display: "flex", flexDirection: "column", height: "100%",
-                  overflow: "hidden",
-                  minHeight: m ? 0 : 720,
-                }}
-              >
-                {t.featured && (
-                  <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(circle at 50% 0%, ${t.accent}25, transparent 60%)` }}/>
-                )}
-
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: t.accent, boxShadow: t.featured ? `0 0 16px ${t.accent}` : "none" }}/>
-                  <span style={{ fontSize: 14, fontWeight: 500, color: t.accent, letterSpacing: "-0.005em" }}>{t.n}</span>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 8 }}>
-                  {t.price === null ? (
-                    <span style={{ fontSize: 56, fontWeight: 500, letterSpacing: "-0.04em", color: "var(--ink-0)" }}>{t.priceLabel}</span>
-                  ) : (
-                    <>
-                      <span style={{ fontSize: 56, fontWeight: 500, letterSpacing: "-0.04em", color: "var(--ink-0)" }}>
-                        ${t.price}
-                      </span>
-                      {t.price > 0 && <span style={{ fontSize: 14, color: "var(--ink-3)" }}>/mo</span>}
-                    </>
-                  )}
-                </div>
-
-                <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 14, minHeight: 18 }}>{t.sub}</div>
-
-                <div style={{ fontSize: 14, color: "var(--ink-2)", lineHeight: 1.5, marginBottom: 24, minHeight: 64 }}>{t.desc}</div>
-
-                <Button
-                  variant={t.variant === "primary" ? "primary" : "ghost"}
-                  size="md"
-                  onClick={t.n === "Enterprise" ? undefined : onCta}
-                  iconRight={<IconArrowRight size={14}/>}
-                >
-                  {t.cta}
-                </Button>
-
-                <div style={{ height: 1, background: "var(--line)", margin: "24px 0 20px" }}/>
-
-                <div className="mf-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.16em", marginBottom: 14, textTransform: "uppercase" }}>
-                  {t.heading || "Includes"}
-                </div>
-
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 9 }}>
-                  {t.features.map((feat, j) => (
-                    <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: "var(--ink-1)", lineHeight: 1.45 }}>
-                      <span
-                        style={{
-                          marginTop: 5, flexShrink: 0,
-                          width: 14, height: 14, borderRadius: "50%",
-                          background: t.featured ? `${t.accent}25` : "rgba(255,255,255,0.05)",
-                          border: `1px solid ${t.featured ? `${t.accent}50` : "var(--line)"}`,
-                          display: "grid", placeItems: "center",
-                          color: t.accent,
-                        }}
-                      >
-                        <IconCheck size={8} stroke={2.5}/>
-                      </span>
-                      {feat}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: m ? 56 : 96 }}>
-          <div style={{ textAlign: "center", marginBottom: m ? 24 : 40 }}>
-            <div className="mf-eyebrow" style={{ marginBottom: m ? 12 : 16 }}>COMPARE</div>
-            <h3 style={{ margin: 0, fontSize: m ? 24 : 36, fontWeight: 500, letterSpacing: "-0.025em" }}>Every feature, side by side.</h3>
-          </div>
-
-          <div style={{ borderRadius: 20, overflow: m ? "auto" : "hidden", border: "1px solid var(--line)", background: "rgba(8,9,13,0.55)", backdropFilter: "blur(40px)", WebkitOverflowScrolling: "touch" }}>
-            <div style={{ minWidth: m ? 640 : "auto" }}>
-              <PricingTable/>
-            </div>
-          </div>
-          {m && <div className="mf-mono" style={{ marginTop: 8, fontSize: 9.5, color: "var(--ink-4)", letterSpacing: "0.12em", textAlign: "center" }}>→ SWIPE TO COMPARE</div>}
-
-          {/* In-content links to the competitor comparison pages. Keeps the
-              /vs/* SEO cluster one click from the homepage body (not just the
-              footer), which speeds up crawling and indexing. */}
-          <div style={{ marginTop: m ? 24 : 36, textAlign: "center", fontSize: m ? 13.5 : 15, color: "var(--ink-3)", lineHeight: 1.7 }}>
-            See how Videly compares to{" "}
-            <a href="/vs/loom"      style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Loom</a>,{" "}
-            <a href="/vs/synthesia" style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Synthesia</a>,{" "}
-            <a href="/vs/runway"    style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Runway</a>,{" "}
-            <a href="/vs/pictory"   style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Pictory</a>, and{" "}
-            <a href="/vs/veed"      style={{ color: "var(--ink-1)", textDecoration: "none", borderBottom: "1px solid var(--line-2)" }}>Veed</a>.
-          </div>
-        </div>
-
-        <div style={{ marginTop: m ? 56 : 96, textAlign: "center", padding: m ? "40px 24px" : "72px 56px", borderRadius: 24, background: "rgba(8,9,13,0.5)", border: "1px solid var(--line)" }}>
-          <h3 style={{ margin: "0 auto", fontSize: m ? 28 : 48, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.05, maxWidth: 720 }}>
-            Your product already deserves <span className="mf-grad-text">world-class storytelling.</span>
-          </h3>
-          <p style={{ marginTop: m ? 14 : 20, fontSize: m ? 14 : 16, color: "var(--ink-2)", maxWidth: 560, margin: m ? "14px auto 0" : "20px auto 0", lineHeight: 1.55 }}>
-            Videly AI helps startups create premium launch content without agencies, editors, or motion designers.
-          </p>
-          <div style={{ marginTop: m ? 22 : 32 }}>
-            <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
-          </div>
-          <div className="mf-mono" style={{ marginTop: m ? 20 : 28, fontSize: m ? 9.5 : 11, color: "var(--ink-3)", letterSpacing: "0.16em" }}>
-            YOU BRING THE PRODUCT · WE BRING THE MOTION
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
-
-/* ─────── FINAL CTA ─────── */
-const FinalCta = ({ f, onCta, ctaLabel = "Start Creating Free", m }: { f: number; onCta?: () => void; ctaLabel?: string; m: boolean }) => (
-  <section style={{ padding: m ? "80px 16px" : "160px 56px", position: "relative", overflow: "hidden" }}>
-    <div className="mf-bg-bloom"/>
-    <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto" }}>
-      <div
-        style={{
-          position: "relative", borderRadius: m ? 22 : 32, overflow: "hidden",
-          background: "linear-gradient(135deg, oklch(0.30 0.12 250), oklch(0.18 0.10 290))",
-          border: "1px solid rgba(122,162,255,0.30)",
-          padding: m ? "56px 24px" : "96px 64px",
-          boxShadow: "0 60px 140px -40px rgba(122,162,255,0.5)",
-        }}
-      >
-        <div style={{ position: "absolute", left: "-10%", top: "-30%", width: "70%", height: "120%", borderRadius: "50%", filter: "blur(80px)", background: "oklch(0.72 0.18 250 / 0.6)", transform: `translate(${Math.sin(f / 60) * 30}px, ${Math.cos(f / 80) * 20}px)` }}/>
-        <div style={{ position: "absolute", right: "-15%", top: "-20%", width: "60%", height: "120%", borderRadius: "50%", filter: "blur(80px)", background: "oklch(0.68 0.20 295 / 0.5)", transform: `translate(${Math.cos(f / 70) * 40}px, ${Math.sin(f / 90) * 30}px)` }}/>
-
-        <div style={{ position: "relative", textAlign: "center" }}>
-          <div className="mf-mono" style={{ fontSize: m ? 10 : 11, color: "rgba(255,255,255,0.55)", letterSpacing: "0.18em", marginBottom: m ? 14 : 20 }}>FINAL · 00:60</div>
-          <h2 style={{ margin: 0, fontSize: m ? 36 : 80, fontWeight: 500, letterSpacing: "-0.04em", lineHeight: 1.0, color: "white" }}>
-            Your product already looks good.<br/>
-            <span style={{ background: "linear-gradient(135deg, #FFFFFF, rgba(255,255,255,0.5))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Now make it unforgettable.</span>
-          </h2>
-          <p style={{ marginTop: m ? 18 : 28, fontSize: m ? 15 : 19, color: "rgba(255,255,255,0.70)", maxWidth: 560, margin: m ? "18px auto 0" : "28px auto 0" }}>
-            Create launch videos in minutes.
-          </p>
-          <div style={{ display: "flex", flexDirection: m ? "column" : "row", justifyContent: "center", gap: m ? 10 : 12, marginTop: m ? 28 : 40 }}>
-            <Button variant="primary" size={m ? "md" : "lg"} onClick={onCta} iconRight={<IconArrowRight size={16}/>}>{ctaLabel}</Button>
-            <Button variant="ghost" size={m ? "md" : "lg"} icon={<IconPlay size={14}/>}>See Videly in Action</Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-);
-
-const FOOTER_LINKS = {
-  useCases: [
-    { href: "/launch-videos",               label: "Launch videos" },
-    { href: "/feature-announcement-videos", label: "Feature announcements" },
-    { href: "/product-demo-videos",         label: "Product demos" },
-  ],
-  compare: [
-    { href: "/vs/loom",      label: "vs Loom" },
-    { href: "/vs/synthesia", label: "vs Synthesia" },
-    { href: "/vs/runway",    label: "vs Runway" },
-    { href: "/vs/pictory",   label: "vs Pictory" },
-    { href: "/vs/veed",      label: "vs Veed" },
-  ],
-  company: [
-    { href: "/pricing", label: "Pricing" },
-    { href: "/terms",   label: "Terms" },
-    { href: "/refund",  label: "Refund" },
-    { href: "/privacy", label: "Privacy" },
-  ],
-};
-
-const FooterCol = ({
-  title,
-  links,
-}: {
-  title: string;
-  links: Array<{ href: string; label: string }>;
-}) => (
-  <div>
-    <div className="mf-mono" style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--ink-3)", marginBottom: 14 }}>
-      {title.toUpperCase()}
-    </div>
-    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-      {links.map((l) => (
-        <li key={l.href}>
-          <a href={l.href} style={{ color: "var(--ink-1)", textDecoration: "none", fontSize: 13.5 }}>
-            {l.label}
-          </a>
+          {t}
         </li>
       ))}
     </ul>
-  </div>
-);
+  );
+}
 
-const FootRule = ({ m }: { m: boolean }) => (
-  <footer style={{ borderTop: "1px solid var(--line)", padding: m ? "48px 20px 64px" : "72px 56px 96px", background: "linear-gradient(180deg, transparent, rgba(122,162,255,0.03))" }}>
-    <div style={{ maxWidth: 1320, margin: "0 auto" }}>
-      <div style={{ display: "grid", gridTemplateColumns: m ? "1fr 1fr" : "2fr 1fr 1fr 1fr", gap: m ? 32 : 56, marginBottom: m ? 40 : 56 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 18, fontWeight: 600 }}>Videly<span style={{ color: "#7AA2FF", marginLeft: 2 }}>•</span></span>
+function Section({ id, children, className }: { id?: string; children: ReactNode; className?: string }) {
+  return (
+    <section id={id} className={cn("mx-auto max-w-[1240px] scroll-mt-24 px-4 py-16 sm:px-6 lg:py-24", className)}>
+      {children}
+    </section>
+  );
+}
+
+// Plays only while on screen; stays on the poster otherwise (and when there
+// is no video yet — SHOWCASE.* video URLs are null until real demos exist).
+function ShowcaseMedia({
+  video,
+  poster,
+  alt,
+  priority,
+  className,
+}: {
+  video: string | null;
+  poster: string;
+  alt: string;
+  priority?: boolean;
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e?.isIntersecting) v.play().catch(() => {});
+        else v.pause();
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(v);
+    return () => io.disconnect();
+  }, [video]);
+  if (!video) {
+    return (
+      <img
+        src={poster}
+        alt={alt}
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        decoding="async"
+        className={cn("absolute inset-0 size-full object-cover", className)}
+      />
+    );
+  }
+  return (
+    <video
+      ref={ref}
+      src={video}
+      poster={poster}
+      preload="none"
+      muted
+      loop
+      playsInline
+      aria-label={alt}
+      className={cn("absolute inset-0 size-full object-cover", className)}
+    />
+  );
+}
+
+function HeadlineOverlay({ small }: { small?: boolean }) {
+  return (
+    <div className="absolute inset-0 flex items-center bg-gradient-to-r from-black/45 via-black/10 to-transparent px-[7%]">
+      <p
+        className={cn(
+          "font-extrabold leading-[1.02] tracking-[-0.03em] text-white drop-shadow-[0_4px_24px_rgb(0_0_0/0.45)]",
+          small ? "text-[clamp(18px,3.4vw,30px)]" : "text-[clamp(22px,4vw,44px)]",
+        )}
+      >
+        Ideas Move
+        <br />
+        <span className="text-coral">the World.</span>
+      </p>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ hero mock
+
+function ProductMock() {
+  return (
+    <div className="relative w-full overflow-hidden rounded-2xl border border-slate/50 bg-ink shadow-[0_40px_120px_-30px_rgb(0_0_0/0.9),0_0_0_1px_rgb(255_255_255/0.03)]">
+      {/* window chrome */}
+      <div className="flex h-9 items-center gap-1.5 border-b border-slate/40 bg-ink-800 px-3.5" aria-hidden>
+        <span className="size-2.5 rounded-full bg-[#f07167]" />
+        <span className="size-2.5 rounded-full bg-[#f4d35e]" />
+        <span className="size-2.5 rounded-full bg-[#6fcf97]" />
+        <span className="ml-3 hidden h-5 flex-1 rounded-md bg-ink-900/70 sm:block" />
+      </div>
+      <div className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:p-4">
+        <div className="min-w-0">
+          <div className="relative aspect-video overflow-hidden rounded-xl bg-ink-900">
+            <ShowcaseMedia video={SHOWCASE.heroVideo} poster={SHOWCASE.heroPoster} alt="A Videly video: mountains at sunset" priority />
+            <HeadlineOverlay small />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6" aria-hidden>
+              <div className="h-1 rounded-full bg-white/25">
+                <div className="relative h-full w-[38%] rounded-full bg-coral">
+                  <span className="absolute -right-1.5 -top-1 size-3 rounded-full border-2 border-coral bg-white" />
+                </div>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2 text-white">
+                <Play className="size-3.5 fill-current" />
+                <span className="text-[10px] font-medium tabular-nums">0:11 / 0:30</span>
+                <Volume2 className="ml-auto size-3.5" />
+                <Repeat className="size-3.5" />
+                <Maximize className="size-3.5" />
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6, maxWidth: 360 }}>
-            AI launch video generator for SaaS teams. Turn screenshots and product
-            updates into motion-designed launch videos in minutes.
+          {/* timeline strip */}
+          <div className="relative mt-2.5 flex h-10 overflow-hidden rounded-lg border border-slate/40" aria-hidden>
+            {Array.from({ length: 8 }, (_, i) => (
+              <div
+                key={i}
+                className="h-full flex-1 border-r border-ink-900 bg-cover"
+                style={{ backgroundImage: `url(${SHOWCASE.heroPosterSmall})`, backgroundPosition: `${(i / 7) * 100}% 50%` }}
+              />
+            ))}
+            <span className="absolute inset-y-0 left-[38%] w-0.5 bg-coral" />
           </div>
         </div>
-        <FooterCol title="Use cases" links={FOOTER_LINKS.useCases}/>
-        <FooterCol title="Compare"   links={FOOTER_LINKS.compare}/>
-        <FooterCol title="Company"   links={FOOTER_LINKS.company}/>
-      </div>
-
-      <div style={{ paddingTop: 24, borderTop: "1px solid var(--line)", display: "flex", flexDirection: m ? "column" : "row", justifyContent: "space-between", alignItems: m ? "flex-start" : "center", gap: 12, fontSize: 12, color: "var(--ink-3)" }}>
-        <span>© 2026 Videly · AI launch video generator</span>
+        {/* Generate panel */}
+        <div className="hidden flex-col gap-2.5 rounded-xl border border-slate/40 bg-ink-800 p-3 sm:flex" aria-hidden>
+          <p className="text-[13px] font-semibold text-paper">Generate</p>
+          <div className="rounded-lg border border-slate/50 bg-ink-900/60 p-2.5 text-[11.5px] leading-snug text-silver">
+            A cinematic video about exploring mountains at sunset
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate/50 px-2.5 py-2 text-[11.5px] text-paper">
+            <span className="flex items-center gap-1.5">
+              <RectangleHorizontal className="size-3.5 text-silver" /> 16:9
+            </span>
+            <ChevronDown className="size-3.5 text-silver" />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate/50 px-2.5 py-2 text-[11.5px] text-paper">
+            <span className="flex items-center gap-1.5">
+              <Mic className="size-3.5 text-silver" /> AI Voice
+            </span>
+            <span className="relative h-4 w-7 rounded-full bg-coral">
+              <span className="absolute right-0.5 top-0.5 size-3 rounded-full bg-white" />
+            </span>
+          </div>
+          <div className="mt-auto flex h-9 items-center justify-center gap-1.5 rounded-lg bg-coral text-[12.5px] font-semibold text-white">
+            Generate <ArrowRight className="size-3.5" />
+          </div>
+        </div>
       </div>
     </div>
-  </footer>
-);
+  );
+}
+
+// ------------------------------------------------------------------ sections
+
+// Trusted-by strip. Only real customers' logos with permission; otherwise real
+// measured stats; otherwise nothing (see showcase.ts).
+function TrustedBy() {
+  if (TRUSTED_LOGOS.length > 0) {
+    return (
+      <div className="mx-auto max-w-[1240px] px-4 py-10 sm:px-6">
+        <p className="text-center text-xs font-semibold uppercase tracking-[0.16em] text-silver">Trusted by teams at</p>
+        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
+          {TRUSTED_LOGOS.map((l) => (
+            <li key={l.name}>
+              <img src={l.src} alt={l.name} loading="lazy" className="h-7 w-auto opacity-70 grayscale" />
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  if (STATS.length > 0) {
+    return (
+      <div className="mx-auto max-w-[1240px] px-4 py-10 sm:px-6">
+        <dl className="grid grid-cols-2 gap-6 rounded-2xl border border-slate/40 bg-ink/60 p-6 md:grid-cols-4">
+          {STATS.map((s) => (
+            <div key={s.label} className="text-center">
+              <dt className="text-sm text-silver">{s.label}</dt>
+              <dd className="mt-1 text-2xl font-bold text-paper">{s.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    );
+  }
+  return null;
+}
+
+const FEATURES = [
+  { icon: Wand2, title: "AI-Powered Creation", body: "Turn text, images or ideas into professional videos." },
+  { icon: LayoutTemplate, title: "Stunning Templates", body: "Choose from a growing library of modern, cinematic templates." },
+  { icon: Palette, title: "Your Brand, Consistent", body: "Keep your logo, colors, fonts and style in every video." },
+  { icon: Share2, title: "Export Anywhere", body: "Optimized for social media, ads, and presentations." },
+];
+
+function Features() {
+  return (
+    <Section id="features" className="py-12 lg:py-16">
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {FEATURES.map(({ icon: Icon, title, body }) => (
+          <li key={title} className="rounded-2xl border border-slate/40 bg-ink/70 p-6">
+            <span className="flex size-11 items-center justify-center rounded-xl bg-coral/15 text-coral">
+              <Icon className="size-5" aria-hidden />
+            </span>
+            <h3 className="mt-4 text-base font-semibold text-paper">{title}</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-silver">{body}</p>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function CreateFaster({ ctaHref }: { ctaHref: string }) {
+  const [active, setActive] = useState(0);
+  const demo = SHOWCASE.demos[active]!;
+  return (
+    <Section>
+      <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+        <div className="min-w-0">
+          <Eyebrow>Create faster</Eyebrow>
+          <h2 className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[40px]">
+            From idea to video in minutes
+          </h2>
+          <p className="mt-4 max-w-md text-base leading-relaxed text-silver">
+            Write a sentence, drop in a link or a few images, and Videly plans the story, designs every scene, adds voice and music,
+            and hands you a video you can edit just by asking.
+          </p>
+          <ButtonLink to={ctaHref} size="lg" className="mt-7" iconRight={<ArrowRight className="size-4" aria-hidden />}>
+            Try it now
+          </ButtonLink>
+        </div>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
+          <div className="relative aspect-video min-w-0 flex-1 overflow-hidden rounded-2xl border border-slate/40 bg-ink-800">
+            <ShowcaseMedia key={demo.id} video={demo.video} poster={demo.poster} alt={`Example video: ${demo.title}`} />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" aria-hidden />
+            <p className="absolute bottom-4 left-5 right-5 text-lg font-bold text-white sm:text-2xl">{demo.title}</p>
+            <span className="absolute left-1/2 top-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-coral/95 shadow-lg" aria-hidden>
+              <Play className="size-6 translate-x-0.5 fill-white text-white" />
+            </span>
+          </div>
+          <div role="tablist" aria-label="Example videos" className="vd-noscrollbar flex gap-2.5 overflow-x-auto sm:w-[112px] sm:flex-col sm:overflow-visible">
+            {SHOWCASE.demos.map((d, i) => (
+              <button
+                key={d.id}
+                role="tab"
+                type="button"
+                aria-selected={i === active}
+                aria-label={d.title}
+                onClick={() => setActive(i)}
+                className={cn(
+                  "relative aspect-video w-[110px] shrink-0 overflow-hidden rounded-xl border-2 transition-colors sm:w-full",
+                  i === active ? "border-coral" : "border-transparent opacity-70 hover:opacity-100",
+                  focusRing,
+                )}
+              >
+                <img src={d.poster.replace("w=1200", "w=240")} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function useShowcaseTemplates(): StudioTemplate[] {
+  const [items, setItems] = useState<StudioTemplate[]>(FALLBACK_TEMPLATES);
+  useEffect(() => {
+    api
+      .listTemplates()
+      .then((r) => r.items.length >= 6 && setItems(r.items))
+      .catch(() => {});
+  }, []);
+  return items;
+}
+
+function TemplatesRow({ templates, templateHref }: { templates: StudioTemplate[]; templateHref: (t: StudioTemplate) => string }) {
+  return (
+    <Section id="templates">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <Eyebrow>Professional templates</Eyebrow>
+          <h2 className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[40px]">
+            Start with a template, make it yours
+          </h2>
+          <p className="mt-3 max-w-xl text-base text-silver">
+            Every template is a proven starting point — swap in your words, images and brand, and Videly rebuilds the video around them.
+          </p>
+        </div>
+        <Link to="/templates" className={cn("rounded-md text-sm font-semibold text-coral hover:text-coral-400", focusRing)}>
+          Browse all templates →
+        </Link>
+      </div>
+      <ul className="vd-scroll-x -mx-4 mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 sm:-mx-6 sm:px-6">
+        {templates.slice(0, 6).map((t) => (
+          <li key={t.id} className="w-[260px] shrink-0 snap-start sm:w-[300px]">
+            <TemplateCard t={t} href={templateHref(t)} />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function BrandSection({ ctaHref }: { ctaHref: string }) {
+  return (
+    <Section>
+      <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
+        <div className="lg:order-2">
+          <Eyebrow>Your brand, always on</Eyebrow>
+          <h2 className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[40px]">Keep your brand consistent</h2>
+          <p className="mt-4 max-w-md text-base leading-relaxed text-silver">
+            Set your logo, colors, fonts and voice once — or import them from your website. Every video you make uses them automatically.
+          </p>
+          <ButtonLink to={ctaHref} size="lg" className="mt-7" iconRight={<ArrowRight className="size-4" aria-hidden />}>
+            Set up your brand
+          </ButtonLink>
+        </div>
+        <div className="grid items-center gap-4 sm:grid-cols-[0.9fr_1.1fr] lg:order-1" aria-hidden>
+          <div className="rounded-2xl border border-slate/45 bg-ink p-5 shadow-[var(--shadow-lift)]">
+            <p className="text-sm font-semibold text-paper">Brand Kit</p>
+            <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-slate/40 bg-ink-800 p-3">
+              <LogoMark size={30} />
+              <span className="text-base font-bold text-paper">Videly</span>
+            </div>
+            <p className="mt-4 text-xs font-medium text-silver">Colors</p>
+            <div className="mt-2 flex items-center gap-2">
+              {["#ef8354", "#4f5d75", "#2d3142", "#bfc0c0"].map((c) => (
+                <span key={c} className="size-8 rounded-full border-2 border-white/10" style={{ background: c }} />
+              ))}
+              <span className="flex size-8 items-center justify-center rounded-full border-2 border-dashed border-slate text-silver">
+                <Plus className="size-3.5" />
+              </span>
+            </div>
+            <p className="mt-4 text-xs font-medium text-silver">Fonts</p>
+            <div className="mt-2 flex items-center justify-between rounded-lg border border-slate/50 bg-ink-800 px-3 py-2 text-sm text-paper">
+              Inter <ChevronDown className="size-4 text-silver" />
+            </div>
+          </div>
+          <div>
+            <div className="relative aspect-video overflow-hidden rounded-2xl border border-slate/40">
+              <img src={SHOWCASE.demos[0]!.poster} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+              <HeadlineOverlay small />
+              <span className="absolute right-3 top-3">
+                <LogoMark size={22} />
+              </span>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-paper">Ideas Move the World.</p>
+            <p className="text-xs text-silver">16:9 · 00:30 · your brand applied</p>
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+const STEPS = [
+  { icon: PenLine, title: "Describe your idea", body: "Type a prompt or upload your content (images, scripts, links)." },
+  { icon: SlidersHorizontal, title: "Customize", body: "Choose a template, edit scenes, add your brand, music and voice." },
+  { icon: Download, title: "Export and share", body: "Download and publish anywhere — in the perfect format." },
+];
+
+function HowItWorks() {
+  return (
+    <Section id="how-it-works">
+      <div className="text-center">
+        <Eyebrow>How it works</Eyebrow>
+        <h2 className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[40px]">Create a video in 3 simple steps</h2>
+      </div>
+      <ol className="mt-10 grid gap-4 md:grid-cols-3">
+        {STEPS.map(({ icon: Icon, title, body }, i) => (
+          <li key={title} className="relative rounded-2xl border border-slate/40 bg-ink/70 p-7">
+            <span className="absolute right-6 top-6 text-5xl font-extrabold text-slate/40" aria-hidden>
+              {i + 1}
+            </span>
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-coral text-white shadow-[0_10px_30px_-10px_rgb(239_131_84/0.8)]">
+              <Icon className="size-5" aria-hidden />
+            </span>
+            <h3 className="mt-5 text-lg font-semibold text-paper">{title}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-silver">{body}</p>
+          </li>
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+type Cat = TemplateCategory | "all";
+const CAT_TABS: { key: Cat; label: string }[] = [
+  { key: "all", label: "All" },
+  ...(Object.keys(TEMPLATE_CATEGORY_LABELS) as TemplateCategory[]).map((k) => ({ key: k as Cat, label: TEMPLATE_CATEGORY_LABELS[k] })),
+];
+
+function UseCases({ templates, templateHref }: { templates: StudioTemplate[]; templateHref: (t: StudioTemplate) => string }) {
+  const [cat, setCat] = useState<Cat>("all");
+  const items = templates.filter((t) => cat === "all" || t.category === cat).slice(0, 6);
+  return (
+    <Section>
+      <div className="text-center">
+        <Eyebrow>Perfect for every creator</Eyebrow>
+        <h2 className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[40px]">One tool. Endless possibilities.</h2>
+      </div>
+      <div className="mt-8 flex justify-center">
+        <Tabs label="Video categories" items={CAT_TABS} value={cat} onChange={setCat} />
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-10 text-center text-sm text-silver">Examples for this category are coming soon.</p>
+      ) : (
+        <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((t) => (
+            <li key={t.id}>
+              <Link to={templateHref(t)} className={cn("group block rounded-2xl", focusRing)}>
+                <div className="relative aspect-video overflow-hidden rounded-2xl border border-slate/40 bg-ink-800">
+                  {t.posterUrl && (
+                    <img
+                      src={t.posterUrl}
+                      alt=""
+                      loading="lazy"
+                      className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" aria-hidden />
+                  <span className="absolute left-4 top-4 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                    {TEMPLATE_CATEGORY_LABELS[t.category]}
+                  </span>
+                  <span className="absolute bottom-4 right-4 rounded-md bg-black/65 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                    {formatClock(t.duration)}
+                  </span>
+                  <p className="absolute bottom-4 left-4 right-16 truncate text-lg font-bold text-white">{t.name}</p>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+// Real quotes with the person's consent only — never invented. Hidden while
+// TESTIMONIALS is empty (plan: show once at least 3 real quotes exist).
+function Testimonials() {
+  if (TESTIMONIALS.length < 3) return null;
+  return (
+    <Section>
+      <div className="text-center">
+        <Eyebrow>Loved by creators</Eyebrow>
+        <h2 className="mt-3 text-[32px] font-bold tracking-[-0.025em] text-paper sm:text-[40px]">What our users say</h2>
+      </div>
+      <ul className="mt-10 grid gap-4 md:grid-cols-3">
+        {TESTIMONIALS.map((t) => (
+          <li key={t.name} className="rounded-2xl border border-slate/40 bg-ink/70 p-6">
+            <blockquote className="text-[15px] leading-relaxed text-paper">“{t.quote}”</blockquote>
+            <div className="mt-5 flex items-center gap-3">
+              {t.avatar && <img src={t.avatar} alt="" loading="lazy" className="size-10 rounded-full object-cover" />}
+              <div>
+                <p className="text-sm font-semibold text-paper">{t.name}</p>
+                {t.role && <p className="text-xs text-silver">{t.role}</p>}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function FinalCta({ ctaHref }: { ctaHref: string }) {
+  return (
+    <div className="mx-auto max-w-[1240px] px-4 pb-20 sm:px-6">
+      <div className="relative overflow-hidden rounded-3xl border border-slate/40">
+        <img src={SHOWCASE.ctaBackground} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgb(24_26_36/0.94)_0%,rgb(24_26_36/0.75)_55%,rgb(24_26_36/0.35)_100%)]" aria-hidden />
+        <div className="relative px-6 py-14 sm:px-12 sm:py-20">
+          <h2 className="max-w-xl text-[30px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[44px]">
+            Ready to bring your ideas to life?
+          </h2>
+          <p className="mt-4 max-w-lg text-base text-silver sm:text-lg">
+            Join creators and businesses using Videly to make stunning videos, faster.
+          </p>
+          <ButtonLink to={ctaHref} size="lg" className="mt-8" iconRight={<ArrowRight className="size-4" aria-hidden />}>
+            Get started for free
+          </ButtonLink>
+          <CheckList className="mt-7" items={["No credit card required", "Professional templates", "Export in high quality"]} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ page
 
 export const LandingScreen = ({
-  onCta,
-  onSignIn,
   isAuthed = false,
 }: {
+  isAuthed?: boolean;
   onCta?: () => void;
   onSignIn?: () => void;
-  // Soft-auth signal from the route loader. When true the page swaps the
-  // "Start Creating Free" copy for "Open the app" and the TopNav's Sign in
-  // button is replaced with a Signed-in indicator.
-  isAuthed?: boolean;
 }) => {
-  const f = useFrame();
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const y = useScrollY(scrollRef);
-  const m = useIsMobile(scrollRef, 720);
-  const ctaLabel = isAuthed ? "Open the app" : "Start Creating Free";
+  const ctaHref = isAuthed ? "/home" : "/register";
+  const templates = useShowcaseTemplates();
+  const templateHref = (t: StudioTemplate) =>
+    isAuthed ? `/home?template=${encodeURIComponent(t.id)}` : "/register";
 
   return (
-    <div
-      ref={scrollRef}
-      style={{
-        width: "100%", height: "100%", overflow: "auto",
-        background: "var(--bg-0)", color: "var(--ink-0)",
-        fontFamily: "'Geist', system-ui, sans-serif",
-        position: "relative",
-      }}
-    >
-      <TopNav onCta={onCta} onSignIn={onSignIn} isAuthed={isAuthed} mobile={m}/>
+    <div className="vd-root min-h-screen overflow-x-hidden">
+      <a href="#main" className="sr-only z-[200] rounded-lg bg-coral px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        Skip to content
+      </a>
+      <MarketingHeader isAuthed={isAuthed} />
+      <main id="main">
+        {/* Hero */}
+        <div className="relative">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(60%_60%_at_75%_20%,rgb(239_131_84/0.16),transparent_70%),radial-gradient(50%_50%_at_10%_10%,rgb(79_93_117/0.35),transparent_70%)]"
+            aria-hidden
+          />
+          <div className="relative mx-auto grid max-w-[1240px] grid-cols-1 items-center gap-12 px-4 pb-10 pt-12 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14 lg:pb-16 lg:pt-20">
+            <div>
+              <Eyebrow pill>AI-powered video creation</Eyebrow>
+              <h1 className="mt-6 text-[40px] font-extrabold leading-[1.04] tracking-[-0.035em] text-paper sm:text-[56px] lg:text-[62px]">
+                Turn any idea into a stunning <span className="text-coral">motion video.</span>
+              </h1>
+              <p className="mt-5 max-w-lg text-lg leading-relaxed text-silver">
+                Describe what you want, add your content, and get a professional video in minutes.
+              </p>
+              <ButtonLink to={ctaHref} size="lg" className="mt-8 h-[52px] px-7 text-base" iconRight={<ArrowRight className="size-4" aria-hidden />}>
+                {isAuthed ? "Open the app" : "Create your first video"}
+              </ButtonLink>
+              <CheckList className="mt-8" items={["No editing skills required", "Professional templates", "AI voice & music"]} />
+            </div>
+            <ProductMock />
+          </div>
+        </div>
 
-      <Hero f={f} y={y} onCta={onCta} ctaLabel={ctaLabel} m={m}/>
-      <ScrollReel f={f} y={y} m={m}/>
-      <ProblemBand m={m}/>
-      <SolutionPipeline f={f} m={m}/>
-      <HowItWorks f={f} m={m}/>
-      <TasteSection m={m}/>
-      <PresetGallery f={f} m={m}/>
-      <UseCaseGrid m={m}/>
-      <WhyNow f={f} m={m}/>
-      <BuiltFor m={m}/>
-      <Pricing f={f} onCta={onCta} ctaLabel={ctaLabel} m={m}/>
-      <FinalCta f={f} onCta={onCta} ctaLabel={ctaLabel} m={m}/>
-      <FootRule m={m}/>
+        <TrustedBy />
+        <Features />
+        <CreateFaster ctaHref={ctaHref} />
+        <TemplatesRow templates={templates} templateHref={templateHref} />
+        <BrandSection ctaHref={isAuthed ? "/brand" : ctaHref} />
+        <HowItWorks />
+        <UseCases templates={templates} templateHref={templateHref} />
+        <Testimonials />
+        <FinalCta ctaHref={ctaHref} />
+      </main>
+      <MarketingFooter />
     </div>
   );
 };

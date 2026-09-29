@@ -67,11 +67,12 @@
   --glass: rgba(255,255,255,0.04);
   --glass-2: rgba(255,255,255,0.06);
 
-  --blue: oklch(0.72 0.18 250);
-  --violet: oklch(0.68 0.20 295);
-  --cyan: oklch(0.85 0.14 210);
+  /* v2: legacy accent vars remapped onto the Coral Glow palette. */
+  --blue: #ef8354;
+  --violet: #f39a73;
+  --cyan: #f6b896;
 
-  --grad-aurora: linear-gradient(135deg, oklch(0.72 0.18 250) 0%, oklch(0.68 0.20 295) 50%, oklch(0.85 0.14 210) 100%);
+  --grad-aurora: linear-gradient(135deg, #ef8354 0%, #f39a73 50%, #f6b896 100%);
   --grad-soft: linear-gradient(180deg, rgba(122,162,255,0.10), rgba(167,139,250,0.04));
 
   --r-sm: 8px;
