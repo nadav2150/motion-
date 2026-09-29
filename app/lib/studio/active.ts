@@ -12,7 +12,10 @@ import { reconcileJob } from "../billing/credits";
 import { getSupabase } from "../supabase";
 import { IDLE_STAGES, setStage, stageOf, type StudioJobRow } from "./db";
 
-const running = new Set<string>();
+// Kept on globalThis so a dev hot-reload (which re-evaluates this module while
+// the old operations keep running) doesn't forget live jobs and reap them.
+const globalRef = globalThis as typeof globalThis & { __videlyRunningJobs?: Set<string> };
+const running: Set<string> = (globalRef.__videlyRunningJobs ??= new Set<string>());
 
 export function markRunning(jobId: string): void {
   running.add(jobId);
