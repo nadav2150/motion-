@@ -15,42 +15,31 @@ import { formatReferenceBrief } from "../reference-video";
 import type { SystemBlock, OpusContent, OpusMessage } from "./anthropic";
 import { formatGuide } from "./format";
 import type { BrandKit, FormatPreset, StudioLibrary, StudioPlan, VoLine } from "./types";
+import { DOCUMENT_RUNTIME_NOTES, LIBRARY_DOCS as LIBRARY_DOCS_TABLE, STUDIO_FONTS_DOC, STUDIO_LIBRARIES, libraryHead } from "./libs";
 
 // ─── Library docs ──────────────────────────────────────────────────────────
-// TODO(integration): workstream A owns app/lib/studio/libs.ts and exports
-// LIBRARY_DOCS (the exact vendored paths + usage notes). When it lands,
-// delete LIBRARY_DOCS_FALLBACK below and replace it with
-//   import { LIBRARY_DOCS } from "./libs";
-// The fallback describes the planned layout of /studio-libs/ so prompts work
-// (and stay cache-stable) until then.
-const LIBRARY_DOCS_FALLBACK = `
-VENDORED LIBRARIES — load ONLY from these same-origin paths with classic <script src> tags (no CDN, no import maps unless noted):
+// Built from the vendored library table in ./libs so the prompt always names
+// the exact files that exist under public/studio-libs/.
+function renderLibraryDocs(): string {
+  const sections = STUDIO_LIBRARIES.map((lib) => {
+    const doc = LIBRARY_DOCS_TABLE[lib];
+    const head = libraryHead([lib]);
+    return `### ${lib}
+<head> tags:
+${head || "(none: import it as an ES module, see usage)"}
+${doc.usage}`;
+  });
+  return [
+    "VENDORED LIBRARIES: load ONLY these same-origin files (no CDN). When you use several, put ONE merged <script type=\"importmap\"> first (combine the imports), then the other tags.",
+    ...sections,
+    "### Fonts",
+    STUDIO_FONTS_DOC,
+    "### How the virtual clock behaves",
+    DOCUMENT_RUNTIME_NOTES,
+  ].join("\n\n");
+}
 
-GSAP 3 (core + all plugins are free to use):
-  /studio-libs/gsap/gsap.min.js                 → window.gsap
-  /studio-libs/gsap/SplitText.min.js            → SplitText (chars/words/lines, masks: "lines")
-  /studio-libs/gsap/CustomEase.min.js           → CustomEase.create("name", "M0,0 C...")
-  /studio-libs/gsap/MorphSVGPlugin.min.js       → morphSVG: "#targetPath"
-  /studio-libs/gsap/DrawSVGPlugin.min.js        → drawSVG: "0% 100%"
-  /studio-libs/gsap/Flip.min.js                 → Flip.getState / Flip.from
-  /studio-libs/gsap/MotionPathPlugin.min.js     → motionPath: { path: "#p", align: "#p" }
-  /studio-libs/gsap/ScrambleTextPlugin.min.js   → scrambleText: { text, chars }
-  Always gsap.registerPlugin(...) every plugin you load.
-Three.js (r16x):
-  /studio-libs/three/three.min.js               → window.THREE (classic build)
-  Use WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true }); renderer.setPixelRatio(window.devicePixelRatio).
-lottie-web:
-  /studio-libs/lottie/lottie.min.js             → window.lottie (only for animationData you author inline; no remote JSON)
-anime.js 4:
-  /studio-libs/anime/anime.umd.min.js           → window.anime
-Splitting.js:
-  /studio-libs/splitting/splitting.min.js + /studio-libs/splitting/splitting.css → Splitting()
-simplex-noise:
-  /studio-libs/simplex-noise/simplex-noise.min.js → window.SimplexNoise.createNoise2D / createNoise3D (seed it with Math.random, which the renderer seeds deterministically)
-Fonts: Google Fonts CSS (<link href="https://fonts.googleapis.com/css2?family=...&display=block">) or /studio-libs/fonts/.
-`.trim();
-
-export const LIBRARY_DOCS: string = LIBRARY_DOCS_FALLBACK;
+export const LIBRARY_DOCS: string = renderLibraryDocs();
 
 // ─── Document contract (docs/studio-v2-contract.md § Generated document) ──
 

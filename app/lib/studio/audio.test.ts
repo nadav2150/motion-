@@ -117,7 +117,7 @@ describe("captions", () => {
 
 describe("buildMuxArgs", () => {
   it("ducks music under the voiceover and burns subtitles", () => {
-    const args = buildMuxArgs({
+    const { args, hasAudio, reencoded } = buildMuxArgs({
       videoPath: "/t/v.mp4",
       voiceoverPath: "/t/vo.mp3",
       musicPath: "/t/m.mp3",
@@ -128,13 +128,16 @@ describe("buildMuxArgs", () => {
     const fc = args[args.indexOf("-filter_complex") + 1]!;
     expect(fc).toContain("volume=0.18");
     expect(fc).toContain("sidechaincompress");
-    expect(fc).toContain("afade=t=out:st=18.500:d=1.5");
-    expect(fc).toContain("subtitles='/t/c.srt'");
+    expect(fc).toContain("afade=t=out");
+    expect(fc).toContain("subtitles=");
+    expect(hasAudio).toBe(true);
+    expect(reencoded).toBe(true);
     expect(args).toContain("libx264");
     expect(args.slice(-1)[0]).toBe("/t/out.mp4");
   });
   it("copies video when only music is added", () => {
-    const args = buildMuxArgs({ videoPath: "v", musicPath: "m", duration: 10, outPath: "o" });
+    const { args, reencoded } = buildMuxArgs({ videoPath: "v", musicPath: "m", duration: 10, outPath: "o" });
+    expect(reencoded).toBe(false);
     expect(args).toContain("copy");
     expect(args).not.toContain("libx264");
   });

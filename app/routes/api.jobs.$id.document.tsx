@@ -4,7 +4,7 @@ import { buildClockShim } from "../lib/studio/clock-shim";
 import { downloadText, getOwnedStudioJob, getRevision, storageHost } from "../lib/studio/db";
 import { planWatermark } from "../lib/studio/edit";
 import { injectStudioWatermark } from "../lib/studio/generate";
-import { buildDocumentCsp, injectShim } from "../lib/studio/format";
+import { buildDocumentCsp, injectShim, rewriteLibsForPreview } from "../lib/studio/format";
 
 // GET /api/jobs/:id/document?rev=n → text/html (preview, sandboxed same-origin iframe)
 export async function loader({ request, params }: Route.LoaderArgs) {
@@ -30,7 +30,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   }
   let html = await downloadText(rev.html_path);
   if (await planWatermark(row.user_id)) html = injectStudioWatermark(html);
-  html = injectShim(html, shim);
+  html = injectShim(rewriteLibsForPreview(html), shim);
 
   headers.set("Content-Type", "text/html; charset=utf-8");
   headers.set("Content-Security-Policy", buildDocumentCsp(storageHost()));

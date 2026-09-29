@@ -335,80 +335,11 @@ async function probeBufferDuration(buf: Buffer, ext: string): Promise<number> {
 }
 
 // ─── Mux ───────────────────────────────────────────────────────────────────
-// TODO(integration): workstream A owns app/lib/studio/mux.ts with
-//   muxAudio({ videoPath, voiceoverPath?, musicPath?, duration, outPath, subtitlesSrtPath? }): Promise<void>
-// It does not exist on this branch yet, so this local shim implements the same
-// signature with ffmpeg (music at 0.18, sidechain-ducked under the voiceover,
-// 1.5s fade-out, optional burned-in subtitles). Replace with
-//   import { muxAudio } from "./mux";
-// at integration and delete the shim.
-export type MuxAudioInput = {
-  videoPath: string;
-  voiceoverPath?: string;
-  musicPath?: string;
-  duration: number;
-  outPath: string;
-  subtitlesSrtPath?: string;
-};
-
-export function buildMuxArgs(input: MuxAudioInput): string[] {
-  const args = ["-y", "-i", input.videoPath];
-  let idx = 1;
-  const voIdx = input.voiceoverPath ? idx++ : -1;
-  if (input.voiceoverPath) args.push("-i", input.voiceoverPath);
-  const muIdx = input.musicPath ? idx++ : -1;
-  if (input.musicPath) args.push("-stream_loop", "-1", "-i", input.musicPath);
-
-  const d = input.duration.toFixed(3);
-  const fadeStart = Math.max(0, input.duration - 1.5).toFixed(3);
-  const filters: string[] = [];
-  let audioOut: string | null = null;
-  if (voIdx > 0 && muIdx > 0) {
-    filters.push(
-      `[${muIdx}:a]atrim=0:${d},volume=0.18,afade=t=out:st=${fadeStart}:d=1.5[mu]`,
-      `[${voIdx}:a]apad,atrim=0:${d},asplit=2[vo][vosc]`,
-      `[mu][vosc]sidechaincompress=threshold=0.03:ratio=6:attack=15:release=350[duck]`,
-      `[vo][duck]amix=inputs=2:duration=first:normalize=0[aout]`,
-    );
-    audioOut = "[aout]";
-  } else if (voIdx > 0) {
-    filters.push(`[${voIdx}:a]apad,atrim=0:${d}[aout]`);
-    audioOut = "[aout]";
-  } else if (muIdx > 0) {
-    filters.push(`[${muIdx}:a]atrim=0:${d},volume=0.18,afade=t=out:st=${fadeStart}:d=1.5[aout]`);
-    audioOut = "[aout]";
-  }
-  if (input.subtitlesSrtPath) {
-    const escaped = input.subtitlesSrtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
-    filters.push(
-      `[0:v]subtitles='${escaped}':force_style='FontName=Inter,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=36'[vout]`,
-    );
-  }
-  if (filters.length) args.push("-filter_complex", filters.join(";"));
-  args.push("-map", input.subtitlesSrtPath ? "[vout]" : "0:v");
-  if (audioOut) args.push("-map", audioOut);
-  if (input.subtitlesSrtPath) args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p");
-  else args.push("-c:v", "copy");
-  if (audioOut) args.push("-c:a", "aac", "-b:a", "192k");
-  args.push("-t", d, "-movflags", "+faststart", input.outPath);
-  return args;
-}
-
-export async function muxAudio(input: MuxAudioInput): Promise<void> {
-  const args = buildMuxArgs(input);
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(FFMPEG_BIN, args, { windowsHide: true });
-    let stderr = "";
-    child.stderr.on("data", (c: Buffer) => {
-      stderr += c.toString();
-      if (stderr.length > 20_000) stderr = stderr.slice(-10_000);
-    });
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`ffmpeg mux exited ${code}: ${stderr.slice(-1500)}`)),
-    );
-  });
-}
+// The ffmpeg mix/mux lives with the renderer (./mux): music at 0.18,
+// sidechain-ducked under the voiceover, 1.5 s fade-out, optional burned-in
+// subtitles. Re-exported here for existing callers.
+export { buildMuxArgs, muxAudio } from "./mux";
+import { muxAudio } from "./mux";
 
 /**
  * Mix voiceover + music under the silent render and (optionally) burn in

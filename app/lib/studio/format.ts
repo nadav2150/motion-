@@ -215,6 +215,15 @@ export function buildDocumentCsp(storage: string | null): string {
   ].join("; ");
 }
 
+/**
+ * Point the preview document's library URLs at the CORS-enabled route
+ * (app/routes/api.studio-libs.$.tsx). Only quoted absolute paths are touched:
+ * src/href attributes, import-map entries and CSS url("/studio-libs/...").
+ */
+export function rewriteLibsForPreview(html: string): string {
+  return html.replace(/(["'(])\/studio-libs\//g, "$1/api/studio-libs/");
+}
+
 /** Insert the clock shim as the first script inside <head> (or prepend when there is no head). */
 export function injectShim(html: string, shimJs: string): string {
   const tag = `<script>${shimJs.replace(/<\/script/gi, "<\\/script")}</script>`;

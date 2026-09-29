@@ -54,6 +54,7 @@ export default [
   route("api/studio/videos/:id", "routes/api.studio.videos.$id.tsx"),
   route("api/studio/videos/:id/duplicate", "routes/api.studio.videos.$id.duplicate.tsx"),
   route("api/studio/templates", "routes/api.studio.templates.tsx"),
+  route("api/studio-libs/*", "routes/api.studio-libs.$.tsx"),
   route("api/jobs/:id/edit", "routes/api.jobs.$id.edit.tsx"),
   route("api/jobs/:id/regenerate", "routes/api.jobs.$id.regenerate.tsx"),
   route("api/jobs/:id/revert", "routes/api.jobs.$id.revert.tsx"),
