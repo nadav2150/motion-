@@ -794,6 +794,12 @@ export async function runStudioJob(
         onRound: (n) => setStage(jobId, "validating", {}, 0.55 + n * 0.04),
       });
       if (hasBlockingErrors(repaired.report)) {
+        // Keep the rejected document so the failure can be inspected later.
+        await uploadBuffer({
+          storagePath: `jobs/${jobId}/v2/debug/failed-${Date.now().toString(36)}.html`,
+          body: Buffer.from(repaired.html, "utf8"),
+          contentType: "text/html; charset=utf-8",
+        }).catch((err) => console.warn(`[studio ${jobId}] could not save failed draft:`, err instanceof Error ? err.message : err));
         throw new Error(
           `The generated video did not pass validation: ${repaired.report.errors.map((e) => e.message).slice(0, 3).join("; ")}`,
         );

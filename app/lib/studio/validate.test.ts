@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { parseVidelyMeta, smokeRender, smokeTimes, staticCheck, validateDocument } from "./validate";
+import { ensureVidelyMeta, parseVidelyMeta, smokeRender, smokeTimes, staticCheck, validateDocument } from "./validate";
 import type { CaptureResult, RenderInput } from "./render";
 
 const expect1080 = { duration: 10, fps: 30, width: 1920, height: 1080 };
@@ -136,5 +136,30 @@ describe("validateDocument", () => {
     );
     expect(r.ok).toBe(false);
     expect(r.errors.map((e) => e.code)).toEqual(["network_api"]);
+  });
+});
+
+describe("ensureVidelyMeta", () => {
+  const want = { duration: 30, fps: 30, width: 1920, height: 1080 };
+  const doc = (head: string) => `<!DOCTYPE html><html><head>${head}</head><body><div></div></body></html>`;
+
+  it("leaves a correct declaration alone", () => {
+    const html = doc(`<script>window.__videly = { duration: 30, fps: 30, width: 1920, height: 1080 };</script>`);
+    expect(ensureVidelyMeta(html, want)).toBe(html);
+  });
+
+  it("adds the declaration and a backfill when it is missing or written another way", () => {
+    for (const head of ["", `<script>window.__videly = Object.assign({}, { duration: 30 });</script>`]) {
+      const out = ensureVidelyMeta(doc(head), want);
+      expect(staticCheck(out, { expect: want, allowedHosts: [] }).filter((i) => i.code.startsWith("meta"))).toEqual([]);
+      expect(out.indexOf("data-videly-meta")).toBeLessThan(out.indexOf("</head>"));
+      expect(out.lastIndexOf("data-videly-meta")).toBeGreaterThan(out.indexOf("<body>"));
+    }
+  });
+
+  it("corrects wrong numbers and is idempotent", () => {
+    const out = ensureVidelyMeta(doc(`<script>window.__videly = { duration: 12, fps: 24, width: 800, height: 600 };</script>`), want);
+    expect(parseVidelyMeta(out)).toEqual(want);
+    expect(ensureVidelyMeta(out, want)).toBe(out);
   });
 });

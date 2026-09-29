@@ -41,7 +41,7 @@ import {
   type PatchResponse,
 } from "./prompts";
 import { DEFAULT_FPS, FORMAT_PRESETS, type FormatPreset, type StudioStage } from "./types";
-import { validateDocument, type ValidationIssue, type ValidationReport } from "./validate";
+import { ensureVidelyMeta, validateDocument, type ValidationIssue, type ValidationReport } from "./validate";
 import { formatForSize } from "./format";
 
 // ─── Exact patches ─────────────────────────────────────────────────────────
@@ -197,6 +197,8 @@ export async function repairUntilValid(
   opts: { maxRounds?: number; onRound?: (round: number) => Promise<void> | void } = {},
 ): Promise<{ html: string; report: ValidationReport; rounds: number }> {
   const maxRounds = opts.maxRounds ?? MAX_REPAIR_ROUNDS;
+  const expect = { duration: d.duration, fps: d.fps, width: d.preset.width, height: d.preset.height };
+  html = ensureVidelyMeta(html, expect);
   let report = await validateWith(html, d);
   let rounds = 0;
   while (!report.ok) {
@@ -209,7 +211,7 @@ export async function repairUntilValid(
       `[studio repair] round ${rounds}: ${report.errors.map((e) => e.code).join(", ")}`,
     );
     const fixed = await patchOrRewrite(html, { kind: "repair", issues: report.errors }, d);
-    html = fixed.html;
+    html = ensureVidelyMeta(fixed.html, expect);
     report = await validateWith(html, d);
   }
   return { html, report, rounds };

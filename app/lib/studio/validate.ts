@@ -85,6 +85,41 @@ export function parseVidelyMeta(html: string): Partial<ExpectedMeta> | null {
   return out;
 }
 
+/**
+ * The pipeline knows duration/fps/size, so it owns window.__videly rather than
+ * failing a whole video because the model wrote it in an unexpected shape (or
+ * forgot it). When the source doesn't declare the exact expected numbers, add
+ * the declaration as the first <head> script and a backfill at the end of
+ * <body> that restores the numbers if the document later reassigns
+ * window.__videly (e.g. `window.__videly = { timeline: tl }`).
+ */
+export function ensureVidelyMeta(html: string, expect: ExpectedMeta): string {
+  const meta = parseVidelyMeta(html);
+  const headEnd = html.search(/<\/head>/i);
+  const metaIdx = html.search(/__videly\s*=/);
+  const exact =
+    meta &&
+    metaIdx !== -1 &&
+    (headEnd === -1 || metaIdx < headEnd) &&
+    meta.fps === expect.fps &&
+    meta.width === expect.width &&
+    meta.height === expect.height &&
+    typeof meta.duration === "number" &&
+    Math.abs(meta.duration - expect.duration) <= 0.5;
+  if (exact || html.includes("data-videly-meta")) return html;
+
+  const nums = `duration: ${expect.duration}, fps: ${expect.fps}, width: ${expect.width}, height: ${expect.height}`;
+  const decl = `<script data-videly-meta>window.__videly = { ${nums} };</script>`;
+  const backfill =
+    `<script data-videly-meta>(function () { var m = { ${nums} }; var v = window.__videly;` +
+    ` if (!v || typeof v !== "object") { window.__videly = m; return; } for (var k in m) v[k] = m[k]; })();</script>`;
+  const head = html.match(/<head\b[^>]*>/i);
+  let out = head && head.index !== undefined ? html.slice(0, head.index + head[0].length) + decl + html.slice(head.index + head[0].length) : decl + html;
+  const bodyEnd = out.toLowerCase().lastIndexOf("</body>");
+  out = bodyEnd !== -1 ? out.slice(0, bodyEnd) + backfill + out.slice(bodyEnd) : out + backfill;
+  return out;
+}
+
 function checkBodySize(html: string, width: number, height: number): boolean {
   // Collect declarations of every CSS rule whose selector list mentions body
   // (body, html,body, html > body …) plus an inline style on <body>.
