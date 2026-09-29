@@ -6,7 +6,7 @@ import {
 } from "./billing/credits";
 import { estimateJobCost } from "./billing/estimate";
 import { getPlanFeatures } from "./billing/plan-features";
-import { withMeterContext } from "./billing/meter";
+import { getMeterContext, withMeterContext } from "./billing/meter";
 import { flushPostHog } from "./posthog";
 import {
   DEFAULT_FILM_MODE,
@@ -1019,6 +1019,34 @@ async function renderShotPipeline(args: {
   await renderImageStep(args);
 }
 
+// Ambient meter context for follow-up operations on an existing job
+// (critique, improve, export) so every model call they make is attributed to
+// the job's owner. When already inside a context for this job (e.g. the
+// inline critique during runJob), reuse it. Flushes PostHog at the end.
+async function withJobMeterContext<T>(jobId: string, fn: () => Promise<T>): Promise<T> {
+  const current = getMeterContext();
+  if (current.jobId === jobId) return fn();
+  const db = getSupabase();
+  const { data: row } = await db.from("jobs").select("user_id").eq("id", jobId).maybeSingle();
+  const userId = (row?.user_id as string | null) ?? null;
+  let planTier: string | null = null;
+  if (userId) {
+    const { data: billing } = await db
+      .from("user_billing")
+      .select("plan_tier")
+      .eq("user_id", userId)
+      .maybeSingle();
+    planTier = (billing?.plan_tier as string | null) ?? null;
+  }
+  return withMeterContext({ userId, jobId, planTier }, async () => {
+    try {
+      return await fn();
+    } finally {
+      await flushPostHog();
+    }
+  });
+}
+
 export async function runJob(jobId: string): Promise<void> {
   const db = getSupabase();
 
@@ -1368,6 +1396,10 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
  *   • POST /api/jobs/:id/critique (the "Critique & polish" button)
  */
 export async function critiqueAndPolishJob(jobId: string): Promise<void> {
+  return withJobMeterContext(jobId, () => critiqueAndPolishJobInner(jobId));
+}
+
+async function critiqueAndPolishJobInner(jobId: string): Promise<void> {
   const db = getSupabase();
 
   // 1. Load job + shots.
@@ -1603,6 +1635,10 @@ function isSceneCommentArray(v: unknown): v is SceneCommentRow[] {
  * Called from POST /api/jobs/:id/improve.
  */
 export async function improveScenesFromComments(jobId: string): Promise<void> {
+  return withJobMeterContext(jobId, () => improveScenesFromCommentsInner(jobId));
+}
+
+async function improveScenesFromCommentsInner(jobId: string): Promise<void> {
   const db = getSupabase();
 
   // 1. Load job + shots.
@@ -2036,6 +2072,10 @@ async function fetchSceneHTML(sceneHtmlUrl: string | null): Promise<string> {
 
 // Public — called by /api/jobs/:id/export.
 export async function exportJob(jobId: string): Promise<void> {
+  return withJobMeterContext(jobId, () => exportJobInner(jobId));
+}
+
+async function exportJobInner(jobId: string): Promise<void> {
   try {
     await runHyperframesExport(jobId);
   } catch (err) {

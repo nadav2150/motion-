@@ -28,12 +28,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type ConsumptionReason } from "../billing/credits";
-import {
-  creditsForOpus,
-  creditsForSonnet,
-} from "../billing/meter";
+import { creditsForAnthropic, usdMicrosForAnthropic } from "../billing/meter";
 import { recordModelCost } from "../billing/track-cost";
-import { usdMicrosForAnthropic } from "../billing/pricing-usd";
 import {
   TTS_MODEL_IDS,
   TTS_MODELS,
@@ -70,18 +66,13 @@ function meterAnthropic(
   usage: AnthropicUsage,
   reason: ConsumptionReason,
 ): void {
-  // Effective billable input = full input. Anthropic's prompt cache discounts
-  // cache_read tokens to ~10% of base, but the response.usage.input_tokens
-  // already excludes the cached portion — only cache_creation and fresh
-  // input tokens are in input_tokens (per the API docs).
+  // Model-aware pricing: uncached input, cache writes, cache reads and output
+  // each billed at their own rate (see billing/pricing-usd.ts).
   const tokensIn = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
   const tokensOut = usage.output_tokens;
-  const credits =
-    model === MODEL
-      ? creditsForOpus({ input_tokens: tokensIn, output_tokens: tokensOut })
-      : creditsForSonnet({ input_tokens: tokensIn, output_tokens: tokensOut });
+  const credits = creditsForAnthropic(model, usage);
   if (credits <= 0) return;
-  const costUsdMicros = usdMicrosForAnthropic(model, tokensIn, tokensOut);
+  const costUsdMicros = usdMicrosForAnthropic(model, usage);
   void recordModelCost({
     provider: "anthropic",
     model,
@@ -1254,7 +1245,7 @@ Common mistakes that produce rejected output:
 // ─── Client ───────────────────────────────────────────────────────────────
 
 let cachedClient: Anthropic | null = null;
-function getClient(): Anthropic {
+export function getClient(): Anthropic {
   if (cachedClient) return cachedClient;
   // .env in this project spells it "ANTROPIC_API_KEY" (sic). Honour that
   // first so the director picks the key without any rename, then fall
