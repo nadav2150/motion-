@@ -2,7 +2,8 @@ import type { Route } from "./+types/api.jobs.$id.edit";
 import { requireUserApi } from "../lib/auth";
 import { reserveCredits } from "../lib/billing/credits";
 import { getOwnedStudioJob, getRevision, nextRevisionNumber, setStage } from "../lib/studio/db";
-import { applyChatEdit, claimForOperation, JobBusyError } from "../lib/studio/edit";
+import { claimForOperation, JobBusyError } from "../lib/studio/edit";
+import { enqueueClaimedOperation } from "../lib/studio/queue";
 import { estimateStudioEdit } from "../lib/studio/estimate";
 
 const MAX_INSTRUCTION_CHARS = 2000;
@@ -61,9 +62,13 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   const revision = await nextRevisionNumber(row.id);
-  void applyChatEdit(row.id, instruction, baseRevision, restore).catch((err) =>
-    console.error(`applyChatEdit(${row.id}) threw:`, err),
-  );
+  const queued = await enqueueClaimedOperation(row.id, "edit", {
+    instruction,
+    baseRevision: baseRevision ?? null,
+    restoreStage: restore,
+    expectedRevision: revision,
+  });
+  if (!queued.ok) return Response.json({ error: queued.error }, { status: queued.status, headers });
   return Response.json({ revision }, { status: 202, headers });
 }
 

@@ -6,7 +6,7 @@ import { getOwnedStudioJob, nextRevisionNumber, setStage } from "../lib/studio/d
 import { claimForOperation, JobBusyError } from "../lib/studio/edit";
 import { estimateStudioJob } from "../lib/studio/estimate";
 import { maxVideoDuration } from "../lib/studio/format";
-import { runStudioJob } from "../lib/studio/generate";
+import { enqueueClaimedOperation } from "../lib/studio/queue";
 
 // POST /api/jobs/:id/regenerate {} → 202 { revision } (fresh generation from the same inputs)
 export async function action({ request, params }: Route.ActionArgs) {
@@ -48,9 +48,8 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   const revision = await nextRevisionNumber(row.id);
-  void runStudioJob(row.id, { kind: "regenerate", restoreStage: restore }).catch((err) =>
-    console.error(`regenerate(${row.id}) threw:`, err),
-  );
+  const queued = await enqueueClaimedOperation(row.id, "regenerate", { restoreStage: restore, expectedRevision: revision });
+  if (!queued.ok) return Response.json({ error: queued.error }, { status: queued.status, headers });
   return Response.json({ revision }, { status: 202, headers });
 }
 

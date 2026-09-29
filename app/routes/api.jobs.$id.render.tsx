@@ -5,7 +5,7 @@ import { getPlanFeatures } from "../lib/billing/plan-features";
 import { getOwnedStudioJob, getRevision, jobDuration, setStage, updateRevision } from "../lib/studio/db";
 import { claimForOperation, JobBusyError } from "../lib/studio/edit";
 import { estimateStudioRender } from "../lib/studio/estimate";
-import { runStudioRender } from "../lib/studio/generate";
+import { enqueueClaimedOperation } from "../lib/studio/queue";
 import { parseExportOptions } from "../lib/studio/format";
 
 // POST /api/jobs/:id/render ExportOptions → 202 { revision, renderStatus }
@@ -53,9 +53,11 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   await updateRevision(row.id, revision, { render_status: "queued", render_error: null, render_options: { ...parsed, revision } });
-  void runStudioRender(row.id, { ...parsed, revision }, restore).catch((err) =>
-    console.error(`runStudioRender(${row.id}) threw:`, err),
-  );
+  const queued = await enqueueClaimedOperation(row.id, "render", { options: { ...parsed, revision }, restoreStage: restore });
+  if (!queued.ok) {
+    await updateRevision(row.id, revision, { render_status: "failed", render_error: queued.error }).catch(() => {});
+    return Response.json({ error: queued.error }, { status: queued.status, headers });
+  }
   return Response.json({ revision, renderStatus: "queued" }, { status: 202, headers });
 }
 
