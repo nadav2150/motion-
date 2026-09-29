@@ -545,10 +545,11 @@ function FinalCta({ ctaHref }: { ctaHref: string }) {
   return (
     <div className="mx-auto max-w-[1240px] px-4 pb-20 sm:px-6">
       <div className="relative overflow-hidden rounded-3xl border border-slate/40">
-        <img src={SHOWCASE.ctaBackground} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgb(24_26_36/0.94)_0%,rgb(24_26_36/0.75)_55%,rgb(24_26_36/0.35)_100%)]" aria-hidden />
-        <div className="relative px-6 py-14 sm:px-12 sm:py-20">
-          <h2 className="max-w-xl text-[30px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[44px]">
+        <img src={SHOWCASE.ctaBackground} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover object-bottom" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgb(24_26_36/0.92)_0%,rgb(24_26_36/0.7)_45%,rgb(24_26_36/0.25)_100%)]" aria-hidden />
+        <div className="relative flex flex-col items-center px-6 py-16 text-center sm:px-12 sm:py-24">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-silver">Your next video is one prompt away</p>
+          <h2 className="mt-3 max-w-2xl text-[30px] font-bold leading-tight tracking-[-0.025em] text-paper sm:text-[44px]">
             Ready to bring your ideas to life?
           </h2>
           <p className="mt-4 max-w-lg text-base text-silver sm:text-lg">
@@ -557,7 +558,7 @@ function FinalCta({ ctaHref }: { ctaHref: string }) {
           <ButtonLink to={ctaHref} size="lg" className="mt-8" iconRight={<ArrowRight className="size-4" aria-hidden />}>
             Get started for free
           </ButtonLink>
-          <CheckList className="mt-7" items={["No credit card required", "Professional templates", "Export in high quality"]} />
+          <CheckList className="mt-7 justify-center" items={["No credit card required", "Professional templates", "Export in high quality"]} />
         </div>
       </div>
     </div>

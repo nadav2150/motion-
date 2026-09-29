@@ -41,7 +41,7 @@ export const SHOWCASE = {
   heroPoster: photo("mountainsSunset", 1280, 72),
   heroPosterSmall: photo("mountainsSunset", 720, 70),
   homeHero: photo("modernHouseDusk", 1600, 70),
-  ctaBackground: photo("mountainLake", 1600, 65),
+  ctaBackground: photo("mountainsSunset", 1600, 65),
   // "From idea to video in minutes" player — 4 selectable demos.
   demos: [
     { id: "mountains", title: "Ideas Move the World", poster: photo("mountainsSunset", 1200), video: null as string | null },
