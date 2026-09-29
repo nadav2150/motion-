@@ -26,7 +26,14 @@ export type ConsumptionReason =
   | "replicate_video"
   | "elevenlabs_tts"
   | "jamendo_search"
-  | "freesound_search";
+  | "freesound_search"
+  | "gemini_reference"
+  | "opus_studio_plan"
+  | "opus_studio_code"
+  | "opus_studio_repair"
+  | "opus_studio_review"
+  | "opus_studio_edit"
+  | "studio_render";
 
 export type LedgerKind = "grant" | "purchase" | "reserve" | "consume" | "refund" | "adjust";
 
@@ -168,7 +175,9 @@ export type ProviderTag =
   | "replicate_video"
   | "openai_gpt4o"
   | "freesound"
-  | "jamendo";
+  | "jamendo"
+  | "google_gemini"
+  | "videly_render";
 
 export type UnitKind = "tokens" | "characters" | "calls" | "seconds";
 
@@ -189,6 +198,25 @@ export async function recordConsumption(args: {
   costUsdMicros?: number;
 }): Promise<void> {
   if (args.amount <= 0) return;
+  // Callers fire-and-forget this (void recordConsumption(...)); track the
+  // in-flight insert so reconcileJob() can wait for it before summing.
+  const p = insertConsumption(args);
+  pendingConsumption.add(p);
+  try {
+    await p;
+  } finally {
+    pendingConsumption.delete(p);
+  }
+}
+
+const pendingConsumption = new Set<Promise<void>>();
+
+// Resolve once every consume insert started so far has landed (or failed).
+export async function awaitPendingConsumption(): Promise<void> {
+  await Promise.allSettled([...pendingConsumption]);
+}
+
+async function insertConsumption(args: Parameters<typeof recordConsumption>[0]): Promise<void> {
   const db = getSupabase();
   const idempotencyKey =
     args.idempotencyKey ?? `${args.jobId ?? "none"}:${args.reason}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -256,29 +284,70 @@ export async function adjustBalance(args: {
   }
 }
 
-// Sums consume rows for this job. Refunds the unspent portion of the
-// reservation back to balance (and decrements credits_reserved). Idempotent
-// — repeated calls produce no additional refund because the idempotency_key
-// hits the unique constraint on the ledger.
+type SettlementRow = { kind: string; reason: string; delta: number };
+
+// Pure settlement math over a job's ledger rows. A job can hold several
+// reservations (Studio v2: the generation, then each chat edit / regenerate /
+// export render reserves again on the same job). Everything reserved and not
+// consumed, not already refunded and not already written off as an overrun is
+// outstanding: positive → refund it, negative → record an overrun.
+export function computeSettlement(rows: SettlementRow[]): {
+  reserved: number;
+  consumed: number;
+  refunded: number;
+  overrunRecorded: number;
+  reservations: number;
+  outstanding: number;
+} {
+  let reserved = 0;
+  let consumed = 0;
+  let refunded = 0;
+  let overrunRecorded = 0;
+  let reservations = 0;
+  for (const r of rows) {
+    const d = Number(r.delta);
+    if (r.kind === "reserve") {
+      reserved += -d;
+      reservations++;
+    } else if (r.kind === "consume") consumed += -d;
+    else if (r.kind === "refund") refunded += d;
+    else if (r.kind === "adjust" && r.reason === "reconcile_overrun") overrunRecorded += -d;
+  }
+  return {
+    reserved,
+    consumed,
+    refunded,
+    overrunRecorded,
+    reservations,
+    outstanding: reserved - consumed - refunded + overrunRecorded,
+  };
+}
+
+// Sums consume rows for this job. Refunds the unspent portion of every
+// reservation on the job back to balance (and decrements credits_reserved).
+// Safe to call repeatedly: already-refunded credits are subtracted from the
+// outstanding amount, and the refund idempotency key is scoped to the number
+// of reservations so a later reservation on the same job can settle again.
 export async function reconcileJob(jobId: string): Promise<void> {
   const db = getSupabase();
 
-  // Find the reservation row for this job.
-  const { data: reserveRow, error: reserveErr } = await db
+  // Fire-and-forget consume inserts from this process must land first.
+  await awaitPendingConsumption();
+
+  const { data: ledgerRows, error: ledgerErr } = await db
     .from("credit_ledger")
-    .select("user_id, delta")
+    .select("user_id, kind, reason, delta")
     .eq("job_id", jobId)
-    .eq("kind", "reserve")
-    .maybeSingle();
-  if (reserveErr) {
-    throw new Error(`reconcileJob(${jobId}) reserve lookup failed: ${reserveErr.message}`);
+    .in("kind", ["reserve", "refund", "adjust"]);
+  if (ledgerErr) {
+    throw new Error(`reconcileJob(${jobId}) reserve lookup failed: ${ledgerErr.message}`);
   }
-  if (!reserveRow) {
+  const reserveRows = (ledgerRows ?? []).filter((r) => r.kind === "reserve");
+  if (reserveRows.length === 0) {
     // Job was created with billing disabled. Nothing to reconcile.
     return;
   }
-  const userId = reserveRow.user_id as string;
-  const reservedAmount = -Number(reserveRow.delta as number); // delta is negative; absolute value
+  const userId = reserveRows[0]!.user_id as string;
 
   // Sum consume rows. Also pull provider/cost_usd_micros so we can roll up
   // a per-provider USD breakdown for the job without a second round-trip.
@@ -307,7 +376,14 @@ export async function reconcileJob(jobId: string): Promise<void> {
     totalUsdMicros += micros;
   }
 
-  const refund = Math.max(0, reservedAmount - consumedAmount);
+  const settlement = computeSettlement([
+    ...((ledgerRows ?? []) as SettlementRow[]),
+    ...(consumeRows ?? []).map((r) => ({ kind: "consume", reason: "", delta: Number(r.delta) })),
+  ]);
+  const reservedAmount = settlement.reserved;
+  const refund = Math.max(0, settlement.outstanding);
+  // First reservation keeps the historical key so pre-v2 jobs stay idempotent.
+  const keySuffix = settlement.reservations > 1 ? `:${settlement.reservations}` : "";
 
   // Backfill the job row's actual cost regardless of refund amount. Include
   // USD totals only when we have non-zero data (preserves NULL semantics for
@@ -326,21 +402,21 @@ export async function reconcileJob(jobId: string): Promise<void> {
       amount: refund,
       kind: "refund",
       reason: "reconcile_unused_reservation",
-      idempotencyKey: `refund:${jobId}`,
+      idempotencyKey: `refund:${jobId}${keySuffix}`,
     });
-  } else if (consumedAmount > reservedAmount) {
+  } else if (settlement.outstanding < 0) {
     // Should be impossible given worst-case reservation. Log + record an
     // adjust row so operators see the drift. Defensive posture says never
     // claw back retroactively — the next job's reservation will fail until
     // the user tops up.
-    const overrun = consumedAmount - reservedAmount;
+    const overrun = -settlement.outstanding;
     await db.from("credit_ledger").insert({
       user_id: userId,
       job_id: jobId,
       delta: -overrun,
       kind: "adjust",
       reason: "reconcile_overrun",
-      idempotency_key: `overrun:${jobId}`,
+      idempotency_key: `overrun:${jobId}${keySuffix}`,
       meta: { reserved: reservedAmount, consumed: consumedAmount },
     });
     console.error(

@@ -210,6 +210,55 @@ export async function generateVoiceover(
   args: ElevenLabsVoiceoverArgs,
   opts: VoiceoverRetryOpts = {},
 ): Promise<Buffer> {
+  const res = await postTts(args, opts, "", "audio/mpeg");
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// Character-level alignment from /with-timestamps. Arrays are parallel.
+export type TtsAlignment = {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+};
+
+export type VoiceoverWithTimestamps = {
+  audio: Buffer; // mp3 44.1kHz 128kbps
+  alignment: TtsAlignment | null; // aligned to the input text
+  normalizedAlignment: TtsAlignment | null; // aligned to the normalized text
+};
+
+/**
+ * TTS with character timings (POST /v1/text-to-speech/{voice}/with-timestamps).
+ * Same retry/metering behaviour as generateVoiceover. The alignment lets the
+ * Studio pipeline place on-screen beats exactly on the spoken words.
+ */
+export async function generateVoiceoverWithTimestamps(
+  args: ElevenLabsVoiceoverArgs,
+  opts: VoiceoverRetryOpts = {},
+): Promise<VoiceoverWithTimestamps> {
+  const res = await postTts(args, opts, "/with-timestamps", "application/json");
+  const data = (await res.json()) as {
+    audio_base64?: string;
+    alignment?: TtsAlignment | null;
+    normalized_alignment?: TtsAlignment | null;
+  };
+  if (!data.audio_base64) {
+    throw new ElevenLabsError(502, "ElevenLabs with-timestamps returned no audio");
+  }
+  return {
+    audio: Buffer.from(data.audio_base64, "base64"),
+    alignment: data.alignment ?? null,
+    normalizedAlignment: data.normalized_alignment ?? null,
+  };
+}
+
+// Shared POST with retries + metering. Returns the OK response unread.
+async function postTts(
+  args: ElevenLabsVoiceoverArgs,
+  opts: VoiceoverRetryOpts,
+  pathSuffix: "" | "/with-timestamps",
+  accept: string,
+): Promise<Response> {
   const apiKey = getApiKey();
   const voiceId = args.voiceId ?? getDefaultVoiceId();
   const modelId = args.modelId ?? DEFAULT_MODEL_ID;
@@ -218,7 +267,7 @@ export async function generateVoiceover(
 
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
     voiceId,
-  )}?output_format=mp3_44100_128`;
+  )}${pathSuffix}?output_format=mp3_44100_128`;
   const body = JSON.stringify({
     text: args.text,
     model_id: modelId,
@@ -238,14 +287,12 @@ export async function generateVoiceover(
       headers: {
         "xi-api-key": apiKey,
         "Content-Type": "application/json",
-        Accept: "audio/mpeg",
+        Accept: accept,
       },
       body,
     });
 
     if (res.ok) {
-      const audio = Buffer.from(await res.arrayBuffer());
-
       // Cost telemetry — fires only inside a runJob() meter context. ElevenLabs
       // charges per CHARACTER (the audio endpoint doesn't return usage metadata,
       // so we use input text length, which equals what ElevenLabs bills). Only
@@ -259,10 +306,10 @@ export async function generateVoiceover(
         units: chars,
         costUsdMicros: usdMicrosForElevenLabs(modelId, chars),
         latencyMs: Date.now() - startedAt,
-        extra: { voice_id: voiceId, attempts: attempt },
+        extra: { voice_id: voiceId, attempts: attempt, timestamps: pathSuffix !== "" },
       });
 
-      return audio;
+      return res;
     }
 
     let detail = "";
