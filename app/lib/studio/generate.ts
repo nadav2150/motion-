@@ -31,7 +31,7 @@ import {
 import { FLUX_ULTRA, runImage, type AspectRatio } from "../replicate";
 import { getSupabase } from "../supabase";
 import { mirrorAssetForJob, STORYBOARDS_BUCKET, uploadBuffer } from "../storage";
-import { callOpus, extractHtmlDocument, remainingBudget, STUDIO_MODEL, type OpusEffort } from "./anthropic";
+import { callOpus, extractHtmlDocument, remainingBudget, STUDIO_MODEL, TruncatedOutputError, type OpusEffort } from "./anthropic";
 import {
   downloadAudio,
   mixAndMux,
@@ -87,6 +87,7 @@ import {
 } from "./format";
 import {
   buildCodeMessages,
+  documentBudgetKb,
   buildPlanMessages,
   buildReviewMessages,
   CODE_TASK,
@@ -116,8 +117,12 @@ import {
   type StudioStage,
 } from "./types";
 
+// The plan call makes the creative decisions at high effort; the code call
+// mostly executes them, and its thinking counts against the same max_tokens as
+// the document, so it defaults to medium. STUDIO_CODE_EFFORT overrides.
 const CODE_EFFORT: OpusEffort =
-  (["high", "xhigh", "max"] as const).find((e) => e === process.env.STUDIO_CODE_EFFORT) ?? "high";
+  (["low", "medium", "high", "xhigh", "max"] as const).find((e) => e === process.env.STUDIO_CODE_EFFORT) ?? "medium";
+const CODE_MAX_TOKENS = 128_000;
 // Reserve enough budget for a review call (frames + document + patch JSON).
 const REVIEW_MIN_BUDGET = 60_000;
 const REVIEW_FRAMES = 12;
@@ -749,25 +754,36 @@ export async function runStudioJob(
 
       // 4. Code.
       await setStage(jobId, "writing");
-      const code = await callOpus({
-        system: systemFor(CODE_TASK),
-        messages: buildCodeMessages({
-          plan: timedPlan,
-          preset,
-          duration: finalDuration,
-          fps,
-          language: row.language ?? "en",
-          voiceover: timedPlan.voiceover,
-          lockedAssets: locked,
-          generatedAssets,
-          brandKit,
-          reference,
-        }),
-        effort: CODE_EFFORT,
-        maxTokens: 80_000,
-        reason: "opus_studio_code",
-        label: "code",
-      });
+      const codeContext = {
+        plan: timedPlan,
+        preset,
+        duration: finalDuration,
+        fps,
+        language: row.language ?? "en",
+        voiceover: timedPlan.voiceover,
+        lockedAssets: locked,
+        generatedAssets,
+        brandKit,
+        reference,
+      };
+      const writeCode = (budgetKb: number | undefined, effort: OpusEffort) =>
+        callOpus({
+          system: systemFor(CODE_TASK),
+          messages: buildCodeMessages({ ...codeContext, budgetKb }),
+          effort,
+          maxTokens: CODE_MAX_TOKENS,
+          reason: "opus_studio_code",
+          label: "code",
+        });
+      let code;
+      try {
+        code = await writeCode(undefined, CODE_EFFORT);
+      } catch (err) {
+        if (!(err instanceof TruncatedOutputError)) throw err;
+        // Ran out of room: one more attempt with a tighter budget and less thinking.
+        console.warn(`[studio ${jobId}] code output too long, retrying with a tighter budget`);
+        code = await writeCode(Math.round(documentBudgetKb(finalDuration) * 0.6), "low");
+      }
       const html = extractHtmlDocument(code.text);
       if (!html) throw new Error("The model did not return an HTML document.");
 

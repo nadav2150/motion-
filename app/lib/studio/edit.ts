@@ -177,7 +177,7 @@ export async function patchOrRewrite(html: string, req: ImproveRequest, d: DocCo
       meta,
     ),
     effort: "high",
-    maxTokens: 80_000,
+    maxTokens: 128_000,
     reason,
     label: `${req.kind}-rewrite`,
   });
