@@ -3930,7 +3930,7 @@ const AUDIO_DIRECTION_SYSTEM_PROMPT = `You are the audio director for a short ci
 
    (c) voiceId — pick ONE voice from the catalog below and USE THAT SAME voiceId FOR EVERY ENTRY IN THE FILM. Switching voices mid-film fractures identity. Match the voice to BRAND VOICE + dominant deliveryHint. If brand_style says "premium minimalist tech" → likely Adam or Thomas. If "warm indie bakery" → Bella or Antoni. If "edgy late-night" → Sam or Callum. If "story-driven cinematic" → Clyde or Rachel.
 ${VOICE_CATALOG.map((v) => `       - ${v.id}  ${v.label} — ${v.gender}, ${v.accent}; ${v.tone}. Fits: ${v.fitsDelivery}.`).join("\n")}
-     Default pick when the brief is unspecific: 21m00Tcm4TlvDq8ikWAM (Rachel) — safe, neutral, cinematic. Pick anything else when the brand gives you a reason to.
+     Default pick when the brief is unspecific: EXAVITQu4vr4xnSDxMaL (Sarah) — safe, polished, cinematic. Pick anything else when the brand gives you a reason to.
 
    (d) modelId — pick per scene:
        · "eleven_multilingual_v2" (DEFAULT) — most natural for narration. Use for cinematic, intimate, authoritative reads.

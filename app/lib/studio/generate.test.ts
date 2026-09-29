@@ -15,7 +15,7 @@ describe("parseCreateStudioJobInput", () => {
         format: "9:16",
         targetDuration: 30,
         language: "he",
-        voiceId: "21m00Tcm4TlvDq8ikWAM",
+        voiceId: "EXAVITQu4vr4xnSDxMaL",
         musicEnabled: true,
         sources: [
           { kind: "youtube", url: "https://youtu.be/abc" },
@@ -32,7 +32,7 @@ describe("parseCreateStudioJobInput", () => {
   });
   it("clamps duration and strips audio on the free plan", () => {
     const input = parseCreateStudioJobInput(
-      { prompt: "x", format: "16:9", targetDuration: 60, voiceId: "21m00Tcm4TlvDq8ikWAM", musicEnabled: true },
+      { prompt: "x", format: "16:9", targetDuration: 60, voiceId: "EXAVITQu4vr4xnSDxMaL", musicEnabled: true },
       free,
     );
     expect(input.targetDuration).toBe(15);

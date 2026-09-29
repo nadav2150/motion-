@@ -48,7 +48,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type ElevenLabsVoiceoverArgs = {
   text: string;
-  // Voice IDs are 20-char ElevenLabs identifiers (e.g. "21m00Tcm4TlvDq8ikWAM").
+  // Voice IDs are 20-char ElevenLabs identifiers (e.g. "EXAVITQu4vr4xnSDxMaL").
   // When omitted, falls back to ELEVENLABS_DEFAULT_VOICE_ID.
   voiceId?: string;
   // Defaults to "eleven_multilingual_v2" — the most expressive narration
@@ -87,102 +87,138 @@ export type VoicePreset = {
   fitsDelivery: string;
 };
 
+// ElevenLabs "premade" voices only: they work on every ElevenLabs plan,
+// including the free API tier. Legacy library voices (Rachel, Antoni, Domi,
+// Dorothy, Clyde, Fin, Thomas, Sam) now return 402 "Free users cannot use
+// library voices via the API". The first entry is the default.
 export const VOICE_CATALOG: readonly VoicePreset[] = [
   {
-    id: "21m00Tcm4TlvDq8ikWAM",
-    label: "Rachel",
+    id: "EXAVITQu4vr4xnSDxMaL",
+    label: "Sarah",
     gender: "female",
     accent: "american",
-    tone: "warm, calm, measured — classic narration",
-    fitsDelivery: "cinematic, intimate, authoritative",
+    tone: "mature, reassuring, confident — polished narration",
+    fitsDelivery: "cinematic, authoritative, intimate",
   },
   {
     id: "pNInz6obpgDQGcFmaJgB",
     label: "Adam",
     gender: "male",
     accent: "american",
-    tone: "deep, grounded, declarative",
+    tone: "dominant, firm, declarative",
     fitsDelivery: "authoritative, cinematic",
   },
   {
-    id: "ErXwobaYiN019PkySvjV",
-    label: "Antoni",
+    id: "JBFqnCBsd6RMkjVDRZzb",
+    label: "George",
     gender: "male",
-    accent: "american",
-    tone: "well-rounded, warm, approachable",
-    fitsDelivery: "cinematic, intimate, energetic",
+    accent: "british",
+    tone: "warm, captivating storyteller",
+    fitsDelivery: "cinematic, intimate",
   },
   {
-    id: "EXAVITQu4vr4xnSDxMaL",
-    label: "Bella",
+    id: "Xb7hH8MSUJpSbSDYk0k2",
+    label: "Alice",
+    gender: "female",
+    accent: "british",
+    tone: "clear, engaging educator",
+    fitsDelivery: "authoritative, intimate",
+  },
+  {
+    id: "nPczCjzI2devNBz1zQrb",
+    label: "Brian",
+    gender: "male",
+    accent: "american",
+    tone: "deep, resonant, comforting",
+    fitsDelivery: "cinematic, authoritative",
+  },
+  {
+    id: "cgSgspJ2msm6clMCkdW9",
+    label: "Jessica",
     gender: "female",
     accent: "american",
-    tone: "soft, young, close",
-    fitsDelivery: "intimate, energetic",
+    tone: "playful, bright, warm",
+    fitsDelivery: "energetic, intimate",
+  },
+  {
+    id: "TX3LPaxmHKxFdv7VOQHJ",
+    label: "Liam",
+    gender: "male",
+    accent: "american",
+    tone: "energetic social-media creator",
+    fitsDelivery: "energetic",
+  },
+  {
+    id: "FGY2WhTYpPnrIDTdsKH5",
+    label: "Laura",
+    gender: "female",
+    accent: "american",
+    tone: "enthusiastic, quirky attitude",
+    fitsDelivery: "energetic, deadpan",
+  },
+  {
+    id: "onwK4e9ZLuTAKqWW03F9",
+    label: "Daniel",
+    gender: "male",
+    accent: "british",
+    tone: "steady broadcaster, formal",
+    fitsDelivery: "authoritative, deadpan",
+  },
+  {
+    id: "pFZP5JQG7iQjIQuC4Bku",
+    label: "Lily",
+    gender: "female",
+    accent: "british",
+    tone: "velvety, confident actress",
+    fitsDelivery: "cinematic, intimate",
   },
   {
     id: "IKne3meq5aSn9XLyUdCD",
     label: "Charlie",
     gender: "male",
     accent: "australian",
-    tone: "casual, conversational, modern",
+    tone: "deep, confident, energetic",
     fitsDelivery: "energetic, deadpan",
   },
   {
-    id: "AZnzlk1XvdvUeBnXmlld",
-    label: "Domi",
+    id: "XrExE9yKIg1WjnnlVkGX",
+    label: "Matilda",
     gender: "female",
     accent: "american",
-    tone: "strong, confident, punchy",
+    tone: "knowledgeable, professional, upbeat",
     fitsDelivery: "authoritative, energetic",
   },
   {
-    id: "ThT5KcBeYPX3keUQqHPh",
-    label: "Dorothy",
+    id: "cjVigY5qzO86Huf0OWal",
+    label: "Eric",
+    gender: "male",
+    accent: "american",
+    tone: "smooth, trustworthy, classy",
+    fitsDelivery: "intimate, authoritative",
+  },
+  {
+    id: "hpp4J3VqNfWAUOO0d1Us",
+    label: "Bella",
     gender: "female",
-    accent: "british",
-    tone: "pleasant, articulate, classic — children's-book warmth",
-    fitsDelivery: "intimate, cinematic",
+    accent: "american",
+    tone: "professional, bright, warm",
+    fitsDelivery: "intimate, energetic",
   },
   {
-    id: "2EiwWnXFnvU5JabPnv8n",
-    label: "Clyde",
+    id: "pqHfZKP75CvOlQylNhV4",
+    label: "Bill",
     gender: "male",
     accent: "american",
-    tone: "weathered, raspy, gravel — war-veteran character",
-    fitsDelivery: "cinematic, authoritative, deadpan",
-  },
-  {
-    id: "D38z5RcWu1voky8WS1ja",
-    label: "Fin",
-    gender: "male",
-    accent: "irish",
-    tone: "salty, lyrical, story-teller cadence",
-    fitsDelivery: "cinematic, energetic",
-  },
-  {
-    id: "GBv7mTt0atIp3Br8iCZE",
-    label: "Thomas",
-    gender: "male",
-    accent: "american",
-    tone: "calm, soft, meditative — present and unhurried",
-    fitsDelivery: "intimate, cinematic",
-  },
-  {
-    id: "yoZ06aMxZJJ28mfd3POQ",
-    label: "Sam",
-    gender: "male",
-    accent: "american",
-    tone: "young, raspy, lived-in — indie not polish",
-    fitsDelivery: "energetic, deadpan, intimate",
+    tone: "wise, mature, balanced — crisp ad read",
+    fitsDelivery: "authoritative, cinematic",
   },
   {
     id: "N2lVS1w4EtoT3dr4eOWO",
     label: "Callum",
     gender: "male",
     accent: "american",
-    tone: "hoarse edge, late-night radio",
-    fitsDelivery: "cinematic, deadpan, intimate",
+    tone: "husky, playful trickster",
+    fitsDelivery: "cinematic, deadpan",
   },
 ] as const;
 
@@ -200,7 +236,7 @@ function getDefaultVoiceId(): string {
   const id = process.env.ELEVENLABS_DEFAULT_VOICE_ID;
   if (!id) {
     throw new Error(
-      "ELEVENLABS_DEFAULT_VOICE_ID is not set (e.g. 21m00Tcm4TlvDq8ikWAM for Rachel)",
+      "ELEVENLABS_DEFAULT_VOICE_ID is not set (e.g. EXAVITQu4vr4xnSDxMaL for Sarah)",
     );
   }
   return id;
