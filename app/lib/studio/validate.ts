@@ -94,19 +94,10 @@ export function parseVidelyMeta(html: string): Partial<ExpectedMeta> | null {
  * window.__videly (e.g. `window.__videly = { timeline: tl }`).
  */
 export function ensureVidelyMeta(html: string, expect: ExpectedMeta): string {
-  const meta = parseVidelyMeta(html);
-  const headEnd = html.search(/<\/head>/i);
-  const metaIdx = html.search(/__videly\s*=/);
-  const exact =
-    meta &&
-    metaIdx !== -1 &&
-    (headEnd === -1 || metaIdx < headEnd) &&
-    meta.fps === expect.fps &&
-    meta.width === expect.width &&
-    meta.height === expect.height &&
-    typeof meta.duration === "number" &&
-    Math.abs(meta.duration - expect.duration) <= 0.5;
-  if (exact || html.includes("data-videly-meta")) return html;
+  // Always inject (idempotent via the marker): a declaration that looks right
+  // in the source can still never run — e.g. it sits in a <script type="module">
+  // whose import fails — which is how two finished videos failed validation.
+  if (html.includes("data-videly-meta")) return html;
 
   const nums = `duration: ${expect.duration}, fps: ${expect.fps}, width: ${expect.width}, height: ${expect.height}`;
   const decl = `<script data-videly-meta>window.__videly = { ${nums} };</script>`;

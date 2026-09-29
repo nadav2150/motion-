@@ -143,9 +143,11 @@ describe("ensureVidelyMeta", () => {
   const want = { duration: 30, fps: 30, width: 1920, height: 1080 };
   const doc = (head: string) => `<!DOCTYPE html><html><head>${head}</head><body><div></div></body></html>`;
 
-  it("leaves a correct declaration alone", () => {
-    const html = doc(`<script>window.__videly = { duration: 30, fps: 30, width: 1920, height: 1080 };</script>`);
-    expect(ensureVidelyMeta(html, want)).toBe(html);
+  it("injects even when the source declaration looks right (it may never run)", () => {
+    const html = doc(`<script type="module">import x from "missing"; window.__videly = { duration: 30, fps: 30, width: 1920, height: 1080 };</script>`);
+    const out = ensureVidelyMeta(html, want);
+    expect(out.indexOf("data-videly-meta")).toBeLessThan(out.indexOf('<script type="module">'));
+    expect(parseVidelyMeta(out)).toEqual(want);
   });
 
   it("adds the declaration and a backfill when it is missing or written another way", () => {
