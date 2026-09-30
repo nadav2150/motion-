@@ -52,12 +52,21 @@ export type StudioPlanRecord = {
   run?: StudioRunCheckpoint | null;
 };
 
+// Parallel scene writing (scenes.ts): the scene split it was made for and the
+// storage paths of the foundation and each finished scene (JSON).
+export type ParallelCheckpoint = {
+  split: [number, number][]; // [start, end] per scene, in order
+  stylePath?: string | null;
+  scenes?: Record<string, string>; // scene index → path
+};
+
 export type StudioRunCheckpoint = {
   runId: string; // studio_tasks.id
   kind: "initial" | "regenerate";
   planned?: boolean; // `plan` is this run's plan
   assetsReady?: boolean; // audio, generatedAssets, timed plan and finalDuration are this run's
   draftPath?: string | null; // the code call's document, saved before validation
+  parallel?: ParallelCheckpoint | null; // parallel scene writing: finished pieces
   reviewDone?: boolean; // self-review finished (with or without a polished revision)
   finalRevision?: number | null; // the revision this run produced (to render)
 };

@@ -6,6 +6,9 @@
 //   plan call    ~20k in + ~8k out (thinking + JSON)          ≈ 240
 //   code call    ~25k in + ~45k out (thinking + full HTML)    ≈ 1,000
 //   → STUDIO_BASE 1,500 covers plan + code with headroom.
+//   parallel scenes (default) replace the code call with a foundation call
+//   (~25k in + ~6k out) and 2–6 scene calls (~30k in, mostly cache reads,
+//   + ~10–15k out each): about the same output tokens in total.
 //   repair       ~50k in (doc + errors) + ~10k out, up to 2   ≈ 2 × 400
 //   review       12 frames + doc ~45k in + ~8k out            ≈ 300
 //   voiceover    ElevenLabs $0.30 / 1k chars, ~15 chars/s     150–300
@@ -71,7 +74,8 @@ export function renderCredits(seconds: number, resolution: ExportResolution = "1
 export function estimateStudioJob(input: StudioEstimateInput): StudioEstimate {
   const base = CREDITS_STUDIO_BASE;
   const repair = CREDITS_STUDIO_REPAIR * MAX_REPAIR_ROUNDS;
-  const review = CREDITS_STUDIO_REVIEW;
+  // The self-review pass is off unless STUDIO_SELF_REVIEW=1 (see generate.ts).
+  const review = process.env.STUDIO_SELF_REVIEW === "1" ? CREDITS_STUDIO_REVIEW : 0;
   const reference = input.reference ? CREDITS_STUDIO_REFERENCE : 0;
   const images = CREDITS_STUDIO_IMAGE * Math.max(0, input.generatedImages ?? MAX_GENERATED_IMAGES);
   const voiceover = input.voiceover ? voiceoverCredits(input.maxDuration) : 0;
