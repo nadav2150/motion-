@@ -19,7 +19,11 @@ import { recordModelCost } from "./billing/track-cost";
 import { usdMicrosForGemini, type GeminiUsageMetadata } from "./billing/pricing-usd";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
-const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash";
+// Tried in order; a busy/unavailable model hands over to the next. Checked
+// against this key's model list: gemini-3.8-flash answered while 3.7 was
+// overloaded and 3.5 hung.
+const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview"];
+const DEFAULT_GEMINI_MODEL = DEFAULT_GEMINI_MODELS[0]!;
 const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024; // 200 MB
 const FILE_POLL_INTERVAL_MS = 3000;
 const FILE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -144,8 +148,10 @@ function getApiKey(): string {
   return key;
 }
 
-function getModel(): string {
-  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+/** GEMINI_MODEL may be one model or a comma-separated fallback chain. */
+export function getGeminiModels(env: string | undefined = process.env.GEMINI_MODEL): string[] {
+  const list = (env ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  return list.length ? list : DEFAULT_GEMINI_MODELS;
 }
 
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -177,25 +183,64 @@ export function canonicalYouTubeUrl(raw: string): string | null {
 }
 
 // Gemini returns 503 "model is currently experiencing high demand" and 429 in
-// bursts; those are worth waiting out. Everything else is returned as-is.
+// bursts that can last minutes, per model. Each round tries every model in the
+// chain (an overloaded or hung model hands over to the next one), then waits
+// before the next round. Models that don't exist for this key (404, or a 400
+// about the model name) are dropped for the rest of the call.
 const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
-const RETRY_DELAYS_MS = [3_000, 8_000, 20_000];
+const ROUND_DELAYS_MS = [5_000, 15_000, 40_000];
 
-async function generateWithRetry(model: string, apiKey: string, body: unknown): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
-    });
-    if (res.ok || !RETRY_STATUSES.has(res.status) || attempt >= RETRY_DELAYS_MS.length) return res;
-    const retryAfter = Number(res.headers.get("retry-after"));
-    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 30_000) : RETRY_DELAYS_MS[attempt]!;
-    console.warn(`[reference-video] Gemini HTTP ${res.status}, retrying in ${Math.round(wait / 1000)}s (attempt ${attempt + 2})`);
-    await res.body?.cancel().catch(() => {});
-    await new Promise((r) => setTimeout(r, wait));
+export type GeminiAttempt = { model: string; outcome: string };
+
+export async function generateWithFallback(
+  models: string[],
+  apiKey: string,
+  body: unknown,
+  fetchImpl: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<{ res: Response; model: string; attempts: GeminiAttempt[] }> {
+  const attempts: GeminiAttempt[] = [];
+  let pool = [...new Set(models)];
+  let last: { res: Response; model: string } | null = null;
+  for (let round = 0; round <= ROUND_DELAYS_MS.length; round++) {
+    for (const model of [...pool]) {
+      let res: Response;
+      try {
+        res = await fetchImpl(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
+        });
+      } catch (err) {
+        attempts.push({ model, outcome: err instanceof Error && err.name === "TimeoutError" ? "timeout" : "network error" });
+        continue; // hung or unreachable: try the next model
+      }
+      if (res.ok) return { res, model, attempts: [...attempts, { model, outcome: "ok" }] };
+      attempts.push({ model, outcome: `HTTP ${res.status}` });
+      if (res.status === 404 || (res.status === 400 && (await modelNameError(res.clone())))) {
+        pool = pool.filter((m) => m !== model); // not available to this key
+        await res.body?.cancel().catch(() => {});
+        continue;
+      }
+      if (!RETRY_STATUSES.has(res.status)) return { res, model, attempts }; // a real request error
+      await res.body?.cancel().catch(() => {});
+      last = { res, model };
+    }
+    if (!pool.length || round === ROUND_DELAYS_MS.length) break;
+    console.warn(
+      `[reference-video] Gemini busy (${attempts.slice(-pool.length).map((a) => `${a.model}: ${a.outcome}`).join(", ")}), next round in ${ROUND_DELAYS_MS[round]! / 1000}s`,
+    );
+    await sleep(ROUND_DELAYS_MS[round]!);
   }
+  const summary = attempts.map((a) => `${a.model}: ${a.outcome}`).join("; ");
+  if (last) return { res: new Response(`Gemini is overloaded right now (${summary}).`, { status: last.res.status }), model: last.model, attempts };
+  return { res: new Response(`No Gemini model answered (${summary}).`, { status: 503 }), model: models[0] ?? DEFAULT_GEMINI_MODEL, attempts };
+}
+
+async function modelNameError(res: Response): Promise<boolean> {
+  const text = await res.text().catch(() => "");
+  return /model name|models\/|no longer available|not found/i.test(text);
 }
 
 export function isYouTubeUrl(raw: string): boolean {
@@ -547,7 +592,8 @@ export async function analyzeReferenceVideo(
   if (urlError) throw new Error(urlError);
 
   const apiKey = getApiKey();
-  const model = getModel();
+  const models = getGeminiModels();
+  let model = models[0]!;
 
   let videoPart: Record<string, unknown>;
   let uploadedName: string | null = null;
@@ -574,10 +620,11 @@ export async function analyzeReferenceVideo(
 
   const startedAt = Date.now();
   try {
-    const res = await generateWithRetry(model, apiKey, {
+    const { res, model: usedModel } = await generateWithFallback(models, apiKey, {
       contents: [{ role: "user", parts: [videoPart, { text: youtube ? `${ANALYSIS_PROMPT}\n\n${YOUTUBE_ANALYSIS_NOTE}` : ANALYSIS_PROMPT }] }],
       generationConfig: { responseMimeType: "application/json" },
     });
+    model = usedModel;
     if (!res.ok) {
       const body = (await res.text()).slice(0, 500);
       if (youtube && res.status === 400) {

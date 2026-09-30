@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalYouTubeUrl,
+  generateWithFallback,
+  getGeminiModels,
   fetchPublicUrl,
   formatReferenceBrief,
   isPrivateIp,
@@ -12,6 +14,57 @@ import {
   youTubeVideoId,
   type ReferenceAnalysis,
 } from "./reference-video";
+
+describe("generateWithFallback", () => {
+  const noSleep = async () => {};
+  const fakeFetch = (script: Record<string, Array<number | "timeout">>) => {
+    const calls: string[] = [];
+    const impl = (async (url: string) => {
+      const model = /models\/([^:]+):/.exec(url)![1]!;
+      calls.push(model);
+      const next = script[model]!.shift() ?? 503;
+      if (next === "timeout") throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+      return new Response(next === 200 ? '{"candidates":[]}' : next === 404 ? "model not found" : "busy", { status: next });
+    }) as unknown as typeof fetch;
+    return { impl, calls };
+  };
+
+  it("hands an overloaded model over to the next one in the chain", async () => {
+    const f = fakeFetch({ a: [503], b: [200] });
+    const r = await generateWithFallback(["a", "b"], "k", {}, f.impl, noSleep);
+    expect(r.res.ok).toBe(true);
+    expect(r.model).toBe("b");
+    expect(f.calls).toEqual(["a", "b"]);
+  });
+
+  it("drops unavailable models and retries busy ones in later rounds", async () => {
+    const f = fakeFetch({ gone: [404], busy: [503, "timeout", 200] });
+    const r = await generateWithFallback(["gone", "busy"], "k", {}, f.impl, noSleep);
+    expect(r.model).toBe("busy");
+    expect(r.res.ok).toBe(true);
+    expect(f.calls).toEqual(["gone", "busy", "busy", "busy"]);
+  });
+
+  it("does not retry a real request error", async () => {
+    const f = fakeFetch({ a: [400], b: [200] });
+    const r = await generateWithFallback(["a", "b"], "k", {}, f.impl, noSleep);
+    expect(r.res.status).toBe(400);
+    expect(f.calls).toEqual(["a"]);
+  });
+
+  it("gives up with a readable error when every model stays busy", async () => {
+    const f = fakeFetch({ a: [503, 503, 503, 503], b: [429, 429, 429, 429] });
+    const r = await generateWithFallback(["a", "b"], "k", {}, f.impl, noSleep);
+    expect(r.res.ok).toBe(false);
+    expect(await r.res.text()).toMatch(/overloaded/);
+    expect(f.calls).toHaveLength(8);
+  });
+
+  it("reads a comma-separated GEMINI_MODEL chain", () => {
+    expect(getGeminiModels("x, y")).toEqual(["x", "y"]);
+    expect(getGeminiModels("")[0]).toBe("gemini-3.8-flash");
+  });
+});
 
 describe("canonicalYouTubeUrl", () => {
   it("drops playlist, timestamp and tracking parameters", () => {
