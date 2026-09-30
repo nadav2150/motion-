@@ -43,19 +43,19 @@ export function MarketingHeader({ isAuthed = false, tone = "default" }: { isAuth
     >
       <div
         className={cn(
-          "mx-auto flex h-16 items-center gap-6 px-4 sm:px-6 lg:h-[72px]",
-          landing ? "max-w-[1312px] lg:px-8" : "max-w-[1240px]",
+          "mx-auto flex h-16 items-center gap-6 px-4 sm:px-6", landing ? "lg:h-[88px]" : "lg:h-[72px]",
+          landing ? "max-w-[1376px] lg:px-8" : "max-w-[1240px]",
         )}
       >
-        <Logo href="/" variant={landing ? "outline" : "filled"} />
+        <Logo href="/" variant={landing ? "outline" : "filled"} size={landing ? 30 : 28} textClassName={landing ? "text-[23px] font-semibold" : undefined} />
         <nav aria-label="Primary" className={cn("hidden items-center gap-1 md:flex", landing ? "ml-10" : "ml-6")}>
           {NAV.map((n) => (
             <a
               key={n.label}
               href={n.href}
               className={cn(
-                "rounded-lg px-3 py-2 text-[14.5px] transition-colors hover:text-paper",
-                landing ? "font-normal text-[#aab2b7]" : "font-medium text-silver",
+                "rounded-lg px-3 py-2 transition-colors hover:text-paper",
+                landing ? "px-4 text-[16px] font-normal text-[#aab2b7]" : "text-[14.5px] font-medium text-silver",
                 focusRing,
               )}
             >
@@ -72,14 +72,15 @@ export function MarketingHeader({ isAuthed = false, tone = "default" }: { isAuth
             <>
               <Link
                 to="/signin"
-                className={cn("hidden rounded-lg px-3 py-2 text-[14.5px] font-medium text-paper hover:text-coral sm:inline-block", focusRing)}
+                className={cn("mr-2 hidden rounded-lg px-3 py-2 text-[15px] font-medium text-paper hover:text-coral sm:inline-block", focusRing)}
               >
                 Sign in
               </Link>
               <ButtonLink
                 to="/register"
                 size="md"
-                className={cn(landing && "rounded-[10px] bg-[linear-gradient(180deg,#ff8d62_0%,#f2703f_100%)] font-medium hover:brightness-110")}
+                className={cn(landing && "h-11 rounded-[10px] bg-[linear-gradient(180deg,#ff8d62_0%,#f2703f_100%)] px-5 text-[15px] font-medium hover:brightness-110")}
+                iconRight={landing ? <ArrowRight className="size-4" aria-hidden /> : undefined}
               >
                 Get started
               </ButtonLink>
@@ -160,10 +161,10 @@ const SOCIAL: { label: string; href: string | null; icon: typeof FaXTwitter }[] 
   { label: "Videly on Instagram", href: null, icon: FaInstagram },
 ];
 
-export function MarketingFooter() {
+export function MarketingFooter({ tone = "default" }: { tone?: "default" | "landing" }) {
   const socials = SOCIAL.filter((s) => s.href);
   return (
-    <footer className="border-t border-slate/35 bg-ink-950">
+    <footer className={cn("border-t", tone === "landing" ? "border-white/[0.06] bg-[#010a0f]" : "border-slate/35 bg-ink-950")}>
       <div className="mx-auto max-w-[1240px] px-4 py-14 sm:px-6">
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div className="max-w-xs">
