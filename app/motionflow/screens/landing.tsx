@@ -17,6 +17,7 @@ import {
   Folder,
   Image as ImageIcon,
   Layers,
+  Link2,
   LayoutGrid,
   Maximize,
   Mic,
@@ -27,10 +28,16 @@ import {
   Scissors,
   Settings2,
   SlidersHorizontal,
+  Sparkles,
   Type,
   Upload,
   Volume2,
   Zap,
+  MousePointer2,
+  Palette,
+  Shapes,
+  X,
+  LayoutTemplate,
 } from "lucide-react";
 import { focusRing } from "../ui/Button";
 import { LogoMark } from "../ui/Logo";
@@ -44,8 +51,6 @@ const img = (name: string) => `/landing/${name}.webp`;
 
 export const LANDING_IMG = {
   heroBg: img("hero-bg"),
-  heroVideo: img("hero-video"),
-  demos: [img("idea-1"), img("idea-2"), img("idea-3"), img("idea-4")],
   brandCard: img("brand-card"),
   ctaBg: img("cta-bg"),
 };
@@ -115,14 +120,14 @@ function CheckList({ items, className }: { items: string[]; className?: string }
 
 function Container({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <section id={id} className={cn("mx-auto max-w-[1312px] scroll-mt-24 px-4 sm:px-6 lg:px-8", className)}>
+    <section id={id} className={cn("mx-auto max-w-[1376px] scroll-mt-24 px-4 sm:px-6 lg:px-8", className)}>
       {children}
     </section>
   );
 }
 
 function Divider() {
-  return <div className="mx-auto h-px max-w-[1248px] bg-white/[0.06]" aria-hidden />;
+  return <div className="mx-auto h-px max-w-[1312px] bg-white/[0.06]" aria-hidden />;
 }
 
 function PlayBadge({ className }: { className?: string }) {
@@ -133,124 +138,180 @@ function PlayBadge({ className }: { className?: string }) {
   );
 }
 
-function HeadlineOverlay({ className }: { className?: string }) {
+function HeadlineOverlay({ className, accent = "#ff8d62", fontFamily }: { className?: string; accent?: string; fontFamily?: string }) {
   return (
     <p
       className={cn(
         "font-semibold leading-[1.08] tracking-[-0.02em] text-white drop-shadow-[0_4px_18px_rgb(0_0_0/0.5)]",
         className,
       )}
+      style={{ fontFamily }}
     >
       Ideas
       <br />
       Move
       <br />
-      <span className="text-[#ff8d62]">the World.</span>
+      <span className="transition-colors duration-300" style={{ color: accent }}>
+        the World.
+      </span>
     </p>
   );
 }
 
 // ------------------------------------------------------------------ hero mock
 
-const SIDEBAR_ICONS = [LayoutGrid, Folder, Clapperboard, Layers, Music, ImageIcon, Type];
-const TIMELINE = ["hero-video", "idea-1", "idea-2", "hero-video", "idea-3", "idea-4", "tpl-event", "cta-bg"];
+const EDITOR_TOOLS = [
+  { icon: Folder, label: "Media" },
+  { icon: Type, label: "Text" },
+  { icon: Shapes, label: "Elements" },
+  { icon: Music, label: "Audio" },
+  { icon: Palette, label: "Style" },
+  { icon: LayoutTemplate, label: "Templates" },
+];
 
-function ProductMock() {
+const EDITOR_CLIPS = [
+  { src: img("th-launch"), label: "Product Launch", time: "0:15" },
+  { src: img("th-feature"), label: "Feature Demo", time: "0:12" },
+  { src: img("th-app"), label: "App Promo", time: "0:18", play: true },
+  { src: img("th-brand"), label: "Brand Video", time: "0:20" },
+];
+
+const TIMELINE_CLIPS = [img("hero-screen"), img("th-feature"), img("th-app"), img("th-brand")];
+const WAVE = [4, 7, 5, 9, 6, 11, 8, 13, 9, 12, 7, 10, 14, 9, 11, 6, 12, 8, 10, 13, 7, 9, 12, 6, 10, 8, 11, 5, 9, 7];
+
+// Faded video cards floating around the editor (decorative, wide screens only).
+function FloatingCard({ src, label, className }: { src: string; label: string; className: string }) {
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-[18px] border border-white/[0.09] bg-[#0a1a22]/90 shadow-[0_50px_120px_-30px_rgb(0_0_0/0.95),inset_0_1px_0_rgb(255_255_255/0.05)] backdrop-blur-xl"
-      aria-hidden
-    >
-      {/* top bar */}
-      <div className="flex h-11 items-center gap-3 border-b border-white/[0.06] px-4">
-        <span className="flex items-center gap-1">
-          <span className="size-2 rounded-full bg-[#f2703f]" />
-          <span className="size-2 rounded-full bg-white/25" />
-        </span>
-        <span className="text-[15px] font-semibold tracking-[-0.01em] text-white">Videly</span>
-        <span className="ml-4 hidden h-2 w-12 rounded-full bg-white/10 sm:block" />
-        <span className="hidden h-2 w-10 rounded-full bg-white/[0.06] sm:block" />
-        <ChevronRight className="ml-auto size-4 text-white/30" />
-      </div>
-      <div className="flex">
-        {/* sidebar */}
-        <div className="hidden w-12 shrink-0 flex-col items-center gap-5 border-r border-white/[0.06] py-5 sm:flex">
-          {SIDEBAR_ICONS.map((I, i) => (
-            <I key={i} className={cn("size-4", i === 0 ? "text-white/80" : "text-white/35")} />
-          ))}
+    <div className={cn("absolute hidden overflow-hidden rounded-2xl border border-white/10 shadow-[0_30px_60px_-20px_rgb(0_0_0/0.9)] lg:block", className)}>
+      <img src={src} alt="" className="aspect-[4/3] w-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+      <span className="absolute bottom-2.5 left-3 text-[12px] font-semibold italic text-white/90">{label}</span>
+    </div>
+  );
+}
+
+function HeroEditor() {
+  return (
+    <div className="relative min-w-0 lg:pb-16 lg:pt-4 lg:[perspective:2400px]" aria-hidden>
+      <FloatingCard src={img("th-launch")} label="Product Launch" className="-left-[4%] top-[2%] w-[190px] opacity-85 [transform:rotateY(24deg)_rotateZ(-10deg)]" />
+      <FloatingCard src={img("th-feature")} label="Feature Demo" className="left-[1%] top-[40%] w-[150px] opacity-70 [transform:rotateY(24deg)_rotateZ(-4deg)]" />
+      <FloatingCard src={img("th-app")} label="App Promo" className="-right-[9%] top-[6%] w-[170px] opacity-35 blur-[1.5px] [transform:rotateY(-26deg)]" />
+      <FloatingCard src={img("th-launch")} label="Product Demo" className="-right-[11%] top-[48%] w-[160px] opacity-25 blur-[2px] [transform:rotateY(-26deg)]" />
+
+      {/* editor window */}
+      <div className="relative overflow-hidden rounded-[20px] border border-white/[0.12] bg-[#0a1016]/95 shadow-[0_0_0_1px_rgb(242_112_63/0.18),0_0_80px_-20px_rgb(242_112_63/0.55),0_60px_120px_-30px_rgb(0_0_0/0.95)] backdrop-blur-xl lg:ml-[17%] lg:mr-[3%] lg:origin-left lg:[transform:rotateY(-9deg)_rotateZ(1.5deg)]">
+        {/* title bar */}
+        <div className="flex h-12 items-center border-b border-white/[0.06] px-5">
+          <LogoMark size={20} variant="outline" />
+          <span className="ml-2 text-[16px] font-semibold tracking-[-0.01em] text-white">Videly</span>
+          <X className="ml-auto size-4 text-white/60" />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:p-4">
-            {/* player */}
-            <div className="min-w-0">
-              <div className="relative aspect-[16/10] overflow-hidden rounded-xl bg-black">
-                <img
-                  src={LANDING_IMG.heroVideo}
-                  alt=""
-                  fetchPriority="high"
-                  decoding="async"
-                  className="absolute inset-0 size-full object-cover"
-                />
-                <div className="absolute inset-0 flex items-center bg-gradient-to-r from-black/35 via-transparent to-transparent pl-[8%]">
-                  <HeadlineOverlay className="text-[clamp(20px,2.6vw,36px)]" />
-                </div>
-              </div>
-              <div className="mt-2.5 flex items-center gap-3 px-1 text-white/85">
-                <Play className="size-3.5 fill-current" />
-                <div className="relative h-[3px] flex-1 rounded-full bg-white/15">
-                  <div className="h-full w-[38%] rounded-full bg-white/70" />
-                  <span className="absolute left-[38%] top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f2703f]" />
-                </div>
-                <span className="w-[22%]" />
-                <Volume2 className="size-3.5" />
-                <Maximize className="size-3.5" />
-              </div>
-            </div>
-            {/* generate panel */}
-            <div className="hidden flex-col gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3 sm:flex">
-              <p className="text-[12.5px] font-medium text-white">Generate</p>
-              <div className="rounded-lg border border-[#f2703f]/45 bg-black/20 p-2.5 text-[11px] leading-snug text-white/70">
-                A cinematic video about exploring mountains at sunset
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.08] px-2.5 py-2 text-[11px] text-white/80">
-                <span className="flex items-center gap-1.5">
-                  <RectangleHorizontal className="size-3.5 text-white/50" /> 16:9
-                </span>
-                <ChevronDown className="size-3.5 text-white/40" />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.08] px-2.5 py-2 text-[11px] text-white/80">
-                <span className="flex items-center gap-1.5">
-                  <Mic className="size-3.5 text-white/50" /> AI Voice
-                </span>
-                <ChevronDown className="size-3.5 text-white/40" />
-              </div>
-              <div className={cn("mt-1 flex h-9 items-center justify-center rounded-lg text-[12.5px] font-medium", CORAL_BTN)}>Generate</div>
-              <div className="mt-auto flex items-center justify-between rounded-lg border border-white/[0.06] px-2.5 py-2 text-white/40">
-                <Film className="size-3.5" />
-                <AudioLines className="size-3.5" />
-                <Captions className="size-3.5" />
-                <Scissors className="size-3.5" />
-                <Settings2 className="size-3.5" />
-              </div>
-            </div>
+        <div className="flex">
+          {/* tool sidebar */}
+          <div className="hidden w-[68px] shrink-0 flex-col items-center gap-5 border-r border-white/[0.06] py-5 sm:flex">
+            {EDITOR_TOOLS.map(({ icon: I, label }, i) => (
+              <span key={label} className={cn("flex flex-col items-center gap-1 text-[9.5px]", i === 0 ? "text-white" : "text-white/45")}>
+                <I className="size-[17px]" strokeWidth={1.6} />
+                {label}
+              </span>
+            ))}
           </div>
-          {/* timeline */}
-          <div className="flex items-center gap-3 border-t border-white/[0.06] px-4 py-3">
-            <Type className="size-3.5 shrink-0 text-white/45" />
-            <div className="relative flex h-12 min-w-0 flex-1 gap-1">
-              {TIMELINE.map((n, i) => (
-                <div
+          <div className="min-w-0 flex-1">
+            <div className="flex gap-3 p-3 sm:p-4">
+              {/* player */}
+              <div className="min-w-0 flex-1">
+                <div className="relative aspect-[16/9.4] overflow-hidden rounded-xl bg-black">
+                  <img src={img("hero-screen")} alt="" fetchPriority="high" decoding="async" className="absolute inset-0 size-full object-cover" />
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,rgb(0_0_0/0.85)_0%,rgb(0_0_0/0.6)_32%,rgb(0_0_0/0.05)_55%,transparent_100%)]" />
+                  <div className="absolute left-[7%] top-[13%]">
+                    <span className="rounded-md border border-white/20 bg-black/40 px-2 py-1 text-[clamp(8px,0.75vw,11px)] font-medium text-white/90 backdrop-blur-sm">
+                      New Product
+                    </span>
+                    <p className="mt-3 text-[clamp(20px,2.6vw,40px)] font-bold leading-[0.98] tracking-[-0.025em] text-white">
+                      Smarter
+                      <br />
+                      Faster
+                      <br />
+                      <span className="text-[#ff7c4d]">Together</span>
+                    </p>
+                    <p className="mt-2.5 text-[clamp(9px,0.85vw,13px)] text-white/85">All your work in one place.</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-3 px-1 text-white">
+                  <Play className="size-4 fill-current" />
+                  <div className="relative h-[3px] flex-1 rounded-full bg-white/15">
+                    <div className="h-full w-[20%] rounded-full bg-[#f2703f]" />
+                    <span className="absolute left-[20%] top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f2703f] shadow-[0_0_10px_rgb(242_112_63/0.9)]" />
+                  </div>
+                  <span className="w-[18%]" />
+                  <span className="text-[12px] tabular-nums tracking-wide text-white/55">0:03 / 0:15</span>
+                </div>
+              </div>
+              {/* clip list */}
+              <div className="hidden w-[23%] shrink-0 flex-col gap-2.5 md:flex">
+                {EDITOR_CLIPS.map((c) => (
+                  <div key={c.label} className="relative aspect-[16/10.5] overflow-hidden rounded-lg border border-white/[0.08]">
+                    <img src={c.src} alt="" className="absolute inset-0 size-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
+                    {c.play && (
+                      <span className="absolute left-1/2 top-[42%] flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50">
+                        <Play className="size-3 translate-x-px fill-white text-white" />
+                      </span>
+                    )}
+                    <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white">{c.label}</span>
+                    <span className="absolute bottom-1.5 right-2 text-[9px] tabular-nums text-white/80">{c.time}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* timeline */}
+            <div className="relative flex items-center gap-2 border-t border-white/[0.06] px-4 py-3">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-white/80">
+                <Type className="size-4" />
+              </span>
+              {TIMELINE_CLIPS.map((src, i) => (
+                <span
                   key={i}
-                  className={cn("h-full flex-1 rounded-md bg-cover bg-center", i > 5 && "opacity-45")}
-                  style={{ backgroundImage: `url(/landing/${n}.webp)` }}
+                  className={cn("h-11 w-[11%] shrink-0 rounded-md bg-cover bg-center", i === 0 && "ring-2 ring-[#f2703f]")}
+                  style={{ backgroundImage: `url(${src})` }}
                 />
               ))}
-              <span className="absolute -bottom-1 -top-1.5 left-[42%] w-px bg-white/80">
-                <span className="absolute -left-[3px] -top-1 size-[7px] rounded-full bg-[#f2703f]" />
+              <span className="flex h-11 min-w-0 flex-1 items-center justify-center gap-[2px] overflow-hidden rounded-md bg-[#2a1f5c]/70 px-2">
+                {WAVE.map((h, i) => (
+                  <span key={i} className="w-[2px] rounded-full bg-[#9d8cff]" style={{ height: `${h * 2.4}px` }} />
+                ))}
+              </span>
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-white/80">
+                <Plus className="size-4" />
+              </span>
+              {/* playhead */}
+              <span className="absolute -top-2 bottom-1 left-[calc(1rem+2.75rem+0.5rem+5.5%)] w-px bg-[#f2703f]">
+                <span className="absolute -left-[4px] -top-1 size-[9px] rounded-full bg-[#f2703f]" />
+                <MousePointer2 className="absolute -left-0.5 bottom-0 size-4 fill-white text-black" />
               </span>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* floating prompt card */}
+      <div className="relative mx-auto mt-4 w-full max-w-[300px] rounded-2xl border border-white/[0.12] bg-[#0d151b]/90 p-3.5 shadow-[0_40px_80px_-20px_rgb(0_0_0/0.95)] backdrop-blur-xl lg:absolute lg:-left-[7%] lg:bottom-[0%] lg:mt-0 lg:w-[29%] lg:max-w-none lg:[transform:rotateY(22deg)_rotateZ(-6deg)]">
+        <div className="flex items-center gap-3 rounded-xl border border-white/[0.1] bg-black/30 px-3.5 py-3 text-[13.5px] leading-snug text-white/90">
+          <span className="flex-1">Create a product launch video for our new app</span>
+          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", CORAL_BTN)}>
+            <ArrowRight className="size-4" />
+          </span>
+        </div>
+        {[
+          { icon: RectangleHorizontal, label: "16:9" },
+          { icon: Mic, label: "AI Voice" },
+          { icon: Music, label: "Music" },
+        ].map(({ icon: I, label }) => (
+          <div key={label} className="mt-2 flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5 text-[13px] text-white/85">
+            <I className="size-4 text-white/60" /> {label}
+            <ChevronRight className="ml-auto size-4 text-white/35" />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -302,7 +363,7 @@ const FEATURES = [
 
 function Features() {
   return (
-    <Container id="features" className="py-14 lg:py-16">
+    <Container id="features" className="pb-10 pt-6 lg:pb-10 lg:pt-8">
       <ul className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
         {FEATURES.map(({ icon: Icon, title, body }) => (
           <li key={title} className="flex flex-col items-center text-center">
@@ -316,52 +377,224 @@ function Features() {
   );
 }
 
-function CreateFaster({ ctaHref }: { ctaHref: string }) {
-  const [active, setActive] = useState(0);
+// "Your reference → your idea → a new motion video" flow. All UI copy is real
+// text layered over AI-generated frames (public/landing/flow-*, strip-*).
+function StepLabel({ n, children }: { n: number; children: ReactNode }) {
   return (
-    <Container className="py-14 lg:py-16">
-      <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[0.95fr_1.05fr_auto] lg:gap-6">
-        <div className="min-w-0 lg:pr-16">
+    <p className="mb-3 flex items-center gap-2.5 text-[15px] text-white xl:text-[16px]">
+      <span className="flex size-7 items-center justify-center rounded-full border border-white/15 bg-[#f2703f] text-[13px] font-semibold text-white shadow-[0_0_18px_-2px_rgb(242_112_63/0.8)]">
+        {n}
+      </span>
+      {children}
+    </p>
+  );
+}
+
+function FlowArrow() {
+  return (
+    <ArrowRight
+      className="mx-auto size-8 shrink-0 rotate-90 text-white/85 drop-shadow-[0_0_10px_rgb(242_112_63/0.7)] xl:mt-[210px] xl:rotate-0"
+      strokeWidth={1.75}
+      aria-hidden
+    />
+  );
+}
+
+const FLOW_CARD =
+  "rounded-2xl border border-white/[0.09] bg-[#0b1419]/90 p-3.5 shadow-[0_30px_60px_-20px_rgb(0_0_0/0.9),inset_0_1px_0_rgb(255_255_255/0.05)] backdrop-blur-md";
+
+const STRIP: { src: string; label?: ReactNode }[] = [
+  {
+    src: img("flow-video"),
+    label: (
+      <span className="text-[10px] font-extrabold italic leading-[0.95] text-white">
+        Plan
+        <br />
+        Create
+        <br />
+        <span className="text-[#ff7c4d]">Achieve</span>
+      </span>
+    ),
+  },
+  { src: img("strip-beam") },
+  { src: img("strip-lists") },
+  {
+    src: img("strip-end"),
+    label: (
+      <span className="text-[13px] font-extrabold italic leading-[0.95] text-white">
+        Smarter
+        <br />
+        Faster
+        <br />
+        <span className="text-[#ff7c4d]">Together</span>
+      </span>
+    ),
+  },
+  { src: img("strip-icons") },
+  {
+    src: img("strip-end"),
+    label: (
+      <span className="flex flex-col items-center gap-1 text-center">
+        <span className="flex size-6 items-center justify-center rounded-md bg-[#f2703f]">
+          <Sparkles className="size-3.5 text-white" />
+        </span>
+        <span className="text-[11px] font-bold text-white">FocusFlow</span>
+      </span>
+    ),
+  },
+];
+
+function CreateFaster({ ctaHref }: { ctaHref: string }) {
+  return (
+    <section className="mx-auto max-w-[1376px] px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+      <div className="grid grid-cols-1 items-center gap-12 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:gap-6">
+        <div className="min-w-0">
           <Eyebrow>Create faster</Eyebrow>
-          <H2 className="mt-4">
-            From idea to video
-            <br className="hidden sm:block" /> in minutes
+          <H2 className="mt-5 sm:text-[48px] sm:leading-[1.1] xl:text-[45px]">
+            Your reference.
+            <br />
+            Your idea.
+            <br />
+            <span className="whitespace-nowrap text-[#ff7c4d]">A new motion video.</span>
           </H2>
-          <p className={cn("mt-5 max-w-[440px] text-[17px] leading-[1.6]", MUTED)}>
-            Describe your idea, choose a style, and let AI do the heavy lifting. Edit, fine-tune and export a ready-to-share video — no
-            complex tools, no steep learning curve.
+          <p className={cn("mt-6 max-w-[440px] text-[17px] leading-[1.65]", MUTED)}>
+            Upload a video you love or paste a YouTube link. Tell Videly what you want to create, and it studies the visual style, pacing and
+            motion to generate a completely new video for your brand.
           </p>
-          <CoralLink to={ctaHref} className="mt-8">
-            Try it now
+          <CoralLink to={ctaHref} size="lg" className="mt-9">
+            Create a video
           </CoralLink>
         </div>
-        <div className="relative aspect-[6/5] min-w-0 overflow-hidden rounded-2xl border border-white/[0.1] shadow-[0_0_60px_-10px_rgb(255_170_120/0.25)]">
-          <img src={LANDING_IMG.demos[active]} alt="Example Videly video" loading="lazy" className="absolute inset-0 size-full object-cover" />
-          <span className="absolute left-1/2 top-1/2 flex size-[76px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white/70 bg-black/30 backdrop-blur-sm" aria-hidden>
-            <Play className="size-7 translate-x-0.5 fill-white text-white" />
-          </span>
-        </div>
-        <div role="tablist" aria-label="Example videos" className="vd-noscrollbar flex gap-3 overflow-x-auto lg:w-[124px] lg:flex-col">
-          {LANDING_IMG.demos.map((src, i) => (
-            <button
-              key={src}
-              role="tab"
-              type="button"
-              aria-selected={i === active}
-              aria-label={`Example video ${i + 1}`}
-              onClick={() => setActive(i)}
-              className={cn(
-                "relative aspect-[4/3] w-[124px] shrink-0 overflow-hidden rounded-xl border-2 transition-all",
-                i === active ? "border-[#f2703f] shadow-[0_0_24px_-4px_rgb(242_112_63/0.6)]" : "border-white/[0.08] opacity-80 hover:opacity-100",
-                focusRing,
-              )}
-            >
-              <img src={src} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
-            </button>
-          ))}
+
+        {/* 3-step flow; tilted in 3D on wide screens, stacked below xl */}
+        <div className="relative min-w-0 xl:[perspective:2200px]" aria-hidden>
+          <div className="xl:origin-left xl:[transform:rotateY(-9deg)_rotateX(3deg)] xl:[transform-style:preserve-3d]">
+            <div className="flex flex-col items-stretch gap-4 xl:flex-row xl:items-start xl:gap-3">
+              {/* 1. Reference */}
+              <div className="mx-auto w-full max-w-[320px] xl:mx-0 xl:mt-16 xl:w-[20%] xl:max-w-none xl:shrink-0">
+                <StepLabel n={1}>Reference</StepLabel>
+                <div className={cn(FLOW_CARD, "relative")}>
+                  <span className="absolute -left-2 -top-2 z-10 flex h-7 w-9 items-center justify-center rounded-lg bg-[#ff1f1f] shadow-lg">
+                    <Play className="size-3.5 translate-x-px fill-white text-white" />
+                  </span>
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl">
+                    <img src={img("flow-ref")} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                    <span className="absolute left-1/2 top-1/2 flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/60 bg-black/40 backdrop-blur-sm">
+                      <Play className="size-4 translate-x-px fill-white text-white" />
+                    </span>
+                    <span className="absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1 text-[9px] font-medium tabular-nums text-white">0:32</span>
+                  </div>
+                  <div className="mt-2 flex gap-1">
+                    {[0, 25, 50, 75, 100].map((x, i) => (
+                      <span
+                        key={x}
+                        className={cn("h-6 flex-1 rounded-[4px] bg-cover", i === 1 && "ring-1 ring-[#f2703f]")}
+                        style={{ backgroundImage: `url(${img("flow-ref")})`, backgroundPosition: `${x}% 50%` }}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 whitespace-nowrap rounded-lg bg-white/[0.04] px-3 py-2.5 text-[12px] text-white/85 xl:px-2 xl:text-[11px]">
+                    <Link2 className="size-3.5 shrink-0 text-white/60" /> Paste YouTube link
+                  </div>
+                  <p className="my-1.5 text-center text-[10px] text-white/45">or</p>
+                  <div className="flex items-center justify-center gap-2 rounded-lg bg-white/[0.06] py-2.5 text-[12px] text-white/90">
+                    <Upload className="size-3.5" /> Upload video
+                  </div>
+                </div>
+              </div>
+
+              <FlowArrow />
+
+              {/* 2. Describe */}
+              <div className="mx-auto w-full max-w-[320px] xl:mx-0 xl:mt-24 xl:w-[23%] xl:max-w-none xl:shrink-0">
+                <StepLabel n={2}>Describe</StepLabel>
+                <div className={FLOW_CARD}>
+                  <div className="rounded-xl border border-white/[0.08] bg-black/25 p-3 text-[12.5px] leading-[1.5] text-white/90">
+                    Create a product launch video for our new AI productivity app. Modern, clean, bold, cinematic style like the reference.
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-white/85 xl:flex-nowrap xl:text-[10px]">
+                    <span className="flex items-center gap-1 whitespace-nowrap rounded-md bg-white/[0.05] px-2 py-1.5 xl:px-1.5">
+                      <RectangleHorizontal className="size-3" /> 16:9
+                    </span>
+                    <span className="flex items-center gap-1 whitespace-nowrap rounded-md bg-white/[0.05] px-2 py-1.5 xl:px-1.5">
+                      <Mic className="size-3" /> AI Voice
+                    </span>
+                    <span className="flex items-center gap-1 whitespace-nowrap rounded-md bg-white/[0.05] px-2 py-1.5 xl:px-1.5">
+                      <Music className="size-3" /> Music
+                    </span>
+                  </div>
+                  <div className={cn("mt-3 flex h-11 items-center justify-center gap-2 rounded-xl text-[14px] font-medium", CORAL_BTN)}>
+                    <Sparkles className="size-4" /> Generate
+                  </div>
+                </div>
+              </div>
+
+              <FlowArrow />
+
+              {/* 3. Your motion video */}
+              <div className="min-w-0 xl:flex-1">
+                <StepLabel n={3}>Your motion video</StepLabel>
+                <div className="relative overflow-hidden rounded-2xl border border-[#f2703f]/40 bg-black shadow-[0_0_0_1px_rgb(255_255_255/0.04),0_0_60px_-12px_rgb(242_112_63/0.55),0_40px_80px_-30px_rgb(0_0_0/0.95)]">
+                  <div className="relative aspect-[16/10]">
+                    <img src={img("flow-video")} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/15 to-transparent" />
+                    <div className="absolute left-[7%] top-[16%]">
+                      <p className="text-[clamp(26px,3vw,50px)] font-extrabold italic leading-[0.95] tracking-[-0.02em] text-white">
+                        Plan
+                        <br />
+                        Create
+                        <br />
+                        <span className="text-[#ff7c4d]">Achieve</span>
+                      </p>
+                      <p className="mt-3 text-[clamp(11px,1vw,15px)] leading-snug text-white/80">
+                        Your AI co-pilot
+                        <br />
+                        for what&apos;s next.
+                      </p>
+                    </div>
+                    <div className="absolute right-[3%] top-[12%] hidden w-[27%] flex-col gap-2.5 sm:flex">
+                      {["Turn ideas into actions", "Generate content", "Ship faster"].map((t, i) => (
+                        <span
+                          key={t}
+                          className={cn("rounded-xl border border-white/15 bg-white/[0.08] px-3 py-2 text-[clamp(9px,0.8vw,12px)] font-medium leading-tight text-white backdrop-blur-md", i === 2 && "hidden min-[1400px]:block")}
+                          style={{ transform: `translateX(${i * -6}px)` }}
+                        >
+                          <Sparkles className="mb-1 size-3 text-[#ff7c4d]" />
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 bg-black/80 px-4 py-2.5 text-white">
+                    <Play className="size-4 fill-current" />
+                    <div className="relative h-[3px] flex-1 rounded-full bg-white/20">
+                      <div className="h-full w-[27%] rounded-full bg-[#f2703f]" />
+                      <span className="absolute left-[27%] top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#f2703f] bg-white" />
+                    </div>
+                    <span className="text-[12px] tabular-nums text-white/85">0:12 / 0:45</span>
+                    <Maximize className="size-4" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* filmstrip of the generated video */}
+            <div className="relative mt-5 xl:ml-[24%]">
+              <div className="vd-noscrollbar flex gap-2 overflow-x-auto rounded-xl border border-white/[0.07] bg-[#0b1419]/80 p-2">
+                {STRIP.map((f, i) => (
+                  <div key={i} className="relative aspect-[16/10] w-[130px] shrink-0 overflow-hidden rounded-lg xl:w-auto xl:flex-1">
+                    <img src={f.src} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                    {f.label && <div className="absolute inset-0 flex items-center justify-center bg-black/35 p-2">{f.label}</div>}
+                  </div>
+                ))}
+              </div>
+              {/* floor reflection */}
+              <div className="pointer-events-none absolute inset-x-6 -bottom-10 h-10 bg-[radial-gradient(60%_100%_at_50%_0%,rgb(242_112_63/0.25),transparent)] blur-md" />
+            </div>
+          </div>
         </div>
       </div>
-    </Container>
+    </section>
   );
 }
 
@@ -377,7 +610,7 @@ const TEMPLATE_CARDS = [
 
 function TemplatesRow({ templateHref }: { templateHref: (id: string) => string }) {
   return (
-    <Container id="templates" className="py-14 lg:py-16">
+    <Container id="templates" className="py-12 lg:py-12">
       <div className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <Eyebrow>Professional templates</Eyebrow>
@@ -412,9 +645,21 @@ function TemplatesRow({ templateHref }: { templateHref: (id: string) => string }
   );
 }
 
+// Interactive brand kit demo: picking a color or font restyles the preview.
+const BRAND_COLORS = ["#f2894f", "#4cc9f0", "#a3e635", "#a78bfa", "#f472b6"];
+const BRAND_FONTS = [
+  { label: "Inter", family: "Inter, sans-serif" },
+  { label: "Geist", family: "Geist, Inter, sans-serif" },
+  { label: "Serif", family: "Georgia, 'Times New Roman', serif" },
+  { label: "Mono", family: "'Geist Mono', ui-monospace, monospace" },
+];
+
 function BrandSection({ ctaHref }: { ctaHref: string }) {
+  const [accent, setAccent] = useState(BRAND_COLORS[0]!);
+  const [font, setFont] = useState(BRAND_FONTS[0]!);
+  const custom = !BRAND_COLORS.includes(accent);
   return (
-    <Container className="py-14 lg:py-16">
+    <Container className="py-12 lg:py-12">
       <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[1fr_auto] lg:gap-16">
         <div>
           <Eyebrow>Your brand, always on</Eyebrow>
@@ -426,40 +671,97 @@ function BrandSection({ ctaHref }: { ctaHref: string }) {
             Upload your logo, set your colors, fonts, voice and tone. Videly automatically keeps your brand identity consistent across every
             video.
           </p>
+          <p className="mt-4 flex items-center gap-2 text-[14px] text-white/60">
+            <Sparkles className="size-4 text-[#f2703f]" aria-hidden />
+            Try it — pick a color or font and watch the video update.
+          </p>
           <CoralLink to={ctaHref} className="mt-8">
             Set up your brand
           </CoralLink>
         </div>
-        <div className="flex flex-col gap-4 sm:flex-row" aria-hidden>
-          <div className={cn("w-full rounded-2xl p-6 sm:w-[282px]", CARD)}>
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <div className={cn("w-full rounded-2xl p-7 sm:w-[300px]", CARD)}>
             <p className="border-b border-white/[0.06] pb-4 text-[15px] text-white/90">Brand Kit</p>
-            <div className="mt-5 flex items-center gap-2.5">
-              <LogoMark size={40} variant="outline" />
-              <span className="text-[32px] font-semibold tracking-[-0.02em] text-white">Videly</span>
-            </div>
-            <p className="mt-5 text-[14px] text-white/85">Colors</p>
-            <div className="mt-2.5 flex items-center gap-2.5">
-              {["#f2894f", "#4a5866", "#1d2a33"].map((c) => (
-                <span key={c} className="size-9 rounded-full border border-white/10" style={{ background: c }} />
-              ))}
-              <span className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70">
-                <Plus className="size-3.5" />
+            <div className="mt-5 flex items-center gap-2.5" aria-hidden>
+              <LogoMark size={40} variant="outline" color={accent} />
+              <span className="text-[32px] font-semibold tracking-[-0.02em] text-white" style={{ fontFamily: font.family }}>
+                Videly
               </span>
             </div>
-            <p className="mt-6 text-[14px] text-white/85">Fonts</p>
-            <div className="mt-2.5 flex items-center justify-between rounded-lg bg-white/[0.05] px-4 py-3 text-[16px] text-white">
-              Inter
-              <span className="flex items-center gap-3 text-white/60">
+            <p id="brand-colors" className="mt-5 text-[14px] text-white/85">
+              Colors
+            </p>
+            <div role="radiogroup" aria-labelledby="brand-colors" className="mt-2.5 flex flex-wrap items-center gap-2">
+              {BRAND_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={accent === c}
+                  aria-label={`Brand color ${c}`}
+                  onClick={() => setAccent(c)}
+                  className={cn(
+                    "size-8 rounded-full border-2 transition-transform hover:scale-110",
+                    accent === c ? "border-white ring-2 ring-white/25 ring-offset-2 ring-offset-[#06151c]" : "border-white/10",
+                    focusRing,
+                  )}
+                  style={{ background: c }}
+                />
+              ))}
+              {/* "+" opens the native color picker for any custom color */}
+              <label
+                className={cn(
+                  "relative flex size-8 cursor-pointer items-center justify-center rounded-full border-2 text-white/70 transition-transform hover:scale-110 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-coral",
+                  custom ? "border-white" : "border-white/10 bg-white/[0.04]",
+                )}
+                style={custom ? { background: accent } : undefined}
+              >
+                {!custom && <Plus className="size-3.5" aria-hidden />}
+                <input
+                  type="color"
+                  value={accent}
+                  onChange={(e) => setAccent(e.target.value)}
+                  aria-label="Custom brand color"
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                />
+              </label>
+            </div>
+            <label htmlFor="brand-font" className="mt-6 block text-[14px] text-white/85">
+              Fonts
+            </label>
+            <div className="relative mt-2.5">
+              <select
+                id="brand-font"
+                value={font.label}
+                onChange={(e) => setFont(BRAND_FONTS.find((f) => f.label === e.target.value)!)}
+                className={cn("w-full cursor-pointer appearance-none rounded-lg bg-white/[0.05] px-4 py-3 text-[16px] text-white", focusRing)}
+                style={{ fontFamily: font.family }}
+              >
+                {BRAND_FONTS.map((f) => (
+                  <option key={f.label} value={f.label} className="bg-[#0b1419]">
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-3 text-white/60" aria-hidden>
                 <span className="text-[12px] italic">Aa</span>
                 <ChevronDown className="size-4" />
               </span>
             </div>
           </div>
-          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-white/[0.1] shadow-[0_20px_50px_-10px_rgb(242_112_63/0.35)] sm:w-[322px]">
+          <div
+            className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-white/[0.1] transition-shadow duration-300 sm:w-[340px]"
+            style={{ boxShadow: `0 20px 50px -10px color-mix(in srgb, ${accent} 45%, transparent)` }}
+            aria-label="Brand preview"
+            role="img"
+          >
             <img src={LANDING_IMG.brandCard} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent" />
-            <HeadlineOverlay className="absolute left-8 top-[26%] text-[36px]" />
-            <span className="absolute inset-x-0 bottom-0 h-1.5 bg-[#f2703f]" />
+            <div className="absolute inset-0 bg-[linear-gradient(135deg,rgb(2_12_18/0.85)_0%,rgb(2_12_18/0.45)_45%,transparent_75%)]" />
+            <HeadlineOverlay className="absolute left-8 top-[12%] text-[38px]" accent={accent} fontFamily={font.family} />
+            <span className="absolute right-4 top-4" aria-hidden>
+              <LogoMark size={26} variant="outline" color={accent} />
+            </span>
+            <span className="absolute inset-x-0 bottom-0 h-1.5 transition-colors duration-300" style={{ background: accent }} />
           </div>
         </div>
       </div>
@@ -475,7 +777,7 @@ const STEPS = [
 
 function HowItWorks() {
   return (
-    <Container id="how-it-works" className="py-14 lg:py-16">
+    <Container id="how-it-works" className="py-12 lg:py-12">
       <Eyebrow center plain>
         How it works
       </Eyebrow>
@@ -497,8 +799,8 @@ function HowItWorks() {
               <span className="flex size-[52px] items-center justify-center rounded-2xl bg-[#0f3440] text-white" aria-hidden>
                 <Icon className="size-6" strokeWidth={1.6} />
               </span>
-              <h3 className="mt-5 text-[19px] font-medium text-white">{title}</h3>
-              <p className={cn("mt-2 text-[14.5px] leading-[1.55]", MUTED)}>{body}</p>
+              <h3 className="mt-5 text-[21px] font-medium text-white">{title}</h3>
+              <p className={cn("mt-2 text-[15.5px] leading-[1.55]", MUTED)}>{body}</p>
             </div>
             {i < STEPS.length - 1 && (
               <span className="absolute -right-[22px] top-1/2 hidden h-px w-3 bg-white/15 md:block" aria-hidden />
@@ -522,19 +824,19 @@ const USE_TABS: { key: UseCat | "all"; label: string }[] = [
   { key: "ads", label: "Ads" },
 ];
 const USE_CASES: { img: string; cats: UseCat[]; featured?: boolean }[] = [
-  { img: img("use-product"), cats: ["product", "ads"] },
-  { img: img("use-city"), cats: ["youtube", "brand", "app"], featured: true },
-  { img: img("use-sunset"), cats: ["brand", "social"] },
+  { img: img("use-watch"), cats: ["product", "ads"] },
+  { img: img("use-isometric"), cats: ["youtube", "brand", "app"], featured: true },
+  { img: img("use-kinetic"), cats: ["brand", "social"] },
   { img: img("tpl-social"), cats: ["social", "ads"] },
   { img: img("tpl-event"), cats: ["event", "social"] },
-  { img: img("use-mountain"), cats: ["youtube", "brand"] },
+  { img: img("use-dashboard"), cats: ["youtube", "brand"] },
 ];
 
 function UseCases({ ctaHref }: { ctaHref: string }) {
   const [cat, setCat] = useState<UseCat | "all">("all");
   const items = USE_CASES.filter((u) => cat === "all" || u.cats.includes(cat));
   return (
-    <Container className="py-14 lg:py-16">
+    <Container className="py-12 lg:py-12">
       <Eyebrow plain>Perfect for every creator</Eyebrow>
       <H2 className="mt-3 sm:text-[40px]">One tool. Endless possibilities.</H2>
       <div role="tablist" aria-label="Video categories" className="vd-noscrollbar -mx-4 mt-7 flex gap-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -546,7 +848,7 @@ function UseCases({ ctaHref }: { ctaHref: string }) {
             aria-selected={cat === t.key}
             onClick={() => setCat(t.key)}
             className={cn(
-              "h-11 shrink-0 rounded-[10px] px-6 text-[14.5px] transition-colors",
+              "h-12 shrink-0 rounded-[10px] px-7 text-[16px] transition-colors",
               cat === t.key ? CORAL_BTN : "bg-white/[0.04] text-white/85 hover:bg-white/[0.08]",
               focusRing,
             )}
@@ -579,7 +881,7 @@ function UseCases({ ctaHref }: { ctaHref: string }) {
 function Testimonials() {
   if (TESTIMONIALS.length < 3) return null;
   return (
-    <Container className="py-14 lg:py-16">
+    <Container className="py-12 lg:py-12">
       <Eyebrow plain>Loved by creators</Eyebrow>
       <H2 className="mt-3 sm:text-[40px]">What our users say</H2>
       <ul className="mt-8 grid gap-6 md:grid-cols-3">
@@ -605,7 +907,7 @@ function FinalCta({ ctaHref }: { ctaHref: string }) {
     <div className="relative mt-10 overflow-hidden">
       <img src={LANDING_IMG.ctaBg} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover object-center" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,#020c12_0%,rgb(2_12_18/0.35)_30%,rgb(2_12_18/0.35)_70%,#020c12_100%)]" aria-hidden />
-      <div className="relative mx-auto flex max-w-[1312px] flex-col items-center px-6 py-20 text-center sm:py-24">
+      <div className="relative mx-auto flex max-w-[1376px] flex-col items-center px-6 py-20 text-center sm:py-24">
         <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-white/60">Your next video is one prompt away</p>
         <H2 className="mt-4 sm:text-[42px]">Ready to bring your ideas to life?</H2>
         <p className="mt-4 max-w-[460px] text-[17px] leading-[1.55] text-white/75">
@@ -639,29 +941,29 @@ export const LandingScreen = ({
       </a>
       {/* hero backdrop sits behind the transparent header */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[980px] overflow-hidden" aria-hidden>
-        <img src={LANDING_IMG.heroBg} alt="" fetchPriority="high" className="absolute inset-0 size-full object-cover object-right-top opacity-80" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#020c12_0%,rgb(2_12_18/0.75)_35%,rgb(2_12_18/0.2)_70%,rgb(2_12_18/0.35)_100%)]" />
+        <img src={LANDING_IMG.heroBg} alt="" fetchPriority="high" className="absolute inset-0 size-full object-cover object-right-top opacity-95" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,#020c12_0%,rgb(2_12_18/0.8)_30%,rgb(2_12_18/0.15)_60%,rgb(2_12_18/0.3)_100%)]" />
         <div className="absolute inset-x-0 bottom-0 h-[420px] bg-gradient-to-b from-transparent to-[#020c12]" />
       </div>
       <MarketingHeader isAuthed={isAuthed} tone="landing" />
       <main id="main" className="relative">
         {/* Hero */}
-        <div className="mx-auto grid max-w-[1312px] grid-cols-1 items-center gap-12 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:gap-14 lg:px-8 lg:pb-16 lg:pt-16">
+        <div className="mx-auto grid max-w-[1376px] grid-cols-1 items-center gap-12 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[0.72fr_1.28fr] lg:gap-6 lg:px-8 lg:pb-10 lg:pt-14">
           <div>
-            <Eyebrow>AI-powered video creation</Eyebrow>
-            <h1 className="mt-6 text-[44px] font-semibold leading-[1.08] tracking-[-0.025em] text-white sm:text-[56px] lg:text-[62px]">
+            <Eyebrow>AI-powered motion video creation</Eyebrow>
+            <h1 className="mt-7 text-[44px] font-bold leading-[1.04] tracking-[-0.035em] text-white sm:text-[58px] xl:text-[66px]">
               Turn any idea
               <br className="hidden sm:block" /> into a stunning <span className="text-[#ff7c4d]">motion video.</span>
             </h1>
             <p className={cn("mt-5 max-w-[480px] text-[18px] leading-[1.55]", "text-[#a3abb0]")}>
-              Describe what you want, add your content, and get a professional video in minutes.
+              Describe what you want, add your content, and get a professional motion video in minutes.
             </p>
             <CoralLink to={ctaHref} size="lg" className="mt-8">
               {isAuthed ? "Open the app" : "Create your first video"}
             </CoralLink>
-            <CheckList className="mt-9 max-w-[480px]" items={["No editing skills required", "Professional templates", "AI voice & music"]} />
+            <CheckList className="mt-9 flex-col gap-y-3.5 [&_li]:text-[15px]" items={["No editing skills required", "Professional templates", "AI voice & music"]} />
           </div>
-          <ProductMock />
+          <HeroEditor />
         </div>
 
         <TrustedBy />
@@ -678,7 +980,7 @@ export const LandingScreen = ({
         <Testimonials />
         <FinalCta ctaHref={ctaHref} />
       </main>
-      <MarketingFooter />
+      <MarketingFooter tone="landing" />
     </div>
   );
 };

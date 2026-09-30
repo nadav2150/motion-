@@ -6,7 +6,7 @@ import { SITE_URL, buildMeta } from "../lib/seo";
 
 // Only the hero poster is preloaded; everything below the fold is lazy.
 export const links: Route.LinksFunction = () => [
-  { rel: "preload", as: "image", href: "/landing/hero-video.webp", fetchPriority: "high" },
+  { rel: "preload", as: "image", href: "/landing/hero-screen.webp", fetchPriority: "high" },
 ];
 
 export function meta(_: Route.MetaArgs) {
