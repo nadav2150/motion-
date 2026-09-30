@@ -171,6 +171,24 @@ export async function mirrorVideo(
 // ─── HyperFrames helpers ─────────────────────────────────────────────────
 // Upload local Buffers (not mirror from a remote URL).
 
+const UPLOAD_ATTEMPTS = 3;
+
+type UploadError = { message: string; name?: string; status?: number; statusCode?: string | number };
+
+export function describeUploadError(e: UploadError): string {
+  const status = e.status ?? e.statusCode;
+  const msg = e.message && e.message !== "<none>" ? e.message : "no error message";
+  return [e.name, status ? `HTTP ${status}` : null, msg].filter(Boolean).join(" · ");
+}
+
+/** Worth retrying: network drops, empty errors, 5xx, 429, timeouts. Not: bucket/RLS/size problems. */
+export function isTransientUploadError(e: UploadError): boolean {
+  const status = Number(e.status ?? e.statusCode);
+  if (/bucket.*not.*found|no such bucket|row-level security|rls|not allowed|forbidden|permission|too large|exceeded the maximum/i.test(e.message)) return false;
+  if (Number.isFinite(status) && status > 0) return status >= 500 || status === 429 || status === 408;
+  return true; // no status: a dropped connection or an empty error
+}
+
 export async function uploadBuffer(args: {
   storagePath: string;
   body: Buffer;
@@ -178,23 +196,35 @@ export async function uploadBuffer(args: {
 }): Promise<MirroredAsset> {
   await ensureBucket();
   const db = getSupabase();
-  const { error } = await db.storage
-    .from(STORYBOARDS_BUCKET)
-    .upload(args.storagePath, args.body, {
-      contentType: args.contentType,
-      upsert: true,
-      cacheControl: "31536000",
-    });
+  // Storage occasionally fails a request with no message (a dropped
+  // connection surfaces as `<none>`), which lost a finished MP4 render. Retry
+  // transient failures a few times before giving up.
+  let error: { message: string; name?: string; status?: number; statusCode?: string | number } | null = null;
+  for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
+    const res = await db.storage
+      .from(STORYBOARDS_BUCKET)
+      .upload(args.storagePath, args.body, {
+        contentType: args.contentType,
+        upsert: true,
+        cacheControl: "31536000",
+      })
+      .catch((err: unknown) => ({ error: { message: err instanceof Error ? err.message : String(err), name: "NetworkError" } }));
+    error = (res as { error: typeof error }).error ?? null;
+    if (!error || !isTransientUploadError(error) || attempt === UPLOAD_ATTEMPTS) break;
+    console.warn(`[storage] upload ${args.storagePath} failed (${describeUploadError(error)}), retrying (${attempt + 1}/${UPLOAD_ATTEMPTS})`);
+    await new Promise((r) => setTimeout(r, 1000 * attempt * attempt));
+  }
   if (error) {
+    const message = describeUploadError(error);
     // Bucket-not-found / RLS on bucket → tell the user exactly how to fix it.
-    if (/bucket.*not.*found|no such bucket/i.test(error.message)) {
+    if (/bucket.*not.*found|no such bucket/i.test(message)) {
       throw new Error(
         `uploadBuffer(${args.storagePath}) failed: bucket "${STORYBOARDS_BUCKET}" does not exist. ` +
           `Create it in Supabase Dashboard → Storage → New bucket: name="${STORYBOARDS_BUCKET}", ` +
-          `public=true, file size limit=100 MB. Original error: ${error.message}`,
+          `public=true, file size limit=100 MB. Original error: ${message}`,
       );
     }
-    if (/row-level security|rls|not allowed|forbidden|permission/i.test(error.message)) {
+    if (/row-level security|rls|not allowed|forbidden|permission/i.test(message)) {
       throw new Error(
         `uploadBuffer(${args.storagePath}) blocked by RLS on storage.objects. ` +
           `Add a service-role policy in Supabase → SQL Editor:\n` +
@@ -202,10 +232,10 @@ export async function uploadBuffer(args: {
           `    on storage.objects for all to service_role\n` +
           `    using (bucket_id = '${STORYBOARDS_BUCKET}')\n` +
           `    with check (bucket_id = '${STORYBOARDS_BUCKET}');\n` +
-          `Original error: ${error.message}`,
+          `Original error: ${message}`,
       );
     }
-    throw new Error(`uploadBuffer(${args.storagePath}) failed: ${error.message}`);
+    throw new Error(`uploadBuffer(${args.storagePath}) failed: ${message}`);
   }
   const { data } = db.storage
     .from(STORYBOARDS_BUCKET)
