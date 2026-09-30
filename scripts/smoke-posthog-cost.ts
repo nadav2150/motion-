@@ -66,12 +66,12 @@ async function main(): Promise<void> {
         units: opusInput + opusOutput,
         inputTokens: opusInput,
         outputTokens: opusOutput,
-        costUsdMicros: usdMicrosForAnthropic("claude-opus-4-7", opusInput, opusOutput),
+        costUsdMicros: usdMicrosForAnthropic("claude-opus-4-7", { input_tokens: opusInput, output_tokens: opusOutput }),
         latencyMs: 8400,
       });
       console.log(
         `  ✓ anthropic opus_director ($${(
-          usdMicrosForAnthropic("claude-opus-4-7", opusInput, opusOutput) / 1_000_000
+          usdMicrosForAnthropic("claude-opus-4-7", { input_tokens: opusInput, output_tokens: opusOutput }) / 1_000_000
         ).toFixed(4)})`,
       );
 

@@ -6,7 +6,7 @@ import {
 } from "./billing/credits";
 import { estimateJobCost } from "./billing/estimate";
 import { getPlanFeatures } from "./billing/plan-features";
-import { withMeterContext } from "./billing/meter";
+import { getMeterContext, withMeterContext } from "./billing/meter";
 import { flushPostHog } from "./posthog";
 import {
   DEFAULT_FILM_MODE,
@@ -85,6 +85,7 @@ import {
 } from "./hyperframes/motion-telemetry";
 import { injectWatermarkOverlay, shouldApplyWatermark } from "./hyperframes/watermark";
 import { sourceAssets, type JobAssetEntry } from "./assets";
+import { analyzeReferenceVideo, formatReferenceBrief } from "./reference-video";
 import { resolveAudioPlan, type ResolvedAudio } from "./audio-resolver";
 
 type AssembledShot = ShotRecipe & {
@@ -175,6 +176,9 @@ export type CreateJobInput = {
   brandLogoUrl?: string | null;
   brandLogoStoragePath?: string | null;
   brandColors?: string[] | null;
+  // Optional reference video (YouTube link, direct video URL, or an upload
+  // in the storyboards bucket). Analyzed by Gemini before directing.
+  referenceVideoUrl?: string | null;
   userId?: string | null;
   // Per-track audio toggles captured at Generate time. Default false at the
   // DB level; the caller (api.jobs route) is responsible for forwarding the
@@ -221,7 +225,9 @@ export class ScriptTooLongError extends Error {
 
 export async function createJob(input: CreateJobInput): Promise<{ jobId: string }> {
   const script = input.script.trim();
-  if (!script) throw new Error("Script is required");
+  const referenceVideoUrl = input.referenceVideoUrl?.trim() || null;
+  // A reference video can stand in for the script: Gemini writes the copy.
+  if (!script && !referenceVideoUrl) throw new Error("Script or reference video is required");
 
   // Worst-case reservation BEFORE we insert the job. Scene count is capped
   // at the user's plan max (NOT the global MAX_SHOTS) so Free users aren't
@@ -290,6 +296,7 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string 
         input.brandColors && input.brandColors.length > 0
           ? input.brandColors
           : null,
+      reference_video_url: referenceVideoUrl,
       director_model: DIRECTOR_MODEL,
       status: "pending",
       user_id: input.userId ?? null,
@@ -694,6 +701,8 @@ async function setJobStatus(
       | "film_fills"
       | "polished_at"
       | "audio_direction"
+      | "script"
+      | "reference_analysis"
     >
   >,
 ): Promise<void> {
@@ -1010,6 +1019,34 @@ async function renderShotPipeline(args: {
   await renderImageStep(args);
 }
 
+// Ambient meter context for follow-up operations on an existing job
+// (critique, improve, export) so every model call they make is attributed to
+// the job's owner. When already inside a context for this job (e.g. the
+// inline critique during runJob), reuse it. Flushes PostHog at the end.
+async function withJobMeterContext<T>(jobId: string, fn: () => Promise<T>): Promise<T> {
+  const current = getMeterContext();
+  if (current.jobId === jobId) return fn();
+  const db = getSupabase();
+  const { data: row } = await db.from("jobs").select("user_id").eq("id", jobId).maybeSingle();
+  const userId = (row?.user_id as string | null) ?? null;
+  let planTier: string | null = null;
+  if (userId) {
+    const { data: billing } = await db
+      .from("user_billing")
+      .select("plan_tier")
+      .eq("user_id", userId)
+      .maybeSingle();
+    planTier = (billing?.plan_tier as string | null) ?? null;
+  }
+  return withMeterContext({ userId, jobId, planTier }, async () => {
+    try {
+      return await fn();
+    } finally {
+      await flushPostHog();
+    }
+  });
+}
+
 export async function runJob(jobId: string): Promise<void> {
   const db = getSupabase();
 
@@ -1093,11 +1130,45 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
   await setJobStatus(jobId, { status: "directing" });
   const ownerBilling = job.user_id ? await getOrCreateBilling(job.user_id) : null;
   const ownerPlan = getPlanFeatures(ownerBilling?.plan_tier ?? null);
+
+  // Stage 0 — reference video: Gemini breaks the clip down into pacing,
+  // palette, motion and a beat timeline; the brief rides along into the
+  // storyboard + blueprint prompts. Failure is non-fatal when the user also
+  // gave a script (we direct without the reference); fatal otherwise since
+  // there is nothing to direct.
+  let script = job.script;
+  let referenceBrief: string | null = null;
+  if (job.reference_video_url) {
+    try {
+      const analysis = await timed(jobId, "reference_analysis", () =>
+        analyzeReferenceVideo(job.reference_video_url!),
+      );
+      referenceBrief = formatReferenceBrief(analysis);
+      const usedSuggestedScript = !script.trim() && Boolean(analysis.suggestedScript);
+      if (usedSuggestedScript) script = analysis.suggestedScript;
+      await setJobStatus(jobId, {
+        reference_analysis: analysis as unknown as object,
+        ...(usedSuggestedScript ? { script } : {}),
+      });
+      console.log(
+        `[hyperframes ${jobId}] reference analyzed by ${analysis.model}: ${analysis.beats.length} beats, ${analysis.totalDurationSeconds}s` +
+          (usedSuggestedScript ? " · script taken from reference" : ""),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[hyperframes ${jobId}] reference analysis failed: ${message}`);
+      await setJobStatus(jobId, { reference_analysis: { error: message } });
+      if (!script.trim()) throw new Error(`Reference video analysis failed: ${message}`);
+    }
+  }
+  if (!script.trim()) throw new Error("Script is empty and no reference video copy was available");
+
   const storyboard = await timed(jobId, "storyboard", () =>
-    generateStoryboard(job.script, {
+    generateStoryboard(script, {
       colors: job.brand_colors ?? null,
       logoUrl: job.brand_logo_url ?? null,
       brandStyle: job.brand_style ?? null,
+      referenceBrief,
       minScenes: ownerPlan.minScenes,
       maxScenes: ownerPlan.maxScenes,
     }),
@@ -1325,6 +1396,10 @@ async function runHyperframesDirect(jobId: string, job: JobRow): Promise<void> {
  *   • POST /api/jobs/:id/critique (the "Critique & polish" button)
  */
 export async function critiqueAndPolishJob(jobId: string): Promise<void> {
+  return withJobMeterContext(jobId, () => critiqueAndPolishJobInner(jobId));
+}
+
+async function critiqueAndPolishJobInner(jobId: string): Promise<void> {
   const db = getSupabase();
 
   // 1. Load job + shots.
@@ -1560,6 +1635,10 @@ function isSceneCommentArray(v: unknown): v is SceneCommentRow[] {
  * Called from POST /api/jobs/:id/improve.
  */
 export async function improveScenesFromComments(jobId: string): Promise<void> {
+  return withJobMeterContext(jobId, () => improveScenesFromCommentsInner(jobId));
+}
+
+async function improveScenesFromCommentsInner(jobId: string): Promise<void> {
   const db = getSupabase();
 
   // 1. Load job + shots.
@@ -1993,6 +2072,10 @@ async function fetchSceneHTML(sceneHtmlUrl: string | null): Promise<string> {
 
 // Public — called by /api/jobs/:id/export.
 export async function exportJob(jobId: string): Promise<void> {
+  return withJobMeterContext(jobId, () => exportJobInner(jobId));
+}
+
+async function exportJobInner(jobId: string): Promise<void> {
   try {
     await runHyperframesExport(jobId);
   } catch (err) {

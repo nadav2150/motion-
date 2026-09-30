@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ElevenLabsError, generateVoiceover } from "./elevenlabs-tts";
+import { ElevenLabsError, generateVoiceover, generateVoiceoverWithTimestamps } from "./elevenlabs-tts";
 
 // Minimal Response-like stub for the fetch mock.
 function makeRes(status: number, body?: unknown) {
@@ -81,5 +81,24 @@ describe("generateVoiceover — retry on concurrency 429", () => {
       generateVoiceover({ text: "hi", voiceId: "v1" }, { maxAttempts: 4, baseDelayMs: 1 }),
     ).rejects.toMatchObject({ status: 422 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("generateVoiceoverWithTimestamps", () => {
+  it("calls /with-timestamps and decodes audio + alignment", async () => {
+    const alignment = {
+      characters: ["H", "i"],
+      character_start_times_seconds: [0, 0.1],
+      character_end_times_seconds: [0.1, 0.2],
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      makeRes(200, { audio_base64: Buffer.from("mp3").toString("base64"), alignment, normalized_alignment: null }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const r = await generateVoiceoverWithTimestamps({ text: "Hi", voiceId: "v1" });
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/v1/text-to-speech/v1/with-timestamps?output_format=mp3_44100_128");
+    expect(r.audio.toString()).toBe("mp3");
+    expect(r.alignment).toEqual(alignment);
   });
 });

@@ -11,32 +11,92 @@ const MICROS_PER_USD = 1_000_000;
 const MICROS_PER_CENT = 10_000;
 
 // ---------- Anthropic ----------
-// Public Anthropic pricing (per 1M tokens, as of 2026-05-20):
-//   claude-opus-4-8   : $15 in, $75 out  → 15  micros/token in, 75  micros/token out
-//   claude-opus-4-7   : $15 in, $75 out  → 15  micros/token in, 75  micros/token out
-//   claude-sonnet-4-6 : $3  in, $15 out  → 3   micros/token in, 15  micros/token out
-// Cache reads bill at ~10% of base input; cache_creation_input_tokens bill at
-// 1.25x base. We already factor cache_create into tokensIn upstream, and
-// response.usage.input_tokens excludes cache_read — so passing usage straight
-// through is close enough for the average. No need to model cache pricing
-// here; the variance is small at our volumes.
-const ANTHROPIC_PRICE_TABLE: Record<string, { inputPerToken: number; outputPerToken: number }> = {
+// Public Anthropic pricing, per 1M tokens ($X per 1M == X micros per token):
+//   claude-opus-5-5   : $4  in, $20 out, cache read $0.20, cache write 1.25x in
+//   claude-opus-4-8   : $15 in, $75 out
+//   claude-opus-4-7   : $15 in, $75 out
+//   claude-sonnet-4-6 : $3  in, $15 out
+//
+// response.usage.input_tokens counts only the UNCACHED input after the last
+// cache breakpoint; cache_creation_input_tokens and cache_read_input_tokens
+// are reported separately and billed at their own rates, so all three are
+// priced here. When a model has no explicit cache rates, writes bill at 1.25x
+// input and reads at 0.1x input (Anthropic's standard multipliers).
+export type AnthropicPrice = {
+  inputPerToken: number;
+  outputPerToken: number;
+  cacheReadPerToken?: number;
+  cacheWritePerToken?: number;
+};
+
+export const ANTHROPIC_PRICE_TABLE: Record<string, AnthropicPrice> = {
+  "claude-opus-5-5": { inputPerToken: 4, outputPerToken: 20, cacheReadPerToken: 0.2, cacheWritePerToken: 5 },
   "claude-opus-4-8": { inputPerToken: 15, outputPerToken: 75 },
   "claude-opus-4-7": { inputPerToken: 15, outputPerToken: 75 },
   "claude-sonnet-4-6": { inputPerToken: 3, outputPerToken: 15 },
 };
 
-export function usdMicrosForAnthropic(
-  model: string,
-  inputTokens: number,
-  outputTokens: number,
-): number {
-  const price = ANTHROPIC_PRICE_TABLE[model];
-  if (!price) {
-    console.warn(`[pricing-usd] unknown Anthropic model "${model}" — defaulting to Opus pricing`);
-    return usdMicrosForAnthropic("claude-opus-4-8", inputTokens, outputTokens);
-  }
-  return inputTokens * price.inputPerToken + outputTokens * price.outputPerToken;
+export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5";
+
+// Shape of Anthropic's `response.usage`. All optional so partial objects
+// (tests, older call sites) still price.
+export type AnthropicUsageLike = {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+};
+
+function anthropicPrice(model: string): AnthropicPrice {
+  const exact = ANTHROPIC_PRICE_TABLE[model];
+  if (exact) return exact;
+  // Dated / suffixed ids ("claude-opus-5-5-20260801") → longest known prefix.
+  const prefix = Object.keys(ANTHROPIC_PRICE_TABLE)
+    .filter((k) => model.startsWith(k))
+    .sort((a, b) => b.length - a.length)[0];
+  if (prefix) return ANTHROPIC_PRICE_TABLE[prefix]!;
+  console.warn(`[pricing-usd] unknown Anthropic model "${model}" — defaulting to ${DEFAULT_ANTHROPIC_MODEL} pricing`);
+  return ANTHROPIC_PRICE_TABLE[DEFAULT_ANTHROPIC_MODEL]!;
+}
+
+export function usdMicrosForAnthropic(model: string, usage: AnthropicUsageLike): number {
+  const price = anthropicPrice(model);
+  const cacheRead = price.cacheReadPerToken ?? price.inputPerToken * 0.1;
+  const cacheWrite = price.cacheWritePerToken ?? price.inputPerToken * 1.25;
+  const micros =
+    (usage.input_tokens ?? 0) * price.inputPerToken +
+    (usage.output_tokens ?? 0) * price.outputPerToken +
+    (usage.cache_read_input_tokens ?? 0) * cacheRead +
+    (usage.cache_creation_input_tokens ?? 0) * cacheWrite;
+  return Math.ceil(micros);
+}
+
+// ---------- Google Gemini ----------
+// Per 1M tokens (micros per token). Video input is billed as input tokens
+// (usageMetadata.promptTokenCount); thinking tokens (thoughtsTokenCount) bill
+// at the output rate.
+// gemini-3.5-flash: $1.50 in / $9.00 out per 1M — taken from third-party
+// price trackers (OpenRouter / devtk.ai, 2026-09), not from Google's page
+// directly. Re-check against ai.google.dev/gemini-api/docs/pricing.
+export const GEMINI_PRICE_TABLE: Record<string, { inputPerToken: number; outputPerToken: number }> = {
+  "gemini-3.5-flash": { inputPerToken: 1.5, outputPerToken: 9 },
+  "gemini-2.5-flash": { inputPerToken: 0.3, outputPerToken: 2.5 },
+  "gemini-2.5-pro": { inputPerToken: 1.25, outputPerToken: 10 },
+};
+
+export type GeminiUsageMetadata = {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  cachedContentTokenCount?: number;
+  totalTokenCount?: number;
+};
+
+export function usdMicrosForGemini(model: string, usage: GeminiUsageMetadata): number {
+  const price = GEMINI_PRICE_TABLE[model] ?? GEMINI_PRICE_TABLE["gemini-3.5-flash"]!;
+  const input = usage.promptTokenCount ?? 0;
+  const output = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0);
+  return Math.ceil(input * price.inputPerToken + output * price.outputPerToken);
 }
 
 // ---------- ElevenLabs ----------

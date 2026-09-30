@@ -13,12 +13,15 @@
 // avoids the class-field-initialization-order trap with `this.env`.
 
 import { Container, getContainer } from "@cloudflare/containers";
+import { keepContainerAwake } from "../app/lib/studio/keepalive";
 
 type Env = {
   VIDELY_CONTAINER: DurableObjectNamespace<VidelyContainer>;
   // Server-side secrets (set via `wrangler secret bulk`).
   OPEN_AI_API_KEY: string;
   ANTROPIC_API_KEY: string;
+  GEMINI_API_KEY: string;
+  GEMINI_MODEL?: string;
   REPLICATE_API_TOKEN: string;
   MOTIONFLOW_LLM_DIRECTOR: string;
   MOTIONGLASS_AUTO_AUDIO: string;
@@ -72,6 +75,8 @@ export class VidelyContainer extends Container<Env> {
     NODE_ENV: "production",
     OPEN_AI_API_KEY: this.env.OPEN_AI_API_KEY,
     ANTROPIC_API_KEY: this.env.ANTROPIC_API_KEY,
+    GEMINI_API_KEY: this.env.GEMINI_API_KEY,
+    GEMINI_MODEL: this.env.GEMINI_MODEL ?? "",
     REPLICATE_API_TOKEN: this.env.REPLICATE_API_TOKEN,
     MOTIONFLOW_LLM_DIRECTOR: this.env.MOTIONFLOW_LLM_DIRECTOR,
     MOTIONGLASS_AUTO_AUDIO: this.env.MOTIONGLASS_AUTO_AUDIO,
@@ -118,5 +123,21 @@ export default {
     // client warm. Per-user instances are unnecessary — auth lives in
     // signed cookies that the container's Node server validates.
     return getContainer(env.VIDELY_CONTAINER).fetch(request);
+  },
+
+  // Cron (wrangler.jsonc triggers, every minute): Studio videos are produced by
+  // the task worker inside the container, and background work does not count
+  // as activity for sleepAfter. While any studio_tasks row is queued/running,
+  // ping the container so it stays awake (or wakes up and resumes the work).
+  // When nothing is pending this costs one Supabase REST call and no
+  // container request, so an idle container still goes to sleep.
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      keepContainerAwake(env, {
+        pingContainer: (req) => getContainer(env.VIDELY_CONTAINER).fetch(req),
+      }).then((result) => {
+        if (result.pending || "error" in result) console.log("[keepalive]", JSON.stringify(result));
+      }),
+    );
   },
 };

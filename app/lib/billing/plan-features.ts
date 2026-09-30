@@ -27,6 +27,8 @@ export type PlanFeatures = {
   commercialUse: boolean;  // TOS-only — surfaced in UI, not enforced server-side
   apiAccess: boolean;      // can mint API tokens for programmatic /api/jobs
   teamSeats: number;       // 1 = solo; future feature
+  // Studio (v2): longest target duration (seconds) the Duration picker allows.
+  maxStudioDuration: number;
 };
 
 export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
@@ -45,6 +47,7 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     commercialUse: false,
     apiAccess: false,
     teamSeats: 1,
+    maxStudioDuration: 15,
   },
   starter: {
     minScenes: 5,
@@ -64,6 +67,7 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     commercialUse: true,
     apiAccess: false,
     teamSeats: 1,
+    maxStudioDuration: 30,
   },
   pro: {
     minScenes: 5,
@@ -80,6 +84,7 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     commercialUse: true,
     apiAccess: false,
     teamSeats: 1,
+    maxStudioDuration: 60,
   },
   studio: {
     minScenes: 5,
@@ -96,6 +101,7 @@ export const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
     commercialUse: true,
     apiAccess: true,
     teamSeats: 3,
+    maxStudioDuration: 60,
   },
 };
 

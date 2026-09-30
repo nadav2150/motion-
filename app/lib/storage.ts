@@ -1,6 +1,7 @@
 import { getSupabase } from "./supabase";
 
 export const STORYBOARDS_BUCKET = "storyboards";
+export const BUCKET_FILE_SIZE_LIMIT = 100 * 1024 * 1024;
 
 let bucketReady = false;
 let bucketWarningLogged = false;
@@ -22,6 +23,16 @@ export async function ensureBucket(): Promise<void> {
   // Fast path: bucket exists and is readable with our key.
   const { data: existing } = await db.storage.getBucket(STORYBOARDS_BUCKET);
   if (existing) {
+    // Older projects created the bucket with a 25 MB cap; Studio renders and
+    // reference uploads need up to 100 MB. Best-effort raise (RLS may block).
+    const limit = Number(existing.file_size_limit ?? 0);
+    if (limit > 0 && limit < BUCKET_FILE_SIZE_LIMIT) {
+      const { error: updErr } = await db.storage.updateBucket(STORYBOARDS_BUCKET, {
+        public: true,
+        fileSizeLimit: BUCKET_FILE_SIZE_LIMIT,
+      });
+      if (updErr) console.warn(`[storage] could not raise bucket size limit: ${updErr.message}`);
+    }
     bucketReady = true;
     return;
   }
@@ -31,7 +42,7 @@ export async function ensureBucket(): Promise<void> {
   // and let the actual upload tell us if it doesn't.
   const { error: createErr } = await db.storage.createBucket(STORYBOARDS_BUCKET, {
     public: true,
-    fileSizeLimit: 25 * 1024 * 1024,
+    fileSizeLimit: BUCKET_FILE_SIZE_LIMIT,
   });
 
   if (!createErr || /already exists/i.test(createErr.message)) {
@@ -44,7 +55,7 @@ export async function ensureBucket(): Promise<void> {
     console.warn(
       `[storage] Could not verify or create bucket "${STORYBOARDS_BUCKET}" via the storage admin API (RLS on storage.buckets). ` +
         `Assuming the bucket exists and is writable. If uploads fail, create the bucket manually in ` +
-        `Supabase Dashboard → Storage → New bucket: name="${STORYBOARDS_BUCKET}", public=true, file size limit=25 MB. ` +
+        `Supabase Dashboard → Storage → New bucket: name="${STORYBOARDS_BUCKET}", public=true, file size limit=100 MB. ` +
         `Original error: ${createErr.message}`,
     );
   }
@@ -180,7 +191,7 @@ export async function uploadBuffer(args: {
       throw new Error(
         `uploadBuffer(${args.storagePath}) failed: bucket "${STORYBOARDS_BUCKET}" does not exist. ` +
           `Create it in Supabase Dashboard → Storage → New bucket: name="${STORYBOARDS_BUCKET}", ` +
-          `public=true, file size limit=25 MB. Original error: ${error.message}`,
+          `public=true, file size limit=100 MB. Original error: ${error.message}`,
       );
     }
     if (/row-level security|rls|not allowed|forbidden|permission/i.test(error.message)) {

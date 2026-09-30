@@ -28,6 +28,9 @@ export type MeterContext = {
   // unknown (scripts, smoke tests). Surfaced to PostHog as an event property
   // so cost dashboards can segment by plan without joining user_billing.
   planTier?: string | null;
+  // Optional mutable token accumulator (see TokenBudget below). Absent for
+  // legacy hyperframes jobs; set by the Studio pipeline per operation.
+  tokenBudget?: TokenBudget;
 };
 
 // Thread through any function — when no real user/job is in scope (e.g.
@@ -129,33 +132,37 @@ export const CREDITS_FREESOUND_SEARCH = 1;
 // Jamendo search: free API. ~1 credit per call.
 export const CREDITS_JAMENDO_SEARCH = 1;
 
-// Anthropic Opus 4.7 — credit per 1k tokens. Input: $15/M ≈ 15 credits/k.
-// Output: $75/M ≈ 75 credits/k. Caller passes usage.input_tokens /
-// usage.output_tokens from the API response.
-export function creditsForOpus(input: { input_tokens?: number; output_tokens?: number }): number {
-  const inK = (input.input_tokens ?? 0) / 1000;
-  const outK = (input.output_tokens ?? 0) / 1000;
-  return Math.ceil(inK * 15 + outK * 75);
-}
-
-// Anthropic Sonnet 4.6 (vision critique) — $3/M input, $15/M output.
-export function creditsForSonnet(input: { input_tokens?: number; output_tokens?: number }): number {
-  const inK = (input.input_tokens ?? 0) / 1000;
-  const outK = (input.output_tokens ?? 0) / 1000;
-  return Math.ceil(inK * 3 + outK * 15);
-}
-
-// USD-micros helpers parallel to the credit helpers above. Same usage shape;
-// callers compute both side-by-side at each Anthropic call site so PostHog
-// gets real dollars and the ledger keeps its rounded credit value.
+// Anthropic — model-aware. 1 credit = $0.001 = 1000 USD micros, so credits
+// derive from the USD price table (input, output, cache-read and cache-write
+// tokens all priced). Pass the model the response reports (`response.model`):
+// a server-side fallback may have answered instead of the requested model.
 import {
-  usdMicrosForAnthropic,
+  microsToCredits,
+  usdMicrosForAnthropic as usdMicrosForAnthropicUsage,
+  type AnthropicUsageLike,
 } from "./pricing-usd";
 
-export function usdMicrosForOpus(usage: { input_tokens?: number; output_tokens?: number }): number {
-  return usdMicrosForAnthropic("claude-opus-4-8", usage.input_tokens ?? 0, usage.output_tokens ?? 0);
+export function usdMicrosForAnthropic(model: string, usage: AnthropicUsageLike): number {
+  return usdMicrosForAnthropicUsage(model, usage);
 }
 
-export function usdMicrosForSonnet(usage: { input_tokens?: number; output_tokens?: number }): number {
-  return usdMicrosForAnthropic("claude-sonnet-4-6", usage.input_tokens ?? 0, usage.output_tokens ?? 0);
+export function creditsForAnthropic(model: string, usage: AnthropicUsageLike): number {
+  return microsToCredits(usdMicrosForAnthropicUsage(model, usage));
+}
+
+// ─── Per-job LLM token budget ──────────────────────────────────────────────
+// Studio jobs cap the tokens one operation (generation, edit, regenerate) may
+// burn, so a repair loop can never run away. The budget lives on the ambient
+// meter context; anthropic.ts checks it before each call and adds usage after.
+// Weighted tokens: uncached input + cache writes + output count fully, cache
+// reads count at 1/10 (they cost 1/20 of input).
+export type TokenBudget = { used: number; cap: number };
+
+export function weightedTokens(usage: AnthropicUsageLike): number {
+  return (
+    (usage.input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0) +
+    (usage.output_tokens ?? 0) +
+    Math.ceil((usage.cache_read_input_tokens ?? 0) / 10)
+  );
 }

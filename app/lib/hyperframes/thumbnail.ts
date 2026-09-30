@@ -9,7 +9,8 @@
 // alpha. The composite is the v2 review artifact: stills hide motion-feel,
 // trails do not.
 
-import { chromium, type Browser, type Page } from "playwright";
+import type { Page } from "playwright";
+import { getBrowser, shutdownBrowser } from "../studio/browser";
 import sharp from "sharp";
 import {
   TELEMETRY,
@@ -23,27 +24,6 @@ const VIEWPORT_H = 1080;
 const SETTLED_FRACTION = 0.7;
 const TIMELINE_WAIT_MS = 4000;
 const FALLBACK_HOLD_MS = 1200;
-
-let cachedBrowser: Browser | null = null;
-let launching: Promise<Browser> | null = null;
-
-async function getBrowser(): Promise<Browser> {
-  if (cachedBrowser && cachedBrowser.isConnected()) return cachedBrowser;
-  if (launching) return launching;
-  launching = chromium
-    .launch({ headless: true })
-    .then((b) => {
-      cachedBrowser = b;
-      b.on("disconnected", () => {
-        cachedBrowser = null;
-      });
-      return b;
-    })
-    .finally(() => {
-      launching = null;
-    });
-  return launching;
-}
 
 export type CaptureSceneThumbnailArgs = {
   html: string;
@@ -455,9 +435,7 @@ export async function captureSceneMotionTelemetry(
   }
 }
 
+// The browser is shared with the Studio renderer (app/lib/studio/browser.ts).
 export async function shutdownThumbnailBrowser(): Promise<void> {
-  if (cachedBrowser) {
-    await cachedBrowser.close().catch(() => {});
-    cachedBrowser = null;
-  }
+  await shutdownBrowser();
 }

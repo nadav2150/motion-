@@ -2,8 +2,8 @@
 // composition HTML. Template-first single-composition pipeline. No per-scene
 // HTML generation; no ffmpeg stitch.
 //
-// Uses Anthropic Claude Opus 4.8 via @anthropic-ai/sdk. Key notes:
-//   • Opus 4.8 removes `temperature` / `top_p` / `top_k` (400 if sent) and
+// Uses Anthropic Claude Opus 5.5 via @anthropic-ai/sdk. Key notes:
+//   • Opus 5.5 removes `temperature` / `top_p` / `top_k` (400 if sent) and
 //     removes manual `budget_tokens` thinking. We use adaptive thinking
 //     and `output_config.effort` to control depth instead.
 //   • Two LLM calls per job: generateStoryboard (script analysis + identity
@@ -28,12 +28,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type ConsumptionReason } from "../billing/credits";
-import {
-  creditsForOpus,
-  creditsForSonnet,
-} from "../billing/meter";
+import { creditsForAnthropic, usdMicrosForAnthropic } from "../billing/meter";
 import { recordModelCost } from "../billing/track-cost";
-import { usdMicrosForAnthropic } from "../billing/pricing-usd";
 import {
   TTS_MODEL_IDS,
   TTS_MODELS,
@@ -47,10 +43,10 @@ import { resolveLayers } from "./engines/layers";
 import { collectExtraCdn, getEngineAdapter } from "./engines/registry";
 import { validateLayer } from "./engines/validate";
 
-const MODEL = "claude-opus-4-8";
+const MODEL = "claude-opus-5-5";
 // Sonnet 4.6 is used for the v2 vision-critique stages (per-scene + film-
 // level). Critique is judgmental + structured, not generative — Sonnet is
-// fast here and we reserve Opus 4.8 wall-time for the creative passes
+// fast here and we reserve Opus 5.5 wall-time for the creative passes
 // (storyboard, blueprint, scene fills, refinement).
 const SONNET_MODEL = "claude-sonnet-4-6";
 
@@ -70,18 +66,13 @@ function meterAnthropic(
   usage: AnthropicUsage,
   reason: ConsumptionReason,
 ): void {
-  // Effective billable input = full input. Anthropic's prompt cache discounts
-  // cache_read tokens to ~10% of base, but the response.usage.input_tokens
-  // already excludes the cached portion — only cache_creation and fresh
-  // input tokens are in input_tokens (per the API docs).
+  // Model-aware pricing: uncached input, cache writes, cache reads and output
+  // each billed at their own rate (see billing/pricing-usd.ts).
   const tokensIn = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
   const tokensOut = usage.output_tokens;
-  const credits =
-    model === MODEL
-      ? creditsForOpus({ input_tokens: tokensIn, output_tokens: tokensOut })
-      : creditsForSonnet({ input_tokens: tokensIn, output_tokens: tokensOut });
+  const credits = creditsForAnthropic(model, usage);
   if (credits <= 0) return;
-  const costUsdMicros = usdMicrosForAnthropic(model, tokensIn, tokensOut);
+  const costUsdMicros = usdMicrosForAnthropic(model, usage);
   void recordModelCost({
     provider: "anthropic",
     model,
@@ -561,6 +552,8 @@ export type BrandHints = {
   logoUrl?: string | null;
   /** Free-text brand style direction the user typed (optional). */
   brandStyle?: string | null;
+  /** Gemini breakdown of a user-supplied reference video (formatReferenceBrief). */
+  referenceBrief?: string | null;
   /** Per-plan minimum scene count for the storyboard. Defaults to 4. */
   minScenes?: number;
   /** Per-plan maximum scene count for the storyboard. Defaults to 8.
@@ -574,6 +567,8 @@ export type Storyboard = {
   title: string;
   visualIdentity: VisualIdentity;
   scenes: StoryboardScene[];
+  /** Reference-video brief carried from the storyboard call into the blueprint call. */
+  referenceBrief?: string | null;
 };
 
 const STORYBOARD_SYSTEM_PROMPT = `You are an art-director shaping ONE coherent film from a script.
@@ -1250,7 +1245,7 @@ Common mistakes that produce rejected output:
 // ─── Client ───────────────────────────────────────────────────────────────
 
 let cachedClient: Anthropic | null = null;
-function getClient(): Anthropic {
+export function getClient(): Anthropic {
   if (cachedClient) return cachedClient;
   // .env in this project spells it "ANTROPIC_API_KEY" (sic). Honour that
   // first so the director picks the key without any rename, then fall
@@ -1403,6 +1398,7 @@ export async function generateStoryboard(
     colors: cleanColors,
     logoUrl: brand?.logoUrl ?? null,
     brandStyle: brand?.brandStyle ?? null,
+    referenceBrief: brand?.referenceBrief ?? null,
     minScenes,
     maxScenes,
   });
@@ -1476,6 +1472,7 @@ export async function generateStoryboard(
     title: parsed.title || "Untitled",
     visualIdentity: identity,
     scenes,
+    referenceBrief: brand?.referenceBrief ?? null,
   };
 }
 
@@ -1577,6 +1574,7 @@ function renderStoryboardUserPrompt(
     colors: string[];
     logoUrl: string | null;
     brandStyle: string | null;
+    referenceBrief?: string | null;
     minScenes?: number;
     maxScenes?: number;
   },
@@ -1611,6 +1609,14 @@ function renderStoryboardUserPrompt(
     if (brand.brandStyle) {
       lines.push(`  brandStyle: ${brand.brandStyle.trim()}`);
     }
+    lines.push("");
+  }
+
+  if (brand.referenceBrief) {
+    lines.push(brand.referenceBrief);
+    lines.push(
+      "When a REFERENCE VIDEO is given, it outranks the AESTHETIC SEED below: derive visualIdentity (palette, fonts, motionLanguage, signatureMove) and scene pacing/durations from the reference, then apply the BRAND ANCHOR on top.",
+    );
     lines.push("");
   }
 
@@ -3529,6 +3535,7 @@ FILM PLAN — ${storyboard.scenes.length} scenes · ${totalSeconds}s total
 ══════════════════════════════════════════════════════════════════════════════
 ${sceneLines}
 ${renderLockedAssetsForBlueprint(storyboard, assetCatalog)}
+${storyboard.referenceBrief ? `${storyboard.referenceBrief}\nMirror the reference's motion vocabulary, transitions and camera moves in every scene brief (content stays original).\n` : ""}
 Produce the FilmBlueprint JSON now. Scene ids MUST be "s1" .. "s${storyboard.scenes.length}" in that order. Durations MUST match the storyboard above. Copy MUST be echoed verbatim. Plan continuity forward through the scenes — read your own endStateHint and check it lines up with the next scene's transitionInIntent.${assetCatalog && Object.keys(assetCatalog.scenes).length > 0 ? ` Design each scene's brief AROUND its locked assets — the renderer will embed those URLs verbatim, so your brief should reference them by role.` : ""}
 `;
 }
@@ -3923,7 +3930,7 @@ const AUDIO_DIRECTION_SYSTEM_PROMPT = `You are the audio director for a short ci
 
    (c) voiceId — pick ONE voice from the catalog below and USE THAT SAME voiceId FOR EVERY ENTRY IN THE FILM. Switching voices mid-film fractures identity. Match the voice to BRAND VOICE + dominant deliveryHint. If brand_style says "premium minimalist tech" → likely Adam or Thomas. If "warm indie bakery" → Bella or Antoni. If "edgy late-night" → Sam or Callum. If "story-driven cinematic" → Clyde or Rachel.
 ${VOICE_CATALOG.map((v) => `       - ${v.id}  ${v.label} — ${v.gender}, ${v.accent}; ${v.tone}. Fits: ${v.fitsDelivery}.`).join("\n")}
-     Default pick when the brief is unspecific: 21m00Tcm4TlvDq8ikWAM (Rachel) — safe, neutral, cinematic. Pick anything else when the brand gives you a reason to.
+     Default pick when the brief is unspecific: EXAVITQu4vr4xnSDxMaL (Sarah) — safe, polished, cinematic. Pick anything else when the brand gives you a reason to.
 
    (d) modelId — pick per scene:
        · "eleven_multilingual_v2" (DEFAULT) — most natural for narration. Use for cinematic, intimate, authoritative reads.

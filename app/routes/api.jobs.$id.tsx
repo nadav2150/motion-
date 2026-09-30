@@ -1,23 +1,42 @@
 import type { Route } from "./+types/api.jobs.$id";
 import { deleteJob, getJob, updateJobBrand } from "../lib/jobs";
 import { requireUserApi } from "../lib/auth";
+import { reapInterruptedJob } from "../lib/studio/active";
+import { ensureInlineWorker } from "../lib/studio/inline-worker";
+import { getOwnedStudioJob, listRevisions, toStudioJobView } from "../lib/studio/db";
 
-export async function loader({ params }: Route.LoaderArgs) {
+// GET /api/jobs/:id — StudioJobView for v2 jobs, the existing
+// { job, shots } shape otherwise. Signed-in owner only (404 for anyone else).
+export async function loader({ request, params }: Route.LoaderArgs) {
   const id = params.id;
   if (!id) {
     return Response.json({ error: "Missing job id" }, { status: 400 });
   }
 
+  const { user, headers } = await requireUserApi(request);
+
   try {
+    ensureInlineWorker(); // no-op unless STUDIO_INLINE_WORKER=1
+    let row = await getOwnedStudioJob(id, user.id);
+    if (row?.generation_mode === "v2" && (await reapInterruptedJob(row))) {
+      row = await getOwnedStudioJob(id, user.id);
+    }
+    if (!row) {
+      return Response.json({ error: "Job not found" }, { status: 404, headers });
+    }
+    if (row.generation_mode === "v2") {
+      const revisions = await listRevisions(id);
+      return Response.json(toStudioJobView(row, revisions), { headers });
+    }
     const result = await getJob(id);
     if (!result) {
-      return Response.json({ error: "Job not found" }, { status: 404 });
+      return Response.json({ error: "Job not found" }, { status: 404, headers });
     }
-    return Response.json(result);
+    return Response.json(result, { headers });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`/api/jobs/${id} GET failed:`, message);
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: message }, { status: 500, headers });
   }
 }
 
