@@ -12,6 +12,8 @@ const DOC = `<!DOCTYPE html><html><head><script>window.__videly={duration:15,fps
 const h = vi.hoisted(() => ({
   row: null as unknown as StudioJobRow,
   revisions: [] as JobRevisionRow[],
+  files: new Map<string, string>(),
+  failLabels: new Set<string>(),
   updates: [] as Record<string, unknown>[],
   ref: {
     summary: "A fast promo",
@@ -47,7 +49,10 @@ vi.mock("../replicate", () => ({
 }));
 vi.mock("../storage", async (orig) => ({
   ...(await orig<typeof import("../storage")>()),
-  uploadBuffer: vi.fn(async ({ storagePath }: { storagePath: string }) => ({ publicUrl: `https://cdn/${storagePath}`, storagePath })),
+  uploadBuffer: vi.fn(async ({ storagePath, body }: { storagePath: string; body: Buffer }) => {
+    h.files.set(storagePath, body.toString("utf8"));
+    return { publicUrl: `https://cdn/${storagePath}`, storagePath };
+  }),
   mirrorAssetForJob: vi.fn(async (_j: string, _s: string, slot: string) => ({ publicUrl: `https://cdn/${slot}.png`, storagePath: `p/${slot}.png` })),
 }));
 vi.mock("../reference-video", async (orig) => ({
@@ -70,7 +75,20 @@ vi.mock("./anthropic", async (orig) => ({
   ...(await orig<typeof import("./anthropic")>()),
   remainingBudget: vi.fn(() => 1_000_000),
   callOpus: vi.fn(async ({ label }: { label: string }) => {
+    if (h.failLabels.has(label)) throw new Error(`${label} failed`);
     if (label === "plan") return { json: RAW_PLAN, text: "" };
+    if (label === "style") return { json: FOUNDATION, text: "" };
+    if (label.startsWith("scene-")) {
+      const n = Number(label.split("-")[1]);
+      return {
+        json: {
+          html: `<section class="scene" id="scene-${n}"><p class="s${n}-p">S${n}</p></section>`,
+          css: `.s${n}-p{color:red}`,
+          js: `tl.to(root.querySelector(".s${n}-p"), { x: 10 }, 0);`,
+        },
+        text: "",
+      };
+    }
     if (label === "code") return { text: DOC };
     if (label === "review") return { json: { verdict: "keep", score: 8, issues: [], edits: [] }, text: "" };
     throw new Error(`unexpected callOpus ${label}`);
@@ -100,7 +118,7 @@ vi.mock("./db", async (orig) => ({
   }),
   setStage: vi.fn(async () => {}),
   updateRevision: vi.fn(async () => {}),
-  downloadText: vi.fn(async () => DOC),
+  downloadText: vi.fn(async (p: string) => (p.endsWith(".json") ? h.files.get(p)! : DOC)),
   downloadBuffer: vi.fn(async () => Buffer.from("x")),
   getBrandKit: vi.fn(async () => null),
   insertUserAsset: vi.fn(async () => ({})),
@@ -116,6 +134,19 @@ vi.mock("./edit", async (orig) => ({
   planWatermark: vi.fn(async () => false),
   capture: vi.fn(),
 }));
+
+const FOUNDATION = {
+  fontsHead: "",
+  css: ":root{--c-bg:#000}",
+  helpersJs: "V.one = 1;",
+  motionLanguage: "m",
+  transitionStyle: "t",
+  scenes: [
+    { index: 1, summary: "a" },
+    { index: 2, summary: "b" },
+  ],
+  handoffs: [{ after: 1, frame: "cut" }],
+};
 
 const RAW_PLAN = {
   title: "Promo",
@@ -218,6 +249,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.revisions = [];
   h.updates = [];
+  h.files = new Map();
+  h.failLabels = new Set();
+  delete process.env.STUDIO_PARALLEL_SCENES;
   // These tests cover the resume logic including the (optional) review pass.
   process.env.STUDIO_SELF_REVIEW = "1";
 });
@@ -502,5 +536,117 @@ describe("resumeStateFor", () => {
   it("assets need audio, generatedAssets and finalDuration together", () => {
     const partial = makeRow({ studio_plan: baseRecord({ plan: PLAN, finalDuration: 15 }), audio: AUDIO });
     expect(resumeStateFor(partial, "initial", "t", []).assetsReady).toBe(false);
+  });
+});
+
+describe("runStudioJob — parallel scenes", () => {
+  // Two 7.5 s beats over 15 s → two scenes. The single-beat
+  // PLAN above always takes the single code call (one scene: nothing to split).
+  const MULTI: StudioPlan = {
+    ...PLAN,
+    beats: [0, 7.5].map((t) => ({ start: t, end: t + 7.5, visual: `v${t}`, technique: "t" })),
+  };
+  const ready = (run?: StudioPlanRecord["run"]) =>
+    makeRow({
+      reference_analysis: h.ref,
+      audio: AUDIO,
+      studio_plan: baseRecord({ plan: MULTI, finalDuration: 15, generatedAssets: ASSETS, ...(run ? { run } : {}) }),
+    });
+  const repairedHtml = () => vi.mocked(edit.repairUntilValid).mock.calls[0]![0];
+
+  beforeEach(() => {
+    delete process.env.STUDIO_SELF_REVIEW;
+  });
+
+  it("default: foundation + one call per scene, assembled into the draft", async () => {
+    h.row = ready();
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(opusLabels()).toEqual(["style", "scene-1", "scene-2"]);
+    const html = repairedHtml();
+    expect(html).toContain('id="scene-1"');
+    expect(html).toContain('id="scene-2"');
+    expect(html).toContain("window.__videly.timeline = tl;");
+    const last = checkpoints().at(-1)!;
+    expect(last.draftPath).toBe("jobs/job1/v2/runs/task-1/draft.html");
+    expect(last.parallel).toMatchObject({
+      split: [
+        [0, 7.5],
+        [7.5, 15],
+      ],
+      stylePath: "jobs/job1/v2/runs/task-1/style.json",
+      scenes: { "1": "jobs/job1/v2/runs/task-1/scene-1.json", "2": "jobs/job1/v2/runs/task-1/scene-2.json" },
+    });
+    expect(savedKinds()).toEqual(["initial"]);
+    const reasons = vi.mocked(anthropic.callOpus).mock.calls.map((c) => c[0].reason);
+    expect(reasons).toEqual(["opus_studio_style", "opus_studio_scene", "opus_studio_scene"]);
+  });
+
+  it("STUDIO_PARALLEL_SCENES=0 keeps the single code call", async () => {
+    process.env.STUDIO_PARALLEL_SCENES = "0";
+    h.row = ready();
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(opusLabels()).toEqual(["code"]);
+  });
+
+  it("a scene that fails twice falls back to the single code call", async () => {
+    h.failLabels = new Set(["scene-2", "scene-2-retry"]);
+    h.row = ready();
+    await runStudioJob("job1", { runId: "task-1" });
+    const labels = opusLabels();
+    expect(labels.slice(0, 3)).toEqual(["style", "scene-1", "scene-2"]);
+    expect(labels).toContain("scene-2-retry");
+    expect(labels.at(-1)).toBe("code");
+    expect(repairedHtml()).toBe(DOC);
+    expect(savedKinds()).toEqual(["initial"]);
+  });
+
+  it("a failed foundation falls back to the single code call", async () => {
+    h.failLabels = new Set(["style"]);
+    h.row = ready();
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(opusLabels()).toEqual(["style", "code"]);
+    expect(savedKinds()).toEqual(["initial"]);
+  });
+
+  it("resume: the saved foundation and finished scenes are not rewritten", async () => {
+    h.files.set("jobs/job1/v2/runs/task-1/style.json", JSON.stringify(FOUNDATION));
+    h.files.set(
+      "jobs/job1/v2/runs/task-1/scene-1.json",
+      JSON.stringify({ html: '<section class="scene" id="scene-1"><b>saved</b></section>', css: "", js: "" }),
+    );
+    h.row = ready({
+      runId: "task-1",
+      kind: "initial",
+      planned: true,
+      assetsReady: true,
+      parallel: {
+        split: [
+          [0, 7.5],
+          [7.5, 15],
+        ],
+        stylePath: "jobs/job1/v2/runs/task-1/style.json",
+        scenes: { "1": "jobs/job1/v2/runs/task-1/scene-1.json" },
+      },
+    });
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(opusLabels()).toEqual(["scene-2"]);
+    expect(repairedHtml()).toContain("<b>saved</b>");
+  });
+
+  it("an old checkpoint without `parallel` still resumes from its draft", async () => {
+    h.row = ready({ runId: "task-1", kind: "initial", planned: true, assetsReady: true, draftPath: "jobs/job1/v2/runs/task-1/draft.html" });
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(anthropic.callOpus).not.toHaveBeenCalled();
+    expect(repairedHtml()).toBe(DOC);
+  });
+
+  it("regenerate uses the parallel path too", async () => {
+    h.row = ready();
+    h.row.current_revision = 2;
+    h.row.studio_plan!.run = { runId: "regen-1", kind: "regenerate", planned: true, assetsReady: true };
+    h.revisions = [rev(1, "initial"), rev(2, "review")];
+    await runStudioJob("job1", { kind: "regenerate", runId: "regen-1", expectedRevision: 3 });
+    expect(opusLabels()).toEqual(["style", "scene-1", "scene-2"]);
+    expect(savedKinds()).toEqual(["regenerate"]);
   });
 });

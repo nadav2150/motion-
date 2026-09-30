@@ -111,6 +111,7 @@ import { makeContactSheet } from "./contact-sheet";
 import { enqueueStudioTask } from "./queue";
 import { ensureReferenceFrames, loadReferenceImages, type ReferenceImage } from "./reference-frames";
 import { captureFrames, renderVideo } from "./render";
+import { parallelScenesEnabled, splitScenes, writeScenesParallel } from "./scenes";
 import { getTemplate } from "./templates";
 import {
   DEFAULT_FPS,
@@ -859,7 +860,7 @@ export async function runStudioJob(
         });
         plan = normalizePlan(planRes.json!, { cap, voiceover: voiceOn, music: musicOn });
         await checkpoint(
-          { planned: true, assetsReady: false, draftPath: null, reviewDone: false, finalRevision: null },
+          { planned: true, assetsReady: false, draftPath: null, parallel: null, reviewDone: false, finalRevision: null },
           row.title ? {} : { title: plan.title },
           { ...record, plan },
         );
@@ -993,26 +994,62 @@ export async function runStudioJob(
               referenceMode,
               referenceFrames: toPromptFrames(await getReferenceImages()),
             };
-            const writeCode = (budgetKb: number | undefined, effort: OpusEffort) =>
-              callOpus({
-                system: systemFor(CODE_TASK),
-                messages: buildCodeMessages({ ...codeContext, budgetKb }),
-                effort,
-                maxTokens: CODE_MAX_TOKENS,
-                reason: "opus_studio_code",
-                label: "code",
+            const writeStarted = Date.now();
+            // 4a. Parallel scenes (default): foundation + one call per scene.
+            // Any failure there falls back to the single call below.
+            const scenes = splitScenes(timedPlan);
+            if (parallelScenesEnabled() && scenes.length >= 2) {
+              const ownRun = record.run?.runId === runKey ? record.run : null;
+              const parallel = await writeScenesParallel({
+                ...codeContext,
+                scenes,
+                jobId,
+                libraries: timedPlan.libraries,
+                saved: ownRun?.parallel ?? null,
+                store: runId
+                  ? {
+                      save: async (name, body) =>
+                        (
+                          await uploadBuffer({
+                            storagePath: `jobs/${jobId}/v2/runs/${runId}/${name}`,
+                            body: Buffer.from(body, "utf8"),
+                            contentType: "application/json; charset=utf-8",
+                          })
+                        ).storagePath,
+                      load: (p) => downloadText(p),
+                    }
+                  : null,
+                onCheckpoint: (cp) => checkpoint({ parallel: cp }),
+              }).catch((err) => {
+                console.warn(`[studio ${jobId}] parallel writing failed, falling back:`, err instanceof Error ? err.message : err);
+                return null;
               });
-            let code;
-            try {
-              code = await writeCode(undefined, CODE_EFFORT);
-            } catch (err) {
-              if (!(err instanceof TruncatedOutputError)) throw err;
-              // Ran out of room: one more attempt with a tighter budget and less thinking.
-              console.warn(`[studio ${jobId}] code output too long, retrying with a tighter budget`);
-              code = await writeCode(Math.round(documentBudgetKb(finalDuration) * 0.6), "low");
+              if (parallel) html = parallel.html;
             }
-            html = extractHtmlDocument(code.text);
-            if (!html) throw new Error("The model did not return an HTML document.");
+            // 4b. The single code call (STUDIO_PARALLEL_SCENES=0, or the fallback).
+            if (!html) {
+              const writeCode = (budgetKb: number | undefined, effort: OpusEffort) =>
+                callOpus({
+                  system: systemFor(CODE_TASK),
+                  messages: buildCodeMessages({ ...codeContext, budgetKb }),
+                  effort,
+                  maxTokens: CODE_MAX_TOKENS,
+                  reason: "opus_studio_code",
+                  label: "code",
+                });
+              let code;
+              try {
+                code = await writeCode(undefined, CODE_EFFORT);
+              } catch (err) {
+                if (!(err instanceof TruncatedOutputError)) throw err;
+                // Ran out of room: one more attempt with a tighter budget and less thinking.
+                console.warn(`[studio ${jobId}] code output too long, retrying with a tighter budget`);
+                code = await writeCode(Math.round(documentBudgetKb(finalDuration) * 0.6), "low");
+              }
+              html = extractHtmlDocument(code.text);
+              if (!html) throw new Error("The model did not return an HTML document.");
+            }
+            console.log(`[studio ${jobId}] writing took ${((Date.now() - writeStarted) / 1000).toFixed(1)}s`);
             if (runId) {
               try {
                 const up = await uploadBuffer({
