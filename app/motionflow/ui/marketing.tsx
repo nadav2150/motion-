@@ -16,7 +16,10 @@ const NAV = [
   { href: "/#how-it-works", label: "Resources" },
 ];
 
-export function MarketingHeader({ isAuthed = false }: { isAuthed?: boolean }) {
+// `tone="landing"` is the transparent, near-black variant drawn over the
+// landing page's hero image.
+export function MarketingHeader({ isAuthed = false, tone = "default" }: { isAuthed?: boolean; tone?: "default" | "landing" }) {
+  const landing = tone === "landing";
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -29,17 +32,32 @@ export function MarketingHeader({ isAuthed = false }: { isAuthed?: boolean }) {
     <header
       className={cn(
         "sticky top-0 z-40 border-b transition-colors",
-        scrolled || open ? "border-slate/35 bg-ink-900/80 backdrop-blur-lg" : "border-transparent bg-ink-900/40 backdrop-blur-md",
+        landing
+          ? scrolled || open
+            ? "border-white/[0.06] bg-[#020c12]/85 backdrop-blur-lg"
+            : "border-transparent bg-transparent"
+          : scrolled || open
+            ? "border-slate/35 bg-ink-900/80 backdrop-blur-lg"
+            : "border-transparent bg-ink-900/40 backdrop-blur-md",
       )}
     >
-      <div className="mx-auto flex h-16 max-w-[1240px] items-center gap-6 px-4 sm:px-6 lg:h-[72px]">
-        <Logo href="/" />
-        <nav aria-label="Primary" className="ml-6 hidden items-center gap-1 md:flex">
+      <div
+        className={cn(
+          "mx-auto flex h-16 items-center gap-6 px-4 sm:px-6 lg:h-[72px]",
+          landing ? "max-w-[1312px] lg:px-8" : "max-w-[1240px]",
+        )}
+      >
+        <Logo href="/" variant={landing ? "outline" : "filled"} />
+        <nav aria-label="Primary" className={cn("hidden items-center gap-1 md:flex", landing ? "ml-10" : "ml-6")}>
           {NAV.map((n) => (
             <a
               key={n.label}
               href={n.href}
-              className={cn("rounded-lg px-3 py-2 text-[14.5px] font-medium text-silver transition-colors hover:text-paper", focusRing)}
+              className={cn(
+                "rounded-lg px-3 py-2 text-[14.5px] transition-colors hover:text-paper",
+                landing ? "font-normal text-[#aab2b7]" : "font-medium text-silver",
+                focusRing,
+              )}
             >
               {n.label}
             </a>
@@ -58,7 +76,11 @@ export function MarketingHeader({ isAuthed = false }: { isAuthed?: boolean }) {
               >
                 Sign in
               </Link>
-              <ButtonLink to="/register" size="md">
+              <ButtonLink
+                to="/register"
+                size="md"
+                className={cn(landing && "rounded-[10px] bg-[linear-gradient(180deg,#ff8d62_0%,#f2703f_100%)] font-medium hover:brightness-110")}
+              >
                 Get started
               </ButtonLink>
             </>
