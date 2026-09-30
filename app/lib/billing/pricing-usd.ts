@@ -47,7 +47,9 @@ export type AnthropicUsageLike = {
   cache_read_input_tokens?: number | null;
 };
 
-function anthropicPrice(model: string): AnthropicPrice {
+function anthropicPrice(rawModel: string): AnthropicPrice {
+  // OpenRouter reports "anthropic/claude-opus-5.5"; the table uses "claude-opus-5-5".
+  const model = rawModel.replace(/^anthropic\//, "").replace(/-(\d+)\.(\d+)$/, "-$1-$2");
   const exact = ANTHROPIC_PRICE_TABLE[model];
   if (exact) return exact;
   // Dated / suffixed ids ("claude-opus-5-5-20260801") → longest known prefix.

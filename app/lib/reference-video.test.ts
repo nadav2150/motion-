@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  analyzeViaOpenRouter,
   canonicalYouTubeUrl,
+  generateWithFallback,
+  getGeminiModels,
   fetchPublicUrl,
   formatReferenceBrief,
   isPrivateIp,
@@ -12,6 +15,100 @@ import {
   youTubeVideoId,
   type ReferenceAnalysis,
 } from "./reference-video";
+
+describe("analyzeViaOpenRouter", () => {
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+  const ok = (content: string) => reply(200, { model: "google/gemini-3.8-flash", choices: [{ message: { content } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+
+  it("sends the video URL and returns the first model's answer", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return ok('{"summary":"x"}');
+    }) as unknown as typeof fetch;
+    const r = await analyzeViaOpenRouter("https://www.youtube.com/watch?v=mtPqxJBMXCQ", "p", "k", ["gemini-3.8-flash"], f);
+    expect(r.text).toBe('{"summary":"x"}');
+    expect(r.model).toBe("gemini-3.8-flash");
+    const content = (bodies[0]!.messages as Array<{ content: Array<Record<string, unknown>> }>)[0]!.content;
+    expect(content[0]).toEqual({ type: "video_url", video_url: { url: "https://www.youtube.com/watch?v=mtPqxJBMXCQ" } });
+    expect(bodies[0]!.model).toBe("google/gemini-3.8-flash");
+  });
+
+  it("moves to the next model when one is busy or returns nothing", async () => {
+    const seen: string[] = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      const model = JSON.parse(String(init.body)).model as string;
+      seen.push(model);
+      if (model.endsWith("a")) return reply(503, { error: { code: 503, message: "busy" } });
+      if (model.endsWith("b")) return reply(200, { choices: [{ message: { content: "" } }] });
+      return reply(200, { model, choices: [{ message: { content: "{}" } }] });
+    }) as unknown as typeof fetch;
+    const r = await analyzeViaOpenRouter("https://x.test/v.mp4", "p", "k", ["a", "b", "c"], f);
+    expect(seen).toEqual(["google/a", "google/b", "google/c"]);
+    expect(r.model).toBe("c");
+  });
+
+  it("stops at once on an account problem (no credit)", async () => {
+    let calls = 0;
+    const f = (async () => {
+      calls++;
+      return reply(402, { error: { code: 402, message: "This request requires at least $1.00 in balance for video" } });
+    }) as unknown as typeof fetch;
+    await expect(analyzeViaOpenRouter("https://x.test/v.mp4", "p", "k", ["a", "b"], f)).rejects.toMatchObject({ status: 402 });
+    expect(calls).toBe(1);
+  });
+});
+
+describe("generateWithFallback", () => {
+  const noSleep = async () => {};
+  const fakeFetch = (script: Record<string, Array<number | "timeout">>) => {
+    const calls: string[] = [];
+    const impl = (async (url: string) => {
+      const model = /models\/([^:]+):/.exec(url)![1]!;
+      calls.push(model);
+      const next = script[model]!.shift() ?? 503;
+      if (next === "timeout") throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+      return new Response(next === 200 ? '{"candidates":[]}' : next === 404 ? "model not found" : "busy", { status: next });
+    }) as unknown as typeof fetch;
+    return { impl, calls };
+  };
+
+  it("hands an overloaded model over to the next one in the chain", async () => {
+    const f = fakeFetch({ a: [503], b: [200] });
+    const r = await generateWithFallback(["a", "b"], "k", {}, f.impl, noSleep);
+    expect(r.res.ok).toBe(true);
+    expect(r.model).toBe("b");
+    expect(f.calls).toEqual(["a", "b"]);
+  });
+
+  it("drops unavailable models and retries busy ones in later rounds", async () => {
+    const f = fakeFetch({ gone: [404], busy: [503, "timeout", 200] });
+    const r = await generateWithFallback(["gone", "busy"], "k", {}, f.impl, noSleep);
+    expect(r.model).toBe("busy");
+    expect(r.res.ok).toBe(true);
+    expect(f.calls).toEqual(["gone", "busy", "busy", "busy"]);
+  });
+
+  it("does not retry a real request error", async () => {
+    const f = fakeFetch({ a: [400], b: [200] });
+    const r = await generateWithFallback(["a", "b"], "k", {}, f.impl, noSleep);
+    expect(r.res.status).toBe(400);
+    expect(f.calls).toEqual(["a"]);
+  });
+
+  it("gives up with a readable error when every model stays busy", async () => {
+    const f = fakeFetch({ a: [503, 503, 503, 503], b: [429, 429, 429, 429] });
+    const r = await generateWithFallback(["a", "b"], "k", {}, f.impl, noSleep);
+    expect(r.res.ok).toBe(false);
+    expect(await r.res.text()).toMatch(/overloaded/);
+    expect(f.calls).toHaveLength(8);
+  });
+
+  it("reads a comma-separated GEMINI_MODEL chain", () => {
+    expect(getGeminiModels("x, y")).toEqual(["x", "y"]);
+    expect(getGeminiModels("")[0]).toBe("gemini-3.8-flash");
+  });
+});
 
 describe("canonicalYouTubeUrl", () => {
   it("drops playlist, timestamp and tracking parameters", () => {

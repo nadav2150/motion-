@@ -21,6 +21,7 @@ type Env = {
   OPEN_AI_API_KEY: string;
   ANTROPIC_API_KEY: string;
   GEMINI_API_KEY: string;
+  OPENROUTER_API_KEY?: string;
   GEMINI_MODEL?: string;
   REPLICATE_API_TOKEN: string;
   MOTIONFLOW_LLM_DIRECTOR: string;
@@ -76,6 +77,7 @@ export class VidelyContainer extends Container<Env> {
     OPEN_AI_API_KEY: this.env.OPEN_AI_API_KEY,
     ANTROPIC_API_KEY: this.env.ANTROPIC_API_KEY,
     GEMINI_API_KEY: this.env.GEMINI_API_KEY,
+    OPENROUTER_API_KEY: this.env.OPENROUTER_API_KEY ?? "",
     GEMINI_MODEL: this.env.GEMINI_MODEL ?? "",
     REPLICATE_API_TOKEN: this.env.REPLICATE_API_TOKEN,
     MOTIONFLOW_LLM_DIRECTOR: this.env.MOTIONFLOW_LLM_DIRECTOR,

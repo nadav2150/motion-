@@ -51,7 +51,7 @@ export async function hasPendingStudioTasks(env: KeepAliveEnv, fetchImpl: FetchL
   const since = new Date(now - PENDING_WINDOW_MS).toISOString();
   const url =
     `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/studio_tasks` +
-    `?select=id&status=in.(queued,running)&updated_at=gte.${encodeURIComponent(since)}&limit=1`;
+    `?select=id&queue=eq.prod&status=in.(queued,running)&updated_at=gte.${encodeURIComponent(since)}&limit=1`;
   const res = await fetchImpl(url, {
     headers: {
       apikey: env.SUPABASE_SERVICE_ROLE_KEY,

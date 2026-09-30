@@ -19,7 +19,11 @@ import { recordModelCost } from "./billing/track-cost";
 import { usdMicrosForGemini, type GeminiUsageMetadata } from "./billing/pricing-usd";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
-const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash";
+// Tried in order; a busy/unavailable model hands over to the next. Checked
+// against this key's model list: gemini-3.8-flash answered while 3.7 was
+// overloaded and 3.5 hung.
+const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview"];
+const DEFAULT_GEMINI_MODEL = DEFAULT_GEMINI_MODELS[0]!;
 const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024; // 200 MB
 const FILE_POLL_INTERVAL_MS = 3000;
 const FILE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -144,8 +148,10 @@ function getApiKey(): string {
   return key;
 }
 
-function getModel(): string {
-  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+/** GEMINI_MODEL may be one model or a comma-separated fallback chain. */
+export function getGeminiModels(env: string | undefined = process.env.GEMINI_MODEL): string[] {
+  const list = (env ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  return list.length ? list : DEFAULT_GEMINI_MODELS;
 }
 
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -177,25 +183,64 @@ export function canonicalYouTubeUrl(raw: string): string | null {
 }
 
 // Gemini returns 503 "model is currently experiencing high demand" and 429 in
-// bursts; those are worth waiting out. Everything else is returned as-is.
+// bursts that can last minutes, per model. Each round tries every model in the
+// chain (an overloaded or hung model hands over to the next one), then waits
+// before the next round. Models that don't exist for this key (404, or a 400
+// about the model name) are dropped for the rest of the call.
 const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
-const RETRY_DELAYS_MS = [3_000, 8_000, 20_000];
+const ROUND_DELAYS_MS = [5_000, 15_000, 40_000];
 
-async function generateWithRetry(model: string, apiKey: string, body: unknown): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
-    });
-    if (res.ok || !RETRY_STATUSES.has(res.status) || attempt >= RETRY_DELAYS_MS.length) return res;
-    const retryAfter = Number(res.headers.get("retry-after"));
-    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 30_000) : RETRY_DELAYS_MS[attempt]!;
-    console.warn(`[reference-video] Gemini HTTP ${res.status}, retrying in ${Math.round(wait / 1000)}s (attempt ${attempt + 2})`);
-    await res.body?.cancel().catch(() => {});
-    await new Promise((r) => setTimeout(r, wait));
+export type GeminiAttempt = { model: string; outcome: string };
+
+export async function generateWithFallback(
+  models: string[],
+  apiKey: string,
+  body: unknown,
+  fetchImpl: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<{ res: Response; model: string; attempts: GeminiAttempt[] }> {
+  const attempts: GeminiAttempt[] = [];
+  let pool = [...new Set(models)];
+  let last: { res: Response; model: string } | null = null;
+  for (let round = 0; round <= ROUND_DELAYS_MS.length; round++) {
+    for (const model of [...pool]) {
+      let res: Response;
+      try {
+        res = await fetchImpl(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
+        });
+      } catch (err) {
+        attempts.push({ model, outcome: err instanceof Error && err.name === "TimeoutError" ? "timeout" : "network error" });
+        continue; // hung or unreachable: try the next model
+      }
+      if (res.ok) return { res, model, attempts: [...attempts, { model, outcome: "ok" }] };
+      attempts.push({ model, outcome: `HTTP ${res.status}` });
+      if (res.status === 404 || (res.status === 400 && (await modelNameError(res.clone())))) {
+        pool = pool.filter((m) => m !== model); // not available to this key
+        await res.body?.cancel().catch(() => {});
+        continue;
+      }
+      if (!RETRY_STATUSES.has(res.status)) return { res, model, attempts }; // a real request error
+      await res.body?.cancel().catch(() => {});
+      last = { res, model };
+    }
+    if (!pool.length || round === ROUND_DELAYS_MS.length) break;
+    console.warn(
+      `[reference-video] Gemini busy (${attempts.slice(-pool.length).map((a) => `${a.model}: ${a.outcome}`).join(", ")}), next round in ${ROUND_DELAYS_MS[round]! / 1000}s`,
+    );
+    await sleep(ROUND_DELAYS_MS[round]!);
   }
+  const summary = attempts.map((a) => `${a.model}: ${a.outcome}`).join("; ");
+  if (last) return { res: new Response(`Gemini is overloaded right now (${summary}).`, { status: last.res.status }), model: last.model, attempts };
+  return { res: new Response(`No Gemini model answered (${summary}).`, { status: 503 }), model: models[0] ?? DEFAULT_GEMINI_MODEL, attempts };
+}
+
+async function modelNameError(res: Response): Promise<boolean> {
+  const text = await res.text().catch(() => "");
+  return /model name|models\/|no longer available|not found/i.test(text);
 }
 
 export function isYouTubeUrl(raw: string): boolean {
@@ -534,6 +579,92 @@ export function youTubeThumbnailUrls(raw: string): string[] {
 export { downloadVideo as downloadReferenceVideo };
 
 /** Analyze a reference video (YouTube link or direct/public video URL) with Gemini. */
+function finishAnalysis(text: string, model: string, youtube: boolean, maxScriptChars?: number | null): ReferenceAnalysis {
+  const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(jsonText) as Record<string, unknown>;
+  } catch {
+    throw new Error("Gemini returned an analysis that is not valid JSON.");
+  }
+  const analysis = normalizeAnalysis(parsed, model);
+  analysis.source = youtube ? "youtube" : "video";
+  if (typeof maxScriptChars === "number" && maxScriptChars > 0 && analysis.suggestedScript.length > maxScriptChars) {
+    analysis.suggestedScript = truncateAtWord(analysis.suggestedScript, maxScriptChars);
+  }
+  return analysis;
+}
+
+// ─── OpenRouter ────────────────────────────────────────────────────────────
+// When OPENROUTER_API_KEY is set the analysis goes through OpenRouter's Gemini
+// models first (paid capacity; Google's free tier is refused under load). The
+// video is passed by URL: a canonical YouTube link, or the public URL of the
+// file (uploads live in our public storage bucket), so nothing is re-uploaded.
+// Any failure falls back to calling Gemini directly.
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+export class OpenRouterError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "OpenRouterError";
+  }
+}
+
+export function openRouterModels(models: string[]): string[] {
+  return models.map((m) => (m.includes("/") ? m : `google/${m}`));
+}
+
+export async function analyzeViaOpenRouter(
+  videoUrl: string,
+  prompt: string,
+  apiKey: string,
+  models: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ text: string; model: string; usage: { prompt_tokens?: number; completion_tokens?: number } }> {
+  const errors: string[] = [];
+  for (const model of openRouterModels(models)) {
+    let res: Response;
+    try {
+      res = await fetchImpl(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.PUBLIC_APP_URL || "https://videly.io",
+          "X-Title": "Videly",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: [{ type: "video_url", video_url: { url: videoUrl } }, { type: "text", text: prompt }] }],
+          response_format: { type: "json_object" },
+        }),
+        signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      errors.push(`${model}: ${err instanceof Error && err.name === "TimeoutError" ? "timeout" : "network error"}`);
+      continue;
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string; code?: number };
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      model?: string;
+    };
+    if (res.ok && !data.error) {
+      const text = (data.choices?.[0]?.message?.content ?? "").trim();
+      if (text) return { text, model: (data.model ?? model).replace(/^google\//, ""), usage: data.usage ?? {} };
+      errors.push(`${model}: empty response`);
+      continue;
+    }
+    const status = data.error?.code ?? res.status;
+    const message = data.error?.message ?? `HTTP ${res.status}`;
+    // Account-level problems (no credit, bad key) are the same for every model.
+    if (status === 401 || status === 402 || status === 403) throw new OpenRouterError(`OpenRouter: ${message}`, status);
+    errors.push(`${model}: ${status} ${message.slice(0, 120)}`);
+  }
+  throw new OpenRouterError(`OpenRouter could not analyze the video (${errors.join("; ")})`, 503);
+}
+
 export async function analyzeReferenceVideo(
   videoUrl: string,
   opts: {
@@ -546,8 +677,42 @@ export async function analyzeReferenceVideo(
   const urlError = validateReferenceUrl(videoUrl);
   if (urlError) throw new Error(urlError);
 
+  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openRouterKey) {
+    const youtubeRef = isYouTubeUrl(videoUrl);
+    const url = youtubeRef ? canonicalYouTubeUrl(videoUrl) : videoUrl;
+    if (!url) throw new Error("That YouTube link doesn't point to a single video. Paste the link of one video.");
+    try {
+      if (!youtubeRef && opts.onVideoBytes) {
+        // Frames are extracted locally, so the file is still downloaded once.
+        const { bytes, mimeType } = await downloadVideo(videoUrl);
+        await Promise.resolve(opts.onVideoBytes(bytes, mimeType)).catch((err) =>
+          console.warn("[reference-video] onVideoBytes failed:", err instanceof Error ? err.message : err),
+        );
+        opts = { ...opts, onVideoBytes: undefined };
+      }
+      const startedAt = Date.now();
+      const prompt = youtubeRef ? `${ANALYSIS_PROMPT}\n\n${YOUTUBE_ANALYSIS_NOTE}` : ANALYSIS_PROMPT;
+      const out = await analyzeViaOpenRouter(url, prompt, openRouterKey, getGeminiModels());
+      meterGemini(
+        out.model,
+        { promptTokenCount: out.usage.prompt_tokens, candidatesTokenCount: out.usage.completion_tokens } as GeminiUsageMetadata,
+        Date.now() - startedAt,
+        youtubeRef ? "youtube" : "files_api",
+      );
+      const analysis = finishAnalysis(out.text, out.model, youtubeRef, opts.maxScriptChars);
+      analysis.model = `openrouter:${out.model}`;
+      return analysis;
+    } catch (err) {
+      const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+      console.warn(`[reference-video] OpenRouter failed${hasGemini ? ", falling back to Gemini" : ""}:`, err instanceof Error ? err.message : err);
+      if (!hasGemini) throw err;
+    }
+  }
+
   const apiKey = getApiKey();
-  const model = getModel();
+  const models = getGeminiModels();
+  let model = models[0]!;
 
   let videoPart: Record<string, unknown>;
   let uploadedName: string | null = null;
@@ -574,10 +739,11 @@ export async function analyzeReferenceVideo(
 
   const startedAt = Date.now();
   try {
-    const res = await generateWithRetry(model, apiKey, {
+    const { res, model: usedModel } = await generateWithFallback(models, apiKey, {
       contents: [{ role: "user", parts: [videoPart, { text: youtube ? `${ANALYSIS_PROMPT}\n\n${YOUTUBE_ANALYSIS_NOTE}` : ANALYSIS_PROMPT }] }],
       generationConfig: { responseMimeType: "application/json" },
     });
+    model = usedModel;
     if (!res.ok) {
       const body = (await res.text()).slice(0, 500);
       if (youtube && res.status === 400) {
@@ -604,20 +770,7 @@ export async function analyzeReferenceVideo(
     if (!text) {
       throw new Error(`Gemini returned no analysis (finishReason=${data.candidates?.[0]?.finishReason ?? "unknown"}).`);
     }
-    const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(jsonText) as Record<string, unknown>;
-    } catch {
-      throw new Error("Gemini returned an analysis that is not valid JSON.");
-    }
-    const analysis = normalizeAnalysis(parsed, model);
-    analysis.source = youtube ? "youtube" : "video";
-    const maxChars = opts.maxScriptChars;
-    if (typeof maxChars === "number" && maxChars > 0 && analysis.suggestedScript.length > maxChars) {
-      analysis.suggestedScript = truncateAtWord(analysis.suggestedScript, maxChars);
-    }
-    return analysis;
+    return finishAnalysis(text, model, youtube, opts.maxScriptChars);
   } finally {
     if (uploadedName) await deleteGeminiFile(uploadedName, apiKey);
   }

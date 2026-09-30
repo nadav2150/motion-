@@ -71,6 +71,18 @@ export function onStudioTaskEnqueued(listener: EnqueueListener): () => void {
   return () => enqueueListeners.delete(listener);
 }
 
+/**
+ * Which queue this process enqueues to and claims from. Local development and
+ * production share one Supabase project, so they must not take each other's
+ * tasks. STUDIO_QUEUE overrides; otherwise the production container
+ * (NODE_ENV=production) is "prod" and everything else is "dev".
+ */
+export function studioQueue(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.STUDIO_QUEUE?.trim();
+  if (explicit) return explicit;
+  return env.NODE_ENV === "production" ? "prod" : "dev";
+}
+
 export async function enqueueStudioTask<K extends StudioTaskKind>(
   jobId: string,
   kind: K,
@@ -78,7 +90,7 @@ export async function enqueueStudioTask<K extends StudioTaskKind>(
 ): Promise<StudioTaskRow<K>> {
   const { data, error } = await getSupabase()
     .from("studio_tasks")
-    .insert({ job_id: jobId, kind, payload })
+    .insert({ job_id: jobId, kind, payload, queue: studioQueue() })
     .select("*")
     .single();
   if (error?.code === "23505") throw new StudioTaskConflictError(jobId);
@@ -133,6 +145,7 @@ export async function claimStudioTask(
     p_worker: workerId,
     p_kinds: kinds,
     p_stale_seconds: staleSeconds,
+    p_queue: studioQueue(),
   });
   if (error) throw new Error(`claim_studio_task failed: ${error.message}`);
   const rows = (Array.isArray(data) ? data : data ? [data] : []) as StudioTaskRow[];
