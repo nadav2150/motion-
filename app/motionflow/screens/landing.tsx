@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ChevronRight,
   Clapperboard,
-  FileText,
   Film,
   Folder,
   Image as ImageIcon,
@@ -769,45 +768,216 @@ function BrandSection({ ctaHref }: { ctaHref: string }) {
   );
 }
 
-const STEPS = [
-  { icon: FileText, ghost: FileText, title: "Describe your idea", body: "Type a prompt or upload your content (images, scripts, links)." },
-  { icon: SlidersHorizontal, ghost: SlidersHorizontal, title: "Customize", body: "Choose a template, edit scenes, add your brand, music and voice." },
-  { icon: Upload, ghost: Upload, title: "Export and share", body: "Download and publish anywhere — in the perfect format." },
-];
+// "Create a video in 3 simple steps": each card carries a small mock of that
+// step's UI, built from the landing imagery already in public/landing/.
+const STEP_CARD =
+  "relative flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-[#0a1419]/85 p-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)] backdrop-blur-md";
+const MINI = "rounded-xl border border-white/[0.08] bg-black/25";
+
+function StepHead({ n, icon: Icon, title, body }: { n: number; icon: typeof Play; title: string; body: string }) {
+  return (
+    <>
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-7 items-center justify-center rounded-full bg-[#f2703f] text-[13px] font-semibold text-white shadow-[0_0_16px_-2px_rgb(242_112_63/0.8)]">
+          {n}
+        </span>
+        <span className="flex size-7 items-center justify-center rounded-md bg-white/[0.08] text-white">
+          <Icon className="size-3.5" aria-hidden />
+        </span>
+      </div>
+      <h3 className="mt-3.5 text-[19px] font-semibold text-white">{title}</h3>
+      <p className={cn("mt-1.5 text-[14px] leading-[1.5]", MUTED)}>{body}</p>
+    </>
+  );
+}
+
+function StepArrow() {
+  return (
+    <ArrowRight
+      className="mx-auto size-7 shrink-0 rotate-90 self-center text-[#f2703f] drop-shadow-[0_0_8px_rgb(242_112_63/0.8)] lg:rotate-0"
+      strokeWidth={2}
+      aria-hidden
+    />
+  );
+}
+
+const WAVE_VOICE = [3, 6, 9, 5, 11, 7, 12, 8, 10, 6, 9, 4, 8, 11, 6, 9, 5, 7];
+const WAVE_MUSIC = [4, 5, 7, 6, 8, 5, 9, 7, 6, 8, 5, 7, 6, 9, 5, 6, 7, 5, 8, 6];
 
 function HowItWorks() {
   return (
-    <Container id="how-it-works" className="py-12 lg:py-12">
-      <Eyebrow center plain>
-        How it works
-      </Eyebrow>
-      <H2 className="mt-3 text-center sm:text-[40px]">Create a video in 3 simple steps</H2>
-      <ol className="relative mt-12 grid gap-6 md:grid-cols-3 md:gap-8">
-        {STEPS.map(({ icon: Icon, ghost: Ghost, title, body }, i) => (
-          <li key={title} className="relative flex gap-4 rounded-2xl border border-white/[0.06] bg-[#071a22]/80 p-6">
-            {/* connector column */}
-            <div className="flex flex-col items-center" aria-hidden>
-              <span className="flex size-11 items-center justify-center rounded-xl bg-white/[0.04] text-white/45">
-                <Ghost className="size-5" strokeWidth={1.5} />
-              </span>
-              <span className="my-2 w-px flex-1 bg-gradient-to-b from-white/15 to-white/5" />
-              <span className="flex size-9 items-center justify-center rounded-full bg-white/[0.05] text-white/60">
-                <Plus className="size-3.5" />
-              </span>
+    <Container id="how-it-works" className="py-12 lg:py-14">
+      <div className="relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#050f14] px-4 py-10 sm:px-8 lg:px-10 lg:py-12">
+        {/* coral light streaks along the bottom-right, as in the mockup */}
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_45%_at_85%_100%,rgb(242_112_63/0.28),transparent_70%),radial-gradient(40%_30%_at_10%_0%,rgb(60_120_140/0.18),transparent_70%)]"
+          aria-hidden
+        />
+        <div className="pointer-events-none absolute -bottom-28 -right-16 h-56 w-[80%] rotate-[-8deg] rounded-[50%] border-t-2 border-[#ff8d62]/70 shadow-[0_-8px_40px_-6px_rgb(242_112_63/0.6)] blur-[1px]" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-36 -right-24 h-56 w-[70%] rotate-[-12deg] rounded-[50%] border-t border-[#f2703f]/35 blur-[2px]" aria-hidden />
+
+        <div className="relative text-center">
+          <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-[#f08a5d]">Start fast</p>
+          <H2 className="mt-3 sm:text-[40px]">
+            Create a video in <span className="text-[#ff7c4d]">3 simple steps</span>
+          </H2>
+          <p className={cn("mx-auto mt-3 max-w-[660px] text-[16px]", MUTED)}>
+            Go from idea to a professional motion video in minutes. No editing skills required.
+          </p>
+        </div>
+
+        <ol className="relative mt-10 flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-3">
+          {/* 1. Describe */}
+          <li className={STEP_CARD}>
+            <StepHead
+              n={1}
+              icon={Play}
+              title="Describe your idea"
+              body="Write a simple prompt or upload a reference video. Add details like format, length and style."
+            />
+            <div className="mt-auto pt-5" aria-hidden>
+              <div className="flex gap-2.5">
+                <div className="relative w-[30%] shrink-0">
+                  <span className="absolute -left-1.5 -top-1.5 z-10 flex h-4 w-5 items-center justify-center rounded bg-[#ff1f1f]">
+                    <Play className="size-2 fill-white text-white" />
+                  </span>
+                  <div className="relative aspect-square overflow-hidden rounded-lg">
+                    <img src={img("flow-ref")} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                    <span className="absolute left-1/2 top-1/2 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50">
+                      <Play className="size-2.5 translate-x-px fill-white text-white" />
+                    </span>
+                  </div>
+                </div>
+                <div className={cn(MINI, "flex-1 p-2.5 text-[11px] leading-[1.45] text-white/85")}>
+                  Create a product launch video for our new app. Modern, clean, bold style.
+                </div>
+              </div>
+              <div className="mt-2.5 flex gap-1.5 text-[10.5px] text-white/80">
+                <span className="flex flex-1 items-center justify-center gap-1 rounded-md bg-white/[0.05] py-1.5">
+                  <RectangleHorizontal className="size-3" /> 16:9
+                </span>
+                <span className="flex flex-1 items-center justify-center gap-1 rounded-md bg-white/[0.05] py-1.5">
+                  <Mic className="size-3" /> AI Voice
+                </span>
+                <span className="flex flex-1 items-center justify-center gap-1 rounded-md bg-white/[0.05] py-1.5">
+                  <Music className="size-3" /> Music
+                </span>
+              </div>
+              <div className="relative mt-2.5 flex justify-end">
+                <span className={cn("flex h-9 items-center gap-1.5 rounded-lg px-4 text-[12px] font-medium", CORAL_BTN)}>
+                  <Sparkles className="size-3.5" /> Generate
+                </span>
+                <MousePointer2 className="absolute -bottom-2 right-3 size-4 fill-white text-black" />
+              </div>
             </div>
-            <div className="min-w-0 pb-1">
-              <span className="flex size-[52px] items-center justify-center rounded-2xl bg-[#0f3440] text-white" aria-hidden>
-                <Icon className="size-6" strokeWidth={1.6} />
-              </span>
-              <h3 className="mt-5 text-[21px] font-medium text-white">{title}</h3>
-              <p className={cn("mt-2 text-[15.5px] leading-[1.55]", MUTED)}>{body}</p>
-            </div>
-            {i < STEPS.length - 1 && (
-              <span className="absolute -right-[22px] top-1/2 hidden h-px w-3 bg-white/15 md:block" aria-hidden />
-            )}
           </li>
-        ))}
-      </ol>
+
+          <StepArrow />
+
+          {/* 2. Customize */}
+          <li className={STEP_CARD}>
+            <StepHead
+              n={2}
+              icon={SlidersHorizontal}
+              title="Customize"
+              body="Pick a template, fine-tune the visuals, voice, music and style to match your brand."
+            />
+            <div className="mt-auto flex gap-2.5 pt-5" aria-hidden>
+              <div className="w-[48%] shrink-0">
+                <div className="relative aspect-[4/3] overflow-hidden rounded-lg ring-2 ring-[#f2703f]">
+                  <img src={img("tpl-app")} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                  <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white">App Showcase</span>
+                </div>
+                <div className="mt-1.5 grid grid-cols-4 gap-1">
+                  {[
+                    ["tpl-product", "Product"],
+                    ["tpl-social", "Social"],
+                    ["tpl-event", "Event"],
+                    ["tpl-brand", "Brand"],
+                  ].map(([n, l]) => (
+                    <div key={n}>
+                      <span className="block aspect-square rounded bg-cover bg-center" style={{ backgroundImage: `url(${img(n!)})` }} />
+                      <span className="mt-0.5 block truncate text-center text-[8px] text-white/55">{l}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-[10.5px] text-white/85">
+                <div className={cn(MINI, "flex items-center gap-1.5 px-2 py-2")}>
+                  <Mic className="size-3 shrink-0 text-white/55" />
+                  <span className="shrink-0">AI Voice</span>
+                  <img src={img("th-brand")} alt="" loading="lazy" className="ml-auto size-5 shrink-0 rounded-full object-cover" />
+                  <span className="flex h-3 items-center gap-px overflow-hidden">
+                    {WAVE_VOICE.slice(0, 10).map((h, i) => (
+                      <span key={i} className="w-[2px] rounded-full bg-[#f2703f]" style={{ height: `${h}px` }} />
+                    ))}
+                  </span>
+                </div>
+                <div className={cn(MINI, "flex items-center gap-1.5 px-2 py-2")}>
+                  <Music className="size-3 shrink-0 text-white/55" />
+                  <span className="shrink-0">Music</span>
+                  <span className="ml-auto flex h-3 items-center gap-px overflow-hidden">
+                    {WAVE_MUSIC.slice(0, 14).map((h, i) => (
+                      <span key={i} className="w-[2px] rounded-full bg-white/35" style={{ height: `${h}px` }} />
+                    ))}
+                  </span>
+                </div>
+                <div className={cn(MINI, "flex items-center gap-1.5 px-2 py-2")}>
+                  <Palette className="size-3 shrink-0 text-white/55" />
+                  <span className="shrink-0">Style</span>
+                  <span className="ml-auto flex gap-1">
+                    <span className="h-4 w-5 rounded bg-cover bg-center ring-1 ring-[#f2703f]" style={{ backgroundImage: `url(${img("use-isometric")})` }} />
+                    <span className="h-4 w-5 rounded bg-cover bg-center" style={{ backgroundImage: `url(${img("strip-icons")})` }} />
+                  </span>
+                </div>
+              </div>
+            </div>
+          </li>
+
+          <StepArrow />
+
+          {/* 3. Export */}
+          <li className={STEP_CARD}>
+            <StepHead
+              n={3}
+              icon={Upload}
+              title="Export and share"
+              body="Download your video or publish directly to social media, ads and presentations."
+            />
+            <div className="mt-auto pt-5" aria-hidden>
+              <div className="overflow-hidden rounded-xl border border-white/[0.1] bg-black">
+                <div className="relative aspect-[16/9.5]">
+                  <img src={img("hero-screen")} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,rgb(0_0_0/0.85)_0%,rgb(0_0_0/0.55)_35%,transparent_60%)]" />
+                  <div className="absolute left-[6%] top-[16%]">
+                    <p className="text-[clamp(16px,1.7vw,24px)] font-bold leading-[0.98] tracking-[-0.02em] text-white">
+                      Smarter
+                      <br />
+                      Faster
+                      <br />
+                      <span className="text-[#ff7c4d]">Together.</span>
+                    </p>
+                    <p className="mt-1.5 text-[9px] leading-snug text-white/75">
+                      Your AI co-pilot
+                      <br />
+                      for what&apos;s next.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 px-2.5 py-2 text-white">
+                  <Play className="size-3 fill-current" />
+                  <div className="relative h-[2px] flex-1 rounded-full bg-white/20">
+                    <div className="h-full w-[22%] rounded-full bg-[#f2703f]" />
+                  </div>
+                  <span className="text-[9px] tabular-nums text-white/70">0:03 / 0:15</span>
+                  <Maximize className="size-3" />
+                </div>
+              </div>
+            </div>
+          </li>
+        </ol>
+      </div>
     </Container>
   );
 }
@@ -973,9 +1143,7 @@ export const LandingScreen = ({
         <TemplatesRow templateHref={templateHref} />
         <Divider />
         <BrandSection ctaHref={isAuthed ? "/brand" : ctaHref} />
-        <Divider />
         <HowItWorks />
-        <Divider />
         <UseCases ctaHref={ctaHref} />
         <Testimonials />
         <FinalCta ctaHref={ctaHref} />
