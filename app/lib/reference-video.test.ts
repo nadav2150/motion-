@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  analyzeViaOpenRouter,
   canonicalYouTubeUrl,
   generateWithFallback,
   getGeminiModels,
@@ -14,6 +15,49 @@ import {
   youTubeVideoId,
   type ReferenceAnalysis,
 } from "./reference-video";
+
+describe("analyzeViaOpenRouter", () => {
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+  const ok = (content: string) => reply(200, { model: "google/gemini-3.8-flash", choices: [{ message: { content } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+
+  it("sends the video URL and returns the first model's answer", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return ok('{"summary":"x"}');
+    }) as unknown as typeof fetch;
+    const r = await analyzeViaOpenRouter("https://www.youtube.com/watch?v=mtPqxJBMXCQ", "p", "k", ["gemini-3.8-flash"], f);
+    expect(r.text).toBe('{"summary":"x"}');
+    expect(r.model).toBe("gemini-3.8-flash");
+    const content = (bodies[0]!.messages as Array<{ content: Array<Record<string, unknown>> }>)[0]!.content;
+    expect(content[0]).toEqual({ type: "video_url", video_url: { url: "https://www.youtube.com/watch?v=mtPqxJBMXCQ" } });
+    expect(bodies[0]!.model).toBe("google/gemini-3.8-flash");
+  });
+
+  it("moves to the next model when one is busy or returns nothing", async () => {
+    const seen: string[] = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      const model = JSON.parse(String(init.body)).model as string;
+      seen.push(model);
+      if (model.endsWith("a")) return reply(503, { error: { code: 503, message: "busy" } });
+      if (model.endsWith("b")) return reply(200, { choices: [{ message: { content: "" } }] });
+      return reply(200, { model, choices: [{ message: { content: "{}" } }] });
+    }) as unknown as typeof fetch;
+    const r = await analyzeViaOpenRouter("https://x.test/v.mp4", "p", "k", ["a", "b", "c"], f);
+    expect(seen).toEqual(["google/a", "google/b", "google/c"]);
+    expect(r.model).toBe("c");
+  });
+
+  it("stops at once on an account problem (no credit)", async () => {
+    let calls = 0;
+    const f = (async () => {
+      calls++;
+      return reply(402, { error: { code: 402, message: "This request requires at least $1.00 in balance for video" } });
+    }) as unknown as typeof fetch;
+    await expect(analyzeViaOpenRouter("https://x.test/v.mp4", "p", "k", ["a", "b"], f)).rejects.toMatchObject({ status: 402 });
+    expect(calls).toBe(1);
+  });
+});
 
 describe("generateWithFallback", () => {
   const noSleep = async () => {};

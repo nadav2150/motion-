@@ -579,6 +579,92 @@ export function youTubeThumbnailUrls(raw: string): string[] {
 export { downloadVideo as downloadReferenceVideo };
 
 /** Analyze a reference video (YouTube link or direct/public video URL) with Gemini. */
+function finishAnalysis(text: string, model: string, youtube: boolean, maxScriptChars?: number | null): ReferenceAnalysis {
+  const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(jsonText) as Record<string, unknown>;
+  } catch {
+    throw new Error("Gemini returned an analysis that is not valid JSON.");
+  }
+  const analysis = normalizeAnalysis(parsed, model);
+  analysis.source = youtube ? "youtube" : "video";
+  if (typeof maxScriptChars === "number" && maxScriptChars > 0 && analysis.suggestedScript.length > maxScriptChars) {
+    analysis.suggestedScript = truncateAtWord(analysis.suggestedScript, maxScriptChars);
+  }
+  return analysis;
+}
+
+// ─── OpenRouter ────────────────────────────────────────────────────────────
+// When OPENROUTER_API_KEY is set the analysis goes through OpenRouter's Gemini
+// models first (paid capacity; Google's free tier is refused under load). The
+// video is passed by URL: a canonical YouTube link, or the public URL of the
+// file (uploads live in our public storage bucket), so nothing is re-uploaded.
+// Any failure falls back to calling Gemini directly.
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+export class OpenRouterError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "OpenRouterError";
+  }
+}
+
+export function openRouterModels(models: string[]): string[] {
+  return models.map((m) => (m.includes("/") ? m : `google/${m}`));
+}
+
+export async function analyzeViaOpenRouter(
+  videoUrl: string,
+  prompt: string,
+  apiKey: string,
+  models: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ text: string; model: string; usage: { prompt_tokens?: number; completion_tokens?: number } }> {
+  const errors: string[] = [];
+  for (const model of openRouterModels(models)) {
+    let res: Response;
+    try {
+      res = await fetchImpl(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.PUBLIC_APP_URL || "https://videly.io",
+          "X-Title": "Videly",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: [{ type: "video_url", video_url: { url: videoUrl } }, { type: "text", text: prompt }] }],
+          response_format: { type: "json_object" },
+        }),
+        signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      errors.push(`${model}: ${err instanceof Error && err.name === "TimeoutError" ? "timeout" : "network error"}`);
+      continue;
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string; code?: number };
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      model?: string;
+    };
+    if (res.ok && !data.error) {
+      const text = (data.choices?.[0]?.message?.content ?? "").trim();
+      if (text) return { text, model: (data.model ?? model).replace(/^google\//, ""), usage: data.usage ?? {} };
+      errors.push(`${model}: empty response`);
+      continue;
+    }
+    const status = data.error?.code ?? res.status;
+    const message = data.error?.message ?? `HTTP ${res.status}`;
+    // Account-level problems (no credit, bad key) are the same for every model.
+    if (status === 401 || status === 402 || status === 403) throw new OpenRouterError(`OpenRouter: ${message}`, status);
+    errors.push(`${model}: ${status} ${message.slice(0, 120)}`);
+  }
+  throw new OpenRouterError(`OpenRouter could not analyze the video (${errors.join("; ")})`, 503);
+}
+
 export async function analyzeReferenceVideo(
   videoUrl: string,
   opts: {
@@ -590,6 +676,39 @@ export async function analyzeReferenceVideo(
 ): Promise<ReferenceAnalysis> {
   const urlError = validateReferenceUrl(videoUrl);
   if (urlError) throw new Error(urlError);
+
+  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openRouterKey) {
+    const youtubeRef = isYouTubeUrl(videoUrl);
+    const url = youtubeRef ? canonicalYouTubeUrl(videoUrl) : videoUrl;
+    if (!url) throw new Error("That YouTube link doesn't point to a single video. Paste the link of one video.");
+    try {
+      if (!youtubeRef && opts.onVideoBytes) {
+        // Frames are extracted locally, so the file is still downloaded once.
+        const { bytes, mimeType } = await downloadVideo(videoUrl);
+        await Promise.resolve(opts.onVideoBytes(bytes, mimeType)).catch((err) =>
+          console.warn("[reference-video] onVideoBytes failed:", err instanceof Error ? err.message : err),
+        );
+        opts = { ...opts, onVideoBytes: undefined };
+      }
+      const startedAt = Date.now();
+      const prompt = youtubeRef ? `${ANALYSIS_PROMPT}\n\n${YOUTUBE_ANALYSIS_NOTE}` : ANALYSIS_PROMPT;
+      const out = await analyzeViaOpenRouter(url, prompt, openRouterKey, getGeminiModels());
+      meterGemini(
+        out.model,
+        { promptTokenCount: out.usage.prompt_tokens, candidatesTokenCount: out.usage.completion_tokens } as GeminiUsageMetadata,
+        Date.now() - startedAt,
+        youtubeRef ? "youtube" : "files_api",
+      );
+      const analysis = finishAnalysis(out.text, out.model, youtubeRef, opts.maxScriptChars);
+      analysis.model = `openrouter:${out.model}`;
+      return analysis;
+    } catch (err) {
+      const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+      console.warn(`[reference-video] OpenRouter failed${hasGemini ? ", falling back to Gemini" : ""}:`, err instanceof Error ? err.message : err);
+      if (!hasGemini) throw err;
+    }
+  }
 
   const apiKey = getApiKey();
   const models = getGeminiModels();
@@ -651,20 +770,7 @@ export async function analyzeReferenceVideo(
     if (!text) {
       throw new Error(`Gemini returned no analysis (finishReason=${data.candidates?.[0]?.finishReason ?? "unknown"}).`);
     }
-    const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(jsonText) as Record<string, unknown>;
-    } catch {
-      throw new Error("Gemini returned an analysis that is not valid JSON.");
-    }
-    const analysis = normalizeAnalysis(parsed, model);
-    analysis.source = youtube ? "youtube" : "video";
-    const maxChars = opts.maxScriptChars;
-    if (typeof maxChars === "number" && maxChars > 0 && analysis.suggestedScript.length > maxChars) {
-      analysis.suggestedScript = truncateAtWord(analysis.suggestedScript, maxChars);
-    }
-    return analysis;
+    return finishAnalysis(text, model, youtube, opts.maxScriptChars);
   } finally {
     if (uploadedName) await deleteGeminiFile(uploadedName, apiKey);
   }
