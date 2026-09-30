@@ -1,34 +1,30 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { IconArrowRight, IconCheck } from "../primitives";
-
-// Container-width based mobile detection — same pattern as landing.tsx.
-// We measure the scroll container rather than the viewport so the page
-// stays responsive when previewed inside fixed-width artboards.
-function useIsMobile(ref: RefObject<HTMLDivElement | null>, threshold = 720) {
-  const [m, setM] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const apply = (w: number) => setM(w < threshold);
-    apply(el.clientWidth);
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
-      ro.observe(el);
-      return () => ro.disconnect();
-    }
-  }, [ref, threshold]);
-  return m;
-}
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowRight,
+  Box,
+  Check,
+  Crown,
+  Headphones,
+  Play,
+  RefreshCw,
+  ShieldCheck,
+  Users,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+import { MarketingFooter, MarketingHeader } from "../ui/marketing";
+import { photo, type PhotoKey } from "../ui/showcase";
+import { cn } from "../ui/format";
 
 // Subscription tiers shown on /pricing. Numbers come from the real billing
-// catalog: polar.ts buildCatalog() grants + checkout.tsx TIER_MONTHLY_USD
-// + plan-features.ts PLAN_FEATURES. Keep all three in sync when prices or
-// grants change.
+// catalog: polar.ts / dodo.ts buildCatalog() grants + checkout.tsx
+// TIER_MONTHLY_USD + plan-features.ts PLAN_FEATURES. Keep all of them in sync
+// when prices or grants change.
 export type PricingTierKey = "free" | "starter" | "pro" | "studio";
 
 // Add-on credit packs, optional per tier. Slider snaps to one of the 4
 // stops; "none" = no add-on (default). The three paid sizes map to the
-// Polar credit-pack products in POLAR_<ENV>_PRODUCT_PACK_*.
+// credit-pack products (POLAR_*/DODO_* PRODUCT_PACK_*).
 export type PackKey = "none" | "small" | "medium" | "large";
 
 type Plan = {
@@ -37,47 +33,36 @@ type Plan = {
   tagline: string;
   monthlyUsd: number;
   baseCredits: number;
+  icon: LucideIcon;
+  // Accent drives the icon tile, slider, checks and CTA.
   accent: string;
   gradient: string;
+  cta: string;
   popular?: boolean;
   perks: string[];
 };
 
-const PACK_VALUES: Record<PackKey, number> = {
-  none: 0,
-  small: 5_000,
-  medium: 25_000,
-  large: 75_000,
-};
-const PACK_PRICE_USD: Record<PackKey, number> = {
-  none: 0,
-  small: 13,
-  medium: 59,
-  large: 159,
-};
+const PACK_VALUES: Record<PackKey, number> = { none: 0, small: 5_000, medium: 25_000, large: 75_000 };
+const PACK_PRICE_USD: Record<PackKey, number> = { none: 0, small: 13, medium: 59, large: 159 };
 const PACK_STOPS: PackKey[] = ["none", "small", "medium", "large"];
-const PACK_MAX_CREDITS = PACK_VALUES.large; // slider range top
-const PACK_LABEL_SHORT: Record<PackKey, string> = {
-  none: "Just the plan",
-  small: "+5K credits ($13)",
-  medium: "+25K credits ($59)",
-  large: "+75K credits ($159)",
-};
+const PACK_MAX_CREDITS = PACK_VALUES.large;
 
 const PLANS: Plan[] = [
   {
     key: "free",
     name: "Free",
-    tagline: "Try Videly with a starter grant — no card required.",
+    tagline: "Get started and explore Videly.",
     monthlyUsd: 0,
     baseCredits: 3_100,
-    accent: "#9CA3AF",
-    gradient: "linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%)",
+    icon: Box,
+    accent: "#BFC0C0",
+    gradient: "linear-gradient(135deg, #4F5D75 0%, #BFC0C0 100%)",
+    cta: "Get started free",
     perks: [
       "3,100 credits / month",
       "Up to 2 scenes per film",
-      "Videly watermark",
       "Community templates",
+      "Videly watermark",
       "1 concurrent job",
     ],
   },
@@ -87,8 +72,10 @@ const PLANS: Plan[] = [
     tagline: "For founders shipping launch films solo.",
     monthlyUsd: 19,
     baseCredits: 8_000,
-    accent: "#7AA2FF",
-    gradient: "linear-gradient(135deg, #7AA2FF 0%, #A78BFA 100%)",
+    icon: Zap,
+    accent: "#EF8354",
+    gradient: "linear-gradient(90deg, #D96C3D 0%, #F39A73 100%)",
+    cta: "Get Starter",
     perks: [
       "8,000 credits / month",
       "Up to 10 scenes per film",
@@ -105,8 +92,10 @@ const PLANS: Plan[] = [
     tagline: "For teams iterating on launches every week.",
     monthlyUsd: 49,
     baseCredits: 20_000,
+    icon: Crown,
     accent: "#A78BFA",
-    gradient: "linear-gradient(135deg, #A78BFA 0%, #67E8F9 100%)",
+    gradient: "linear-gradient(90deg, #A855F7 0%, #818CF8 50%, #22D3EE 100%)",
+    cta: "Get Pro",
     popular: true,
     perks: [
       "20,000 credits / month",
@@ -123,8 +112,10 @@ const PLANS: Plan[] = [
     tagline: "For agencies and in-house content engines.",
     monthlyUsd: 149,
     baseCredits: 60_000,
-    accent: "#67E8F9",
-    gradient: "linear-gradient(135deg, #67E8F9 0%, #A6F0BD 100%)",
+    icon: Users,
+    accent: "#22D3EE",
+    gradient: "linear-gradient(90deg, #0EA5E9 0%, #22D3EE 100%)",
+    cta: "Get Studio",
     perks: [
       "60,000 credits / month",
       "Everything in Pro",
@@ -135,9 +126,35 @@ const PLANS: Plan[] = [
   },
 ];
 
+const TRUST: { icon: LucideIcon; title: string; body: string }[] = [
+  { icon: Zap, title: "Add credits anytime", body: "Top up with one-time packs whenever you need more." },
+  { icon: RefreshCw, title: "No long-term contracts", body: "Cancel anytime and keep your credits until the period ends." },
+  { icon: ShieldCheck, title: "Secure payments", body: "Checkout and card details are handled by our payment processor." },
+  { icon: Headphones, title: "Real humans on support", body: "Email support@videly.io and we reply within 2 business days." },
+];
+
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "What is a credit?",
+    a: "Credits meter the AI cost of your film. A full 14-scene Pro film with audio and critique runs ~20,000 credits. Simpler HTML-only films run far less.",
+  },
+  {
+    q: "What happens if I run out mid-job?",
+    a: "Generations are reserved upfront — a job never starts unless your balance covers the worst case. You'll see a clean shortfall message and a one-click top-up.",
+  },
+  {
+    q: "Do unused credits roll over?",
+    a: "Plan credits reset each billing period. One-time pack credits never expire and stack with your monthly grant.",
+  },
+  {
+    q: "Can I switch plans later?",
+    a: "Yes — upgrade instantly or downgrade at the end of your cycle. We pro-rate the difference where applicable.",
+  },
+];
+
 function packForCredits(credits: number): PackKey {
-  // Snap a raw credit count to the nearest available pack stop. Distances
-  // computed in credit-space so the snap feels right on the slider track.
+  // Snap a raw credit count to the nearest pack stop (distance in credit-space
+  // so the snap feels right on the slider track).
   let best: PackKey = "none";
   let bestDist = Number.POSITIVE_INFINITY;
   for (const stop of PACK_STOPS) {
@@ -150,853 +167,344 @@ function packForCredits(credits: number): PackKey {
   return best;
 }
 
+const compact = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}K`.replace(".0K", "K") : String(n));
+
 export function PricingScreen({
   onSelectTier,
-  onBack,
-  onSignIn: _onSignIn,
-  onCta: _onCta,
+  isAuthed = false,
 }: {
   // Click on a tier's CTA. Caller routes free → /register, paid → /checkout.
   onSelectTier?: (tier: PricingTierKey, pack: PackKey) => void;
-  // Top-left back button. When unset the button is hidden.
-  onBack?: () => void;
-  // Accepted for API parity but unused in the slim layout.
-  onSignIn?: () => void;
-  onCta?: () => void;
+  isAuthed?: boolean;
 }) {
-  const [selectedKey, setSelectedKey] = useState<PricingTierKey>("pro");
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const m = useIsMobile(scrollRef, 720);
-
-  // Per-card pack selection. Each plan card has its own slider so users can
-  // explore add-ons across plans without losing state.
-  const initialPacks = useMemo(
-    () =>
-      Object.fromEntries(PLANS.map((p) => [p.key, "none"])) as Record<
-        PricingTierKey,
-        PackKey
-      >,
-    [],
-  );
-  const [packs, setPacks] = useState<Record<PricingTierKey, PackKey>>(initialPacks);
+  // Per-card pack selection so users can explore add-ons across plans without
+  // losing state.
+  const [packs, setPacks] = useState<Record<PricingTierKey, PackKey>>({
+    free: "none",
+    starter: "none",
+    pro: "none",
+    studio: "none",
+  });
 
   return (
-    <div
-      ref={scrollRef}
-      style={{
-        width: "100%",
-        minHeight: "100%",
-        overflow: "auto",
-        background: "var(--bg-0)",
-        color: "var(--ink-0)",
-        fontFamily: "'Geist', system-ui, sans-serif",
-        position: "relative",
-      }}
-    >
-      <Bloom />
+    <div className="vd-root relative min-h-screen overflow-x-hidden">
+      <MarketingHeader isAuthed={isAuthed} />
+      <main className="relative">
+        <Glow />
 
-      {onBack && (
-        <button
-          onClick={onBack}
-          aria-label="Back"
-          style={{
-            position: "absolute",
-            top: 22,
-            left: 24,
-            zIndex: 3,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "8px 12px 8px 10px",
-            borderRadius: 999,
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid var(--line)",
-            color: "var(--ink-2)",
-            fontFamily: "inherit",
-            fontSize: 13,
-            cursor: "pointer",
-            backdropFilter: "blur(20px)",
-            transition: "background 160ms, color 160ms, border-color 160ms",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.07)";
-            e.currentTarget.style.color = "white";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-            e.currentTarget.style.color = "var(--ink-2)";
-          }}
-        >
-          <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}>
-            <IconArrowRight size={13} />
-          </span>
-          Back
-        </button>
-      )}
-
-      <section
-        style={{
-          position: "relative",
-          zIndex: 2,
-          maxWidth: 1320,
-          margin: "0 auto",
-          padding: m ? "56px 20px 12px" : "64px 56px 24px",
-          textAlign: "center",
-        }}
-      >
-        <h1
-          style={{
-            margin: 0,
-            fontSize: m ? 34 : 60,
-            fontWeight: 500,
-            letterSpacing: "-0.035em",
-            lineHeight: m ? 1.05 : 1.02,
-          }}
-        >
-          Plans that scale with your{" "}
-          <span
-            style={{
-              background: "linear-gradient(90deg, #7AA2FF, #A78BFA, #67E8F9)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            render volume
-          </span>
-        </h1>
-        <p
-          style={{
-            margin: m ? "14px auto 0" : "16px auto 0",
-            maxWidth: 600,
-            fontSize: m ? 14 : 16,
-            color: "var(--ink-2)",
-            lineHeight: 1.55,
-            letterSpacing: "-0.005em",
-          }}
-        >
-          Drag the slider on any plan to add extra one-time credits.
-          Credits never expire and stack on top of your monthly grant.
-        </p>
-      </section>
-
-      {m ? (
-        // Mobile: horizontal swipe deck. Cards keep a fixed width and snap
-        // into place; the container scrolls horizontally with one card
-        // centered per swipe. Side padding becomes scroll-padding so the
-        // first/last cards center cleanly too.
-        <section
-          style={{
-            position: "relative",
-            zIndex: 2,
-            padding: "20px 0 12px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              padding: "0 20px",
-              overflowX: "auto",
-              overflowY: "hidden",
-              scrollSnapType: "x mandatory",
-              scrollPaddingLeft: 20,
-              scrollPaddingRight: 20,
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none",
-            }}
-          >
-            {PLANS.map((plan) => (
-              <div
-                key={plan.key}
-                style={{
-                  flex: "0 0 84%",
-                  maxWidth: 320,
-                  scrollSnapAlign: "center",
-                }}
-              >
-                <PricingCard
-                  plan={plan}
-                  packKey={packs[plan.key]}
-                  onPackChange={(next) =>
-                    setPacks((prev) => ({ ...prev, [plan.key]: next }))
-                  }
-                  selected={selectedKey === plan.key}
-                  onSelect={() => setSelectedKey(plan.key)}
-                  onChoose={() => onSelectTier?.(plan.key, packs[plan.key])}
-                  mobile
-                />
-              </div>
-            ))}
-          </div>
-          <div
-            className="mf-mono"
-            style={{
-              marginTop: 10,
-              fontSize: 9.5,
-              color: "var(--ink-4)",
-              letterSpacing: "0.14em",
-              textAlign: "center",
-            }}
-          >
-            ← SWIPE TO COMPARE PLANS →
+        <section className="relative mx-auto max-w-[1440px] px-4 pb-6 pt-14 text-center sm:px-6 lg:pt-20">
+          <HeroMedia />
+          <div className="relative z-10 mx-auto max-w-[720px]">
+            <span className="inline-flex rounded-full border border-coral/40 bg-coral/10 px-3.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-coral">
+              Pricing
+            </span>
+            <h1 className="mt-5 text-[40px] font-bold leading-[1.02] tracking-[-0.035em] text-paper sm:text-6xl lg:text-[68px]">
+              Plans that grow
+              <span className="block bg-gradient-to-r from-coral-600 via-coral to-[#FF9F5A] bg-clip-text text-transparent">
+                with your ambitions
+              </span>
+            </h1>
+            <p className="mx-auto mt-5 max-w-[560px] text-base leading-relaxed text-silver sm:text-[17px]">
+              Create stunning motion videos for your product, brand and social media. Pick a plan, add credits anytime,
+              and start creating today.
+            </p>
           </div>
         </section>
-      ) : (
-        <section
-          style={{
-            position: "relative",
-            zIndex: 2,
-            maxWidth: 1440,
-            margin: "0 auto",
-            padding: "40px 40px 24px",
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 18,
-            alignItems: "stretch",
-          }}
-        >
+
+        <section className="relative z-10 mx-auto grid max-w-[1320px] gap-5 px-4 pt-8 sm:grid-cols-2 sm:px-6 xl:grid-cols-4">
           {PLANS.map((plan) => (
-            <PricingCard
+            <PlanCard
               key={plan.key}
               plan={plan}
               packKey={packs[plan.key]}
-              onPackChange={(next) =>
-                setPacks((prev) => ({ ...prev, [plan.key]: next }))
-              }
-              selected={selectedKey === plan.key}
-              onSelect={() => setSelectedKey(plan.key)}
+              onPackChange={(next) => setPacks((prev) => ({ ...prev, [plan.key]: next }))}
               onChoose={() => onSelectTier?.(plan.key, packs[plan.key])}
             />
           ))}
         </section>
-      )}
 
-      <section
-        style={{
-          position: "relative",
-          zIndex: 2,
-          maxWidth: 1320,
-          margin: m ? "32px auto 0" : "40px auto 0",
-          padding: m ? "0 20px" : "0 56px",
-        }}
-      >
-        <div
-          style={{
-            padding: m ? "18px 18px" : "20px 26px",
-            borderRadius: 16,
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid var(--line)",
-            display: "grid",
-            gridTemplateColumns: m ? "1fr 1fr" : "1fr 1fr 1fr 1fr",
-            gap: m ? 16 : 24,
-          }}
-        >
-          {[
-            {
-              l: "Cancel anytime",
-              s: "Stop renewing, keep your remaining credits this period.",
-            },
-            {
-              l: "Hard-blocked overages",
-              s: "Jobs never start unless your balance covers the worst case.",
-            },
-            {
-              l: "Top-up anytime",
-              s: "Buy extra credit packs without changing your plan.",
-            },
-            {
-              l: "Team-ready",
-              s: "Studio includes 3 seats and programmatic API access.",
-            },
-          ].map((c) => (
-            <div
-              key={c.l}
-              style={{ display: "flex", flexDirection: "column", gap: 4 }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 5,
-                    flexShrink: 0,
-                    background: "rgba(166,240,189,0.10)",
-                    border: "1px solid rgba(166,240,189,0.30)",
-                    color: "#A6F0BD",
-                    display: "grid",
-                    placeItems: "center",
-                  }}
-                >
-                  <IconCheck size={11} />
-                </span>
-                <span
-                  style={{ fontSize: 13, color: "white", fontWeight: 500 }}
-                >
-                  {c.l}
-                </span>
+        <section className="relative z-10 mx-auto grid max-w-[1240px] gap-8 px-4 py-14 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
+          {TRUST.map(({ icon: Icon, title, body }) => (
+            <div key={title} className="flex gap-4 text-left">
+              <Icon className="mt-0.5 size-7 shrink-0 text-silver" strokeWidth={1.5} aria-hidden />
+              <div>
+                <div className="text-[15px] font-semibold text-paper">{title}</div>
+                <p className="mt-1 text-sm leading-relaxed text-silver">{body}</p>
               </div>
-              <p
-                style={{
-                  margin: "0 0 0 26px",
-                  fontSize: 12,
-                  color: "var(--ink-3)",
-                  lineHeight: 1.4,
-                }}
-              >
-                {c.s}
-              </p>
             </div>
           ))}
-        </div>
-      </section>
+        </section>
 
-      <section
-        style={{
-          position: "relative",
-          zIndex: 2,
-          maxWidth: 1100,
-          margin: m ? "48px auto 0" : "64px auto 0",
-          padding: m ? "0 20px 56px" : "0 56px 80px",
-        }}
-      >
-        <div style={{ textAlign: "center", marginBottom: m ? 24 : 32 }}>
-          <div className="mf-eyebrow" style={{ marginBottom: 10 }}>
-            FAQ · CREDITS DEMYSTIFIED
+        <section className="relative z-10 mx-auto max-w-[1100px] px-4 pb-20 sm:px-6">
+          <div className="mb-8 text-center">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-coral">FAQ</div>
+            <h2 className="mt-3 text-2xl font-bold tracking-[-0.025em] text-paper sm:text-[32px]">
+              Questions about credits &amp; pricing
+            </h2>
           </div>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: m ? 24 : 32,
-              fontWeight: 500,
-              letterSpacing: "-0.025em",
-            }}
-          >
-            Questions about credits & pricing
-          </h2>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: m ? "1fr" : "1fr 1fr",
-            gap: m ? 12 : 14,
-          }}
-        >
-          {[
-            {
-              q: "What is a credit?",
-              a: "Credits meter the AI cost of your film. A full 14-scene Pro film with audio and critique runs ~20,000 credits. Simpler HTML-only films run far less.",
-            },
-            {
-              q: "What happens if I run out mid-job?",
-              a: "Generations are reserved upfront — a job never starts unless your balance covers the worst case. You'll see a clean shortfall message and a one-click top-up.",
-            },
-            {
-              q: "Do unused credits roll over?",
-              a: "Plan credits reset each billing period. One-time pack credits never expire and stack with your monthly grant.",
-            },
-            {
-              q: "Can I switch plans later?",
-              a: "Yes — upgrade instantly or downgrade at the end of your cycle. We pro-rate the difference where applicable.",
-            },
-          ].map((it) => (
-            <div
-              key={it.q}
-              style={{
-                padding: "18px 20px",
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid var(--line)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: "white",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                {it.q}
+          <div className="grid gap-3.5 md:grid-cols-2">
+            {FAQ.map((it) => (
+              <div key={it.q} className="rounded-2xl border border-slate/40 bg-ink-800/60 p-5 text-left">
+                <div className="text-[15px] font-semibold text-paper">{it.q}</div>
+                <p className="mt-1.5 text-sm leading-relaxed text-silver">{it.a}</p>
               </div>
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: 13,
-                  color: "var(--ink-2)",
-                  lineHeight: 1.5,
-                }}
-              >
-                {it.a}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      </main>
+      <MarketingFooter />
     </div>
   );
 }
 
-// Ambient background bloom — three soft radial gradients positioned to match
-// the design's color scheme (blue top-left, purple top-right, cyan bottom).
-function Bloom() {
+// Ambient glows: coral from the lower left, violet/blue from the right.
+function Glow() {
   return (
-    <>
-      <div
-        style={{
-          position: "absolute",
-          top: -300,
-          left: "8%",
-          width: 800,
-          height: 800,
-          borderRadius: "50%",
-          pointerEvents: "none",
-          zIndex: 0,
-          background:
-            "radial-gradient(circle, rgba(122,162,255,0.13), transparent 60%)",
-          filter: "blur(60px)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          top: 200,
-          right: "5%",
-          width: 700,
-          height: 700,
-          borderRadius: "50%",
-          pointerEvents: "none",
-          zIndex: 0,
-          background:
-            "radial-gradient(circle, rgba(167,139,250,0.10), transparent 60%)",
-          filter: "blur(60px)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          bottom: -200,
-          left: "30%",
-          width: 700,
-          height: 700,
-          borderRadius: "50%",
-          pointerEvents: "none",
-          zIndex: 0,
-          background:
-            "radial-gradient(circle, rgba(103,232,249,0.08), transparent 60%)",
-          filter: "blur(60px)",
-        }}
-      />
-    </>
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -left-40 top-[520px] size-[700px] rounded-full bg-coral/15 blur-[120px]" />
+      <div className="absolute -right-40 top-40 size-[640px] rounded-full bg-[#6D5BF5]/15 blur-[120px]" />
+      <div className="absolute left-1/2 top-0 h-[420px] w-[900px] -translate-x-1/2 rounded-full bg-coral/10 blur-[140px]" />
+    </div>
   );
 }
 
-function PricingCard({
+// Decorative floating video cards around the hero (wide screens only).
+function HeroMedia() {
+  return (
+    // Each side is its own 400px column pinned to the page edge, so the
+    // clusters can never reach the centered headline (~560px wide).
+    <div aria-hidden className="pointer-events-none absolute inset-x-0 top-4 hidden min-[1440px]:block">
+      <div className="absolute -left-8 top-0 h-[300px] w-[400px]">
+        <div className="absolute left-0 top-6 w-[260px] -rotate-6">
+          <VideoTile photoKey="phoneApp" label="Product Launch" time="0:28" className="h-[172px]" big />
+        </div>
+        <div className="absolute left-[266px] top-0 flex -rotate-6 flex-col gap-1.5 rounded-xl border border-slate/50 bg-ink-800/80 p-2 text-left text-[13px] text-paper/90 shadow-lift backdrop-blur">
+          {["Ideas", "Script", "Visuals", "Voiceover", "Export"].map((s) => (
+            <span key={s} className="rounded-md bg-ink/70 px-3 py-1.5">
+              {s}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="absolute -right-8 top-0 h-[320px] w-[400px]">
+        <div className="absolute left-10 top-0 w-[175px] -rotate-[10deg]">
+          <VideoTile photoKey="phoneApp" label="App Promo" className="h-[112px]" />
+        </div>
+        <div className="absolute right-0 top-6 w-[175px] rotate-[10deg]">
+          <VideoTile photoKey="creatorCamera" label="Brand Story" className="h-[118px]" />
+        </div>
+        <div className="absolute left-14 top-[135px] w-[160px] rotate-[10deg]">
+          <VideoTile photoKey="office" label="Feature Demo" className="h-[104px]" />
+        </div>
+        <div className="absolute right-6 top-[170px] w-[150px] rotate-[12deg]">
+          <VideoTile photoKey="concertCrowd" label="Social Ad" className="h-[100px]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoTile({
+  photoKey,
+  label,
+  time,
+  className,
+  big = false,
+}: {
+  photoKey: PhotoKey;
+  label: string;
+  time?: string;
+  className?: string;
+  big?: boolean;
+}) {
+  return (
+    <div className={cn("relative overflow-hidden rounded-2xl border border-white/15 shadow-lift", className)}>
+      <img src={photo(photoKey, 480)} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-coral/10" />
+      {big && (
+        <span className="absolute left-1/2 top-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur">
+          <Play className="ml-0.5 size-6 fill-white text-white" />
+        </span>
+      )}
+      <div className="absolute inset-x-3 bottom-2.5 flex items-center gap-2 text-left">
+        <Play className="size-3.5 shrink-0 fill-white text-white" />
+        <span className={cn("font-semibold text-white", big ? "text-lg" : "text-[13px]")}>{label}</span>
+        {time && <span className="ml-auto text-sm text-white/85">{time}</span>}
+      </div>
+    </div>
+  );
+}
+
+function PlanCard({
   plan,
   packKey,
   onPackChange,
-  selected,
-  onSelect,
   onChoose,
-  mobile = false,
 }: {
   plan: Plan;
   packKey: PackKey;
   onPackChange: (next: PackKey) => void;
-  selected: boolean;
-  onSelect: () => void;
   onChoose: () => void;
-  // When true, the card is rendered inside the horizontal swipe deck:
-  // padding tightens and the desktop `minHeight: 720` is dropped so the
-  // card collapses to its natural height per swipe.
-  mobile?: boolean;
 }) {
-  const dollars = plan.monthlyUsd;
-  const cents = "00";
-
+  const Icon = plan.icon;
   const extraCredits = PACK_VALUES[packKey];
   const extraPrice = PACK_PRICE_USD[packKey];
   const totalCredits = plan.baseCredits + extraCredits;
-  const ctaLabel = selected ? `Choose ${plan.name}` : `Pick ${plan.name}`;
 
   return (
     <div
-      onClick={onSelect}
-      style={{
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        padding: mobile ? "22px 20px 20px" : "28px 24px 26px",
-        borderRadius: 18,
-        background: selected
-          ? "linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 100%)"
-          : "rgba(255,255,255,0.02)",
-        border: `1px solid ${selected ? "rgba(255,255,255,0.18)" : "var(--line)"}`,
-        boxShadow: selected
-          ? `0 24px 60px -20px ${plan.accent}55, 0 0 0 1px ${plan.accent}40, inset 0 1px 0 rgba(255,255,255,0.04)`
-          : "0 6px 22px -10px rgba(0,0,0,0.6)",
-        cursor: "pointer",
-        transition: "all 280ms cubic-bezier(.2,.8,.2,1)",
-        overflow: "hidden",
-        minHeight: mobile ? 0 : 720,
-        height: mobile ? "100%" : undefined,
-      }}
+      className={cn(
+        "relative flex flex-col rounded-3xl border p-6 backdrop-blur-sm transition-shadow",
+        plan.popular
+          ? "border-[#8B5CF6]/70 bg-gradient-to-b from-[#2A2346]/90 to-ink-900/90 shadow-[0_30px_80px_-30px_rgba(139,92,246,0.55)]"
+          : "border-slate/40 bg-ink-800/70 shadow-soft",
+      )}
     >
       {plan.popular && (
-        <div
-          style={{
-            position: "absolute",
-            top: 14,
-            right: 14,
-            zIndex: 2,
-            padding: "4px 9px",
-            borderRadius: 999,
-            background: plan.gradient,
-            fontSize: 9.5,
-            fontFamily: "'Geist Mono', monospace",
-            letterSpacing: "0.10em",
-            fontWeight: 600,
-            color: "#0B0C10",
-          }}
-        >
-          MOST POPULAR
-        </div>
+        <span className="absolute -top-3 right-5 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] px-3.5 py-1 text-xs font-semibold text-white shadow-lg">
+          Most Popular
+        </span>
       )}
 
-      <div
-        style={{
-          position: "absolute",
-          top: -40,
-          left: -40,
-          width: 200,
-          height: 200,
-          borderRadius: "50%",
-          pointerEvents: "none",
-          background: plan.gradient,
-          opacity: selected ? 0.18 : 0.08,
-          filter: "blur(40px)",
-          transition: "opacity 280ms",
-        }}
-      />
-
-      <div style={{ position: "relative", zIndex: 1 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 8,
-          }}
+      <div className="flex items-start gap-3.5">
+        <span
+          className="grid size-12 shrink-0 place-items-center rounded-xl border"
+          style={{ borderColor: `${plan.accent}55`, background: `${plan.accent}1A`, color: plan.accent }}
         >
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 3,
-              background: plan.gradient,
-              boxShadow: `0 0 16px ${plan.accent}80`,
-            }}
-          />
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 500,
-              color: "white",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {plan.name}
-          </span>
-        </div>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 12.5,
-            color: "var(--ink-3)",
-            lineHeight: 1.5,
-            minHeight: 36,
-          }}
-        >
-          {plan.tagline}
-        </p>
-      </div>
-
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          marginTop: 22,
-          paddingBottom: 18,
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-          <span
-            style={{
-              fontSize: 14,
-              color: "var(--ink-3)",
-              fontWeight: 400,
-            }}
-          >
-            $
-          </span>
-          <span
-            style={{
-              fontSize: 48,
-              fontWeight: 500,
-              color: "white",
-              letterSpacing: "-0.035em",
-              lineHeight: 1,
-            }}
-          >
-            {dollars}
-          </span>
-          <span
-            style={{
-              fontSize: 18,
-              color: "var(--ink-3)",
-              fontWeight: 400,
-              marginLeft: -2,
-            }}
-          >
-            .{cents}
-          </span>
-          <span style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: 6 }}>
-            / month
-          </span>
-        </div>
-        <div
-          className="mf-mono"
-          style={{
-            fontSize: 10.5,
-            letterSpacing: "0.06em",
-            color: "var(--ink-4)",
-            marginTop: 6,
-          }}
-        >
-          {plan.monthlyUsd === 0
-            ? "FREE FOREVER · NO CARD REQUIRED"
-            : "BILLED MONTHLY · CANCEL ANYTIME"}
+          <Icon className="size-6" strokeWidth={1.75} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-paper">{plan.name}</h2>
+          <p className="mt-0.5 text-[13px] leading-snug text-silver">{plan.tagline}</p>
         </div>
       </div>
 
-      {plan.key !== "free" && (
-        <div style={{ position: "relative", zIndex: 1, marginTop: 18 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              marginBottom: 10,
-            }}
-          >
-            <span
-              className="mf-mono"
-              style={{
-                fontSize: 10.5,
-                letterSpacing: "0.12em",
-                color: "var(--ink-3)",
-              }}
-            >
-              EXTRA CREDITS
-            </span>
-            <span
-              style={{
-                fontFamily: "'Geist Mono', monospace",
-                fontSize: 14,
-                fontWeight: 500,
-                color: extraCredits > 0 ? plan.accent : "var(--ink-3)",
-                letterSpacing: "-0.005em",
-              }}
-            >
-              {extraCredits > 0
-                ? `+${extraCredits.toLocaleString()}`
-                : "None"}
-            </span>
-          </div>
+      <div className="mt-6 flex items-baseline gap-1">
+        <span className="text-xl font-semibold text-paper">$</span>
+        <span className="text-5xl font-bold leading-none tracking-[-0.03em] text-paper">{plan.monthlyUsd}</span>
+        <span className="ml-1.5 text-sm text-silver">/ month</span>
+      </div>
 
+      {plan.key === "free" ? (
+        <div className="mt-6 border-t border-slate/40" />
+      ) : (
+        <div className="mt-6">
           <CreditSlider
-            value={PACK_VALUES[packKey]}
+            value={extraCredits}
             accent={plan.accent}
             gradient={plan.gradient}
             onChange={(v) => onPackChange(packForCredits(v))}
-            onCardClick={onSelect}
+            label={`Extra credits for ${plan.name}`}
           />
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginTop: 8,
-            }}
-          >
-            <span
-              className="mf-mono"
-              style={{
-                fontSize: 10,
-                letterSpacing: "0.06em",
-                color: "var(--ink-4)",
-              }}
-            >
-              0
-            </span>
-            <span
-              className="mf-mono"
-              style={{
-                fontSize: 10,
-                letterSpacing: "0.06em",
-                color: "var(--ink-4)",
-              }}
-            >
-              +75K
-            </span>
+          <div className="mt-1.5 flex justify-between text-xs text-silver">
+            <span>{compact(plan.baseCredits)}</span>
+            <span>{compact(plan.baseCredits + PACK_MAX_CREDITS)}</span>
           </div>
-
-          <div
-            style={{
-              marginTop: 12,
-              padding: "8px 11px",
-              borderRadius: 8,
-              background: "rgba(255,255,255,0.025)",
-              border: "1px solid var(--line)",
-              fontSize: 11,
-              color: "var(--ink-2)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <span style={{ whiteSpace: "nowrap" }}>
-              {totalCredits.toLocaleString()} credits total
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-slate/45 bg-ink-950/60 px-3.5 py-3 text-sm">
+            <span className="font-medium text-paper">
+              {totalCredits.toLocaleString("en-US")} credits
+              {extraCredits === 0 && <span className="text-silver"> / month</span>}
             </span>
-            <span
-              className="mf-mono"
-              style={{
-                color: extraPrice > 0 ? plan.accent : "var(--ink-3)",
-                fontSize: 10.5,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {extraPrice > 0 ? `+$${extraPrice} once` : PACK_LABEL_SHORT.none}
+            <span className="whitespace-nowrap font-semibold" style={{ color: plan.accent }}>
+              +${extraPrice}
+              {extraPrice > 0 && <span className="font-normal text-silver"> once</span>}
             </span>
           </div>
         </div>
       )}
 
-      <ul
-        style={{
-          position: "relative",
-          zIndex: 1,
-          margin: "22px 0 0",
-          padding: 0,
-          listStyle: "none",
-          display: "flex",
-          flexDirection: "column",
-          gap: 9,
-          flex: 1,
-        }}
-      >
+      <ul className="mt-6 flex flex-1 flex-col gap-3">
         {plan.perks.map((perk) => (
-          <li
-            key={perk}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 9,
-              fontSize: 12.5,
-              color: "var(--ink-1)",
-              lineHeight: 1.45,
-            }}
-          >
-            <span
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: 4,
-                flexShrink: 0,
-                marginTop: 1,
-                background: `${plan.accent}1F`,
-                border: `1px solid ${plan.accent}55`,
-                color: plan.accent,
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
-              <IconCheck size={10} />
-            </span>
+          <li key={perk} className="flex items-start gap-3 text-sm text-paper/90">
+            <CheckBox accent={plan.accent} muted={plan.key === "free"} />
             {perk}
           </li>
         ))}
       </ul>
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onChoose();
-        }}
-        style={{
-          marginTop: 22,
-          width: "100%",
-          padding: "13px 16px",
-          borderRadius: 10,
-          border: selected
-            ? "1px solid rgba(255,255,255,0.18)"
-            : "1px solid var(--line-2)",
-          background: selected ? plan.gradient : "rgba(255,255,255,0.04)",
-          color: selected ? "#0B0C10" : "white",
-          fontFamily: "inherit",
-          fontSize: 13.5,
-          fontWeight: 500,
-          letterSpacing: "-0.005em",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 7,
-          boxShadow: selected ? `0 12px 30px -10px ${plan.accent}80` : "none",
-          transition: "all 220ms",
-        }}
-      >
-        {ctaLabel}
-        <IconArrowRight size={13} />
-      </button>
+      <PlanCta plan={plan} onClick={onChoose}>
+        {plan.cta}
+      </PlanCta>
     </div>
   );
 }
 
-// Custom drag slider matching the design — pointer-driven so the thumb
-// stays under the cursor, tick marks at the 4 pack stops, gradient track
-// fill + white-on-gradient thumb with a soft halo. Snaps to the nearest
-// pack stop on every movement so price and credits stay coherent.
+function CheckBox({ accent, muted }: { accent: string; muted: boolean }) {
+  return (
+    <span
+      className="mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-[5px] border"
+      style={
+        muted
+          ? { borderColor: "rgb(191 192 192 / 0.45)", color: "#BFC0C0" }
+          : { borderColor: `${accent}80`, background: `${accent}1F`, color: accent }
+      }
+    >
+      <Check className="size-3" strokeWidth={3} aria-hidden />
+    </span>
+  );
+}
+
+function PlanCta({ plan, onClick, children }: { plan: Plan; onClick: () => void; children: ReactNode }) {
+  const base =
+    "mt-7 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-[15px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900";
+  if (plan.popular) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(base, "text-white shadow-[0_14px_40px_-12px_rgba(168,85,247,0.7)] hover:brightness-110")}
+        style={{ background: plan.gradient }}
+      >
+        {children}
+        <ArrowRight className="size-4" aria-hidden />
+      </button>
+    );
+  }
+  if (plan.key === "free") {
+    return (
+      <button type="button" onClick={onClick} className={cn(base, "border border-slate/50 bg-ink-950/70 text-paper hover:bg-ink")}>
+        {children}
+        <ArrowRight className="size-4" aria-hidden />
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(base, "border hover:brightness-125")}
+      style={{ borderColor: `${plan.accent}66`, background: `${plan.accent}14`, color: plan.accent }}
+    >
+      {children}
+      <ArrowRight className="size-4" aria-hidden />
+    </button>
+  );
+}
+
+// Pointer-driven slider that snaps to the pack stops so price and credits
+// always stay coherent. Arrow keys step between stops.
 function CreditSlider({
   value,
   onChange,
   accent,
   gradient,
-  onCardClick,
+  label,
 }: {
   value: number;
   onChange: (next: number) => void;
   accent: string;
   gradient: string;
-  onCardClick?: () => void;
+  label: string;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
   const pct = (value / PACK_MAX_CREDITS) * 100;
 
-  // Convert a pointer X coordinate to a credit value, snapped to the nearest
-  // pack stop. Track is the full visible width of the slider div.
   const setFromClientX = (clientX: number) => {
     const r = trackRef.current?.getBoundingClientRect();
     if (!r) return;
     const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    const raw = ratio * PACK_MAX_CREDITS;
-    // Snap to nearest pack stop
-    const snapped = PACK_VALUES[packForCredits(raw)];
-    onChange(snapped);
+    onChange(PACK_VALUES[packForCredits(ratio * PACK_MAX_CREDITS)]);
   };
 
   useEffect(() => {
@@ -1009,97 +517,50 @@ function CreditSlider({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-    // setFromClientX closes over current trackRef; safe to omit from deps.
+    // setFromClientX closes over the current trackRef; safe to omit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragging]);
 
-  // Tick positions for the 4 pack stops, in % of slider width.
-  const tickPositions = PACK_STOPS.map(
-    (k) => (PACK_VALUES[k] / PACK_MAX_CREDITS) * 100,
-  );
+  const step = (dir: 1 | -1) => {
+    const i = PACK_STOPS.indexOf(packForCredits(value));
+    const next = PACK_STOPS[Math.min(PACK_STOPS.length - 1, Math.max(0, i + dir))];
+    onChange(PACK_VALUES[next]);
+  };
 
   return (
     <div
       ref={trackRef}
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={PACK_MAX_CREDITS}
+      aria-valuenow={value}
+      aria-valuetext={value ? `${value.toLocaleString("en-US")} extra credits` : "No extra credits"}
       onPointerDown={(e) => {
-        e.stopPropagation();
-        onCardClick?.();
         setDragging(true);
         setFromClientX(e.clientX);
       }}
-      style={{
-        position: "relative",
-        height: 28,
-        cursor: "pointer",
-        touchAction: "none",
-        userSelect: "none",
-        display: "flex",
-        alignItems: "center",
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+          e.preventDefault();
+          step(1);
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+          e.preventDefault();
+          step(-1);
+        }
       }}
+      className="relative flex h-7 cursor-pointer touch-none select-none items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
     >
+      <div className="absolute inset-x-0 h-1.5 rounded-full bg-white/10" />
       <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          height: 6,
-          borderRadius: 999,
-          background: "rgba(255,255,255,0.06)",
-          border: "1px solid var(--line)",
-        }}
+        className="absolute left-0 h-1.5 rounded-full"
+        style={{ width: `${pct}%`, background: gradient, boxShadow: `0 0 14px ${accent}80` }}
       />
       <div
-        style={{
-          position: "absolute",
-          left: 0,
-          height: 6,
-          width: `${pct}%`,
-          borderRadius: 999,
-          background: gradient,
-          boxShadow: `0 0 18px ${accent}80`,
-        }}
+        className="absolute size-5 -translate-x-1/2 rounded-full border-[3px] bg-white transition-[width,height]"
+        style={{ left: `${pct}%`, borderColor: accent, boxShadow: `0 0 0 5px ${accent}33, 0 4px 14px ${accent}80` }}
       />
-      {tickPositions.map((t, i) => (
-        <span
-          key={i}
-          style={{
-            position: "absolute",
-            left: `${t}%`,
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 2,
-            height: 6,
-            borderRadius: 1,
-            background:
-              t <= pct ? "rgba(11,12,16,0.4)" : "rgba(255,255,255,0.10)",
-            pointerEvents: "none",
-          }}
-        />
-      ))}
-      <div
-        style={{
-          position: "absolute",
-          left: `${pct}%`,
-          transform: "translateX(-50%)",
-          width: dragging ? 22 : 20,
-          height: dragging ? 22 : 20,
-          borderRadius: "50%",
-          background: "white",
-          boxShadow: `0 0 0 4px ${accent}30, 0 4px 14px ${accent}80, inset 0 -1px 0 rgba(0,0,0,0.1)`,
-          cursor: "grab",
-          transition: "width 120ms, height 120ms",
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            inset: 4,
-            borderRadius: "50%",
-            background: gradient,
-          }}
-        />
-      </div>
     </div>
   );
 }
-
