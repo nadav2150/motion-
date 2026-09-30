@@ -52,6 +52,11 @@ npx wrangler secret put BILLING_PROVIDER           # dodo  ← this is the switc
 Live Mode uses the same names with `DODO_LIVE_` instead of `DODO_TEST_`. For
 local dev put the same keys in `.env`.
 
+Secrets reach the container only when an instance starts, and `wrangler deploy`
+replaces running instances only when the image changes ("no changes
+videly-app" means the old instances keep the old env). After changing secrets,
+bump the `io.videly.rollout` LABEL in the Dockerfile and deploy.
+
 ## 4. Test Mode check
 
 1. Deploy, set `DODO_ENV=test_mode` + `BILLING_PROVIDER=dodo`.
