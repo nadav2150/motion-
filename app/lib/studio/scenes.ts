@@ -37,6 +37,9 @@ export const parallelScenesEnabled = (): boolean => process.env.STUDIO_PARALLEL_
 export const MAX_SCENES = 6;
 export const MIN_SCENES = 2;
 export const SCENE_CONCURRENCY = 6;
+// Head start for the first (longest) scene so its request writes the shared
+// prompt cache before the others read it. STUDIO_CACHE_WARM_MS overrides; 0 disables.
+export const CACHE_WARM_MS = Number(process.env.STUDIO_CACHE_WARM_MS ?? 8000);
 // The slowest scene gates the step, so scenes stay short: 15 s → 3, 30 s → 5.
 const SECONDS_PER_SCENE = 5.5;
 const STYLE_MAX_TOKENS = 12_000;
@@ -397,6 +400,7 @@ export type WriteParallelArgs = ParallelContext & {
   store?: ParallelStore | null; // null: no persistence (no run id)
   onCheckpoint?: (cp: ParallelCheckpoint) => Promise<void>;
   concurrency?: number;
+  cacheWarmMs?: number; // tests pass 0
 };
 
 export type WriteParallelResult = { html: string; timings: ParallelTimings };
@@ -512,7 +516,7 @@ export async function writeScenesParallel(args: WriteParallelArgs): Promise<Writ
     return checked.code;
   };
 
-  await mapLimit(todo, args.concurrency ?? SCENE_CONCURRENCY, async ({ s, i }) => {
+  const runOne = async ({ s, i }: { s: SceneSpec; i: number }): Promise<void> => {
     if (failed) return;
     const ts = Date.now();
     let result: SceneCode | null = null;
@@ -533,7 +537,24 @@ export async function writeScenesParallel(args: WriteParallelArgs): Promise<Writ
     }
     code[i] = result;
     await persist(`scene-${s.index}.json`, result, (p) => (cp = { ...cp, scenes: { ...(cp.scenes ?? {}), [String(s.index)]: p } }));
-  });
+  };
+
+  // All scene calls share a ~35k-token cached prefix (system + plan + style
+  // foundation + reference images). Started at the same instant, every call
+  // WROTE that prefix to the cache (1.25x input price) and none read it —
+  // ~$0.6-0.7 wasted on a 30 s video. So the longest scene (the critical path
+  // anyway) starts first, and the rest follow once its request has had time
+  // to write the cache, then read it at 0.1x.
+  const concurrency = args.concurrency ?? SCENE_CONCURRENCY;
+  const ordered = [...todo].sort((a, b) => b.s.end - b.s.start - (a.s.end - a.s.start));
+  const warmMs = args.cacheWarmMs ?? CACHE_WARM_MS;
+  if (ordered.length > 1 && warmMs > 0 && concurrency > 1) {
+    const first = runOne(ordered[0]!);
+    await Promise.race([first, new Promise((r) => setTimeout(r, warmMs))]);
+    await Promise.all([first, mapLimit(ordered.slice(1), concurrency - 1, runOne)]);
+  } else {
+    await mapLimit(ordered, concurrency, runOne);
+  }
   await chain;
   if (failed || code.some((c) => !c)) {
     console.warn(`${tag} a scene could not be written; falling back to the single call`);

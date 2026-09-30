@@ -360,6 +360,7 @@ function args(over: Partial<Parameters<typeof writeScenesParallel>[0]> = {}) {
     scenes,
     jobId: "job1",
     libraries: PLAN5.libraries,
+    cacheWarmMs: 0, // these tests assert simultaneous starts; the warm-up has its own test
     ...over,
   };
 }
@@ -415,7 +416,9 @@ describe("writeScenesParallel", () => {
     pending.reverse().forEach((p) => p.resolve());
     const out = await run;
     expect(out).not.toBeNull();
-    expect(labels()).toEqual(["style", "scene-1", "scene-2", "scene-3", "scene-4", "scene-5"]);
+    // Style first; scenes start longest-first (for the prompt cache), so compare as a set.
+    expect(labels()[0]).toBe("style");
+    expect(labels().slice(1).sort()).toEqual(["scene-1", "scene-2", "scene-3", "scene-4", "scene-5"]);
     const style = vi.mocked(anthropic.callOpus).mock.calls[0]![0];
     expect(style.reason).toBe("opus_studio_style");
     expect(style.effort).toBe("medium");
@@ -426,6 +429,24 @@ describe("writeScenesParallel", () => {
     // The document has every scene, in order.
     for (let i = 1; i <= 5; i++) expect(out!.html).toContain(`id="scene-${i}"`);
     expect(out!.timings.slowestSceneMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("starts the longest scene first and the rest after the cache warm-up", async () => {
+    const started: Array<{ label: string; at: number }> = [];
+    const t0 = Date.now();
+    const base = vi.mocked(anthropic.callOpus).getMockImplementation()!;
+    vi.mocked(anthropic.callOpus).mockImplementation(async (a) => {
+      if (a.label !== "style") started.push({ label: a.label!, at: Date.now() - t0 });
+      if (a.label !== "style") await new Promise((r) => setTimeout(r, 60));
+      return base(a);
+    });
+    const scenes = args().scenes;
+    const longest = [...scenes].sort((x, y) => y.end - y.start - (x.end - x.start))[0]!;
+    expect(await writeScenesParallel(args({ cacheWarmMs: 40 }))).not.toBeNull();
+    expect(started[0]!.label).toBe(`scene-${longest.index}`);
+    const firstAt = started[0]!.at;
+    for (const s of started.slice(1)) expect(s.at - firstAt).toBeGreaterThanOrEqual(35);
+    expect(started).toHaveLength(scenes.length);
   });
 
   it("caps concurrency", async () => {
@@ -447,7 +468,9 @@ describe("writeScenesParallel", () => {
   it("scene calls share the cached prefix: same system, context and foundation blocks", async () => {
     await writeScenesParallel(args());
     const calls = vi.mocked(anthropic.callOpus).mock.calls.map((c) => c[0]);
-    const [style, s1, s2] = calls;
+    const style = calls.find((c) => c.label === "style");
+    const s1 = calls.find((c) => c.label === "scene-1");
+    const s2 = calls.find((c) => c.label === "scene-2");
     expect(JSON.stringify(style!.system)).toBe(JSON.stringify(s1!.system));
     const blocks = (c: typeof s1) => (c!.messages[0]!.content as { type: string; text?: string; cache?: boolean }[]);
     expect(blocks(s1)[0]).toEqual(blocks(style)[0]); // shared context, cached
