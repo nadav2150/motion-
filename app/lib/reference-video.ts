@@ -579,14 +579,30 @@ export function youTubeThumbnailUrls(raw: string): string[] {
 export { downloadVideo as downloadReferenceVideo };
 
 /** Analyze a reference video (YouTube link or direct/public video URL) with Gemini. */
-function finishAnalysis(text: string, model: string, youtube: boolean, maxScriptChars?: number | null): ReferenceAnalysis {
-  const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(jsonText) as Record<string, unknown>;
-  } catch {
-    throw new Error("Gemini returned an analysis that is not valid JSON.");
+/**
+ * The analysis JSON, tolerating code fences and text around the object.
+ * Returns null when there is no parseable object (e.g. a truncated answer).
+ */
+export function parseAnalysisJson(text: string): Record<string, unknown> | null {
+  const stripped = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  const candidates = [stripped];
+  const first = stripped.indexOf("{");
+  const last = stripped.lastIndexOf("}");
+  if (first !== -1 && last > first) candidates.push(stripped.slice(first, last + 1));
+  for (const c of candidates) {
+    try {
+      const v = JSON.parse(c) as unknown;
+      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+    } catch {
+      // try the next candidate
+    }
   }
+  return null;
+}
+
+function finishAnalysis(text: string, model: string, youtube: boolean, maxScriptChars?: number | null): ReferenceAnalysis {
+  const parsed = parseAnalysisJson(text);
+  if (!parsed) throw new Error("Gemini returned an analysis that is not valid JSON.");
   const analysis = normalizeAnalysis(parsed, model);
   analysis.source = youtube ? "youtube" : "video";
   if (typeof maxScriptChars === "number" && maxScriptChars > 0 && analysis.suggestedScript.length > maxScriptChars) {
@@ -602,6 +618,7 @@ function finishAnalysis(text: string, model: string, youtube: boolean, maxScript
 // file (uploads live in our public storage bucket), so nothing is re-uploaded.
 // Any failure falls back to calling Gemini directly.
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MAX_TOKENS = 20_000;
 
 export class OpenRouterError extends Error {
   constructor(message: string, readonly status: number) {
@@ -637,6 +654,9 @@ export async function analyzeViaOpenRouter(
           model,
           messages: [{ role: "user", content: [{ type: "video_url", video_url: { url: videoUrl } }, { type: "text", text: prompt }] }],
           response_format: { type: "json_object" },
+          // The detailed per-beat spec is long; without an explicit limit the
+          // answer can come back cut off (and so not valid JSON).
+          max_tokens: OPENROUTER_MAX_TOKENS,
         }),
         signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
       });
@@ -646,14 +666,16 @@ export async function analyzeViaOpenRouter(
     }
     const data = (await res.json().catch(() => ({}))) as {
       error?: { message?: string; code?: number };
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
       model?: string;
     };
     if (res.ok && !data.error) {
       const text = (data.choices?.[0]?.message?.content ?? "").trim();
-      if (text) return { text, model: (data.model ?? model).replace(/^google\//, ""), usage: data.usage ?? {} };
-      errors.push(`${model}: empty response`);
+      if (text && parseAnalysisJson(text)) {
+        return { text, model: (data.model ?? model).replace(/^google\//, ""), usage: data.usage ?? {} };
+      }
+      errors.push(`${model}: ${text ? `invalid JSON (finish_reason=${data.choices?.[0]?.finish_reason ?? "?"}, ${text.length} chars)` : "empty response"}`);
       continue;
     }
     const status = data.error?.code ?? res.status;
