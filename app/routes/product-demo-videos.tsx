@@ -9,16 +9,16 @@ import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
   return buildMeta({
-    title: "AI product demo video maker for SaaS — Videly",
+    title: "AI Product Demo Video Maker for SaaS — Videly",
     description:
-      "Generate a polished product demo video from screenshots and a short script. Videly is the AI product demo video maker built for SaaS founders, PMs, and growth teams.",
+      "Make a SaaS product demo video with AI: screenshots and a short script in, a motion-designed demo out in minutes. No agency, no editor. Start free.",
     path: "/product-demo-videos",
   });
 }
 
 const CONTENT: UseCaseContent = {
-  eyebrow: "PRODUCT DEMOS · AI VIDEO GENERATOR",
-  headline: "A product demo video that doesn't look like a",
+  eyebrow: "AI PRODUCT DEMO VIDEO MAKER",
+  headline: "The AI product demo video maker for SaaS — demos that don't look like a",
   headlineHighlight: "screen recording.",
   subhead:
     "Videly is the AI product demo video maker for SaaS teams who want a real demo — motion design, scene composition, voice-over — without booking a video agency. Drop in screenshots, write a paragraph, get a demo your sales team will actually use.",
@@ -97,6 +97,18 @@ const CONTENT: UseCaseContent = {
     {
       q: "Will the AI hallucinate features I don't have?",
       a: "No — the renderer composes from the screenshots you provide. The director's script-to-scene mapping is grounded in what you wrote, so it won't invent flows. You're always shown the storyboard before render.",
+    },
+    {
+      q: "How do I create a product demo video with AI?",
+      a: "Write one paragraph describing the problem your product solves and the flow you want to show, add screenshots or your product URL, and pick an aspect ratio. Videly's director turns that into a storyboard (hook, problem, walkthrough, payoff, CTA), you approve it, and it renders an MP4 with motion design, captions and optional voice-over.",
+    },
+    {
+      q: "What's the best AI tool for a SaaS product demo video?",
+      a: "It depends on the demo. For a live, talking-head walkthrough, a screen recorder like Loom is fastest. For an avatar presenter, Synthesia. For a motion-designed demo built from your own UI (the kind that sits on a landing page or in a launch post) Videly is built for exactly that, and you can try it free.",
+    },
+    {
+      q: "How much does a product demo video cost?",
+      a: "Agencies and freelance motion designers usually quote per video and take one to several weeks. With Videly you can start free (3,100 credits a month) and paid plans start at $19/month, so re-rendering a demo after a UI change costs minutes, not a new invoice.",
     },
     {
       q: "Can I update the demo after I ship a UI change?",
