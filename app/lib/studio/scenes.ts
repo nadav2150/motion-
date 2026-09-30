@@ -37,7 +37,8 @@ export const parallelScenesEnabled = (): boolean => process.env.STUDIO_PARALLEL_
 export const MAX_SCENES = 6;
 export const MIN_SCENES = 2;
 export const SCENE_CONCURRENCY = 6;
-const SECONDS_PER_SCENE = 6.5;
+// The slowest scene gates the step, so scenes stay short: 15 s → 3, 30 s → 5.
+const SECONDS_PER_SCENE = 5.5;
 const STYLE_MAX_TOKENS = 12_000;
 const SCENE_MAX_TOKENS = 24_000;
 const PARALLEL_EFFORT: OpusEffort = "medium";

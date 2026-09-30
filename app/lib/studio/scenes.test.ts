@@ -46,20 +46,27 @@ function expectContiguous(scenes: SceneSpec[], duration: number, beatCount: numb
 }
 
 describe("splitScenes", () => {
-  it("scene counts: 15 s → 2, 30 s → 5, 60 s → 6", () => {
-    expect(targetSceneCount(15)).toBe(2);
-    expect(targetSceneCount(20)).toBe(3);
+  it("scene counts: 15 s → 3, 30 s → 5, 60 s → 6", () => {
+    expect(targetSceneCount(15)).toBe(3);
+    expect(targetSceneCount(20)).toBe(4);
     expect(targetSceneCount(30)).toBe(5);
     expect(targetSceneCount(45)).toBe(6);
     expect(targetSceneCount(60)).toBe(6);
     expect(targetSceneCount(5)).toBe(2);
   });
 
-  it("15 s with 3 s beats → 2 balanced scenes", () => {
+  it("15 s with 3 s beats → 3 balanced scenes", () => {
     const s = splitScenes(plan(15, beatsEvery(15, 3)));
-    expect(s).toHaveLength(2);
+    expect(s).toHaveLength(3);
     expectContiguous(s, 15, 5);
-    expect(s.map((x) => x.end - x.start).sort()).toEqual([6, 9]);
+    expect(s.map((x) => x.end - x.start).sort()).toEqual([3, 6, 6]);
+  });
+
+  it("15 s with 7.5 s beats → 2 scenes (never more than beats)", () => {
+    expect(splitScenes(plan(15, beatsEvery(15, 7.5))).map((x) => [x.start, x.end])).toEqual([
+      [0, 7.5],
+      [7.5, 15],
+    ]);
   });
 
   it("30 s with 2.5 s beats → 5 scenes of ~6 s", () => {
@@ -84,15 +91,15 @@ describe("splitScenes", () => {
   });
 
   it("moves a cut off a voiceover line that would straddle it", () => {
-    // Beats every 3 s; the balanced cut would be 6 or 9. A line runs 5–7.5 s,
-    // so 6 is inside it: the split must cut at 9.
+    // 10 s, 2.5 s beats → 2 scenes; the balanced cut is 5. A line runs
+    // 4–6.5 s, so 5 is inside it: the split must cut at 7.5 (or 2.5).
     const vo = [
-      { text: "a", start: 0.2, end: 4.8 },
-      { text: "b", start: 5, end: 7.5 },
-      { text: "c", start: 9, end: 14 },
+      { text: "a", start: 0.2, end: 3.8 },
+      { text: "b", start: 4, end: 6.5 },
+      { text: "c", start: 7.6, end: 9.5 },
     ];
-    const s = splitScenes(plan(15, beatsEvery(15, 3), vo));
-    expect(s.map((x) => x.end)).toEqual([9, 15]);
+    const s = splitScenes(plan(10, beatsEvery(10, 2.5), vo));
+    expect(s.map((x) => x.end)).toEqual([7.5, 10]);
     expect(s[0]!.voLines.map((l) => l.text)).toEqual(["a", "b"]);
     expect(s[1]!.voLines.map((l) => l.text)).toEqual(["c"]);
   });
@@ -257,6 +264,53 @@ describe("assembleDocument", () => {
     const doc = assembleDocument({ foundation: FOUNDATION, scenes: scenes.slice(0, 1), code: [bad], libraries: ["gsap"], preset, duration: 6, fps: 30 });
     expect(doc.match(/<\/script>/g)!.length).toBe(doc.match(/<script\b/g)!.length);
   });
+});
+
+// Real browser: the assembled document renders, switches scenes at the
+// boundary, and a throwing scene is reported without blanking the others.
+describe.runIf(process.env.RUN_RENDER_TESTS === "1")("assembled document in the real renderer", () => {
+  const preset = { width: 640, height: 360 };
+  const scenes: SceneSpec[] = [
+    { index: 1, start: 0, end: 2, beats: [], voLines: [] },
+    { index: 2, start: 2, end: 4, beats: [], voLines: [] },
+  ];
+  const color = (n: number, bg: string): SceneCode => ({
+    html: `<section class="scene" id="scene-${n}"><div class="s${n}-bg"></div><div class="s${n}-dot"></div></section>`,
+    css: `.s${n}-bg{position:absolute;inset:0;background:${bg}} .s${n}-dot{position:absolute;left:20px;top:150px;width:60px;height:60px;background:#fff}`,
+    js: `tl.to(root.querySelector(".s${n}-dot"), { x: 400, duration: 1.8, ease: "none" }, ${scenes[n - 1]!.start});`,
+  });
+
+  it("switches scenes at the boundary and reports a throwing scene", async () => {
+    const { captureFrames } = await import("./render");
+    const { shutdownBrowser } = await import("./browser");
+    const sharp = (await import("sharp")).default;
+    const broken = { ...color(2, "#0000ff"), js: `throw new Error("kaboom");` };
+    const html = ensureVidelyMeta(
+      assembleDocument({ foundation: { ...FOUNDATION, fontsHead: "" }, scenes, code: [color(1, "#ff0000"), broken], libraries: ["gsap"], preset, duration: 4, fps: 30 }),
+      { duration: 4, fps: 30, ...preset },
+    );
+    try {
+      const r = await captureFrames({ html, ...preset, fps: 30, duration: 4, seed: 1, allowedHosts: [] }, [0.5, 1.5, 3]);
+      expect(r.meta).toEqual({ duration: 4, fps: 30, ...preset });
+      const px = async (jpeg: Buffer) => {
+        const { data } = await sharp(jpeg).extract({ left: 600, top: 10, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+        return [data[0]!, data[1]!, data[2]!];
+      };
+      const [a, , c] = await Promise.all(r.frames.map((f) => px(f.jpeg)));
+      expect(a![0]).toBeGreaterThan(200); // scene 1: red
+      expect(c![2]).toBeGreaterThan(200); // scene 2 (its CSS still applies): blue
+      expect(r.issues.some((i) => i.kind === "pageerror" && /kaboom/.test(i.message))).toBe(true);
+      // Scene 1's dot moved between 0.5 s and 1.5 s.
+      const dotX = async (jpeg: Buffer) => {
+        const { data, info } = await sharp(jpeg).extract({ left: 0, top: 180, width: 640, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+        for (let x = 0; x < 640; x++) if (data[x * info.channels]! > 200 && data[x * info.channels + 1]! > 200) return x;
+        return -1;
+      };
+      expect(await dotX(r.frames[1]!.jpeg)).toBeGreaterThan((await dotX(r.frames[0]!.jpeg)) + 100);
+    } finally {
+      await shutdownBrowser().catch(() => {});
+    }
+  }, 120_000);
 });
 
 describe("mapLimit", () => {

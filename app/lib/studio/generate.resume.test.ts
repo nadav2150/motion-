@@ -540,11 +540,11 @@ describe("resumeStateFor", () => {
 });
 
 describe("runStudioJob — parallel scenes", () => {
-  // Five 3 s beats over 15 s → two scenes (0–6 s, 6–15 s). The single-beat
+  // Two 7.5 s beats over 15 s → two scenes. The single-beat
   // PLAN above always takes the single code call (one scene: nothing to split).
   const MULTI: StudioPlan = {
     ...PLAN,
-    beats: [0, 3, 6, 9, 12].map((t) => ({ start: t, end: t + 3, visual: `v${t}`, technique: "t" })),
+    beats: [0, 7.5].map((t) => ({ start: t, end: t + 7.5, visual: `v${t}`, technique: "t" })),
   };
   const ready = (run?: StudioPlanRecord["run"]) =>
     makeRow({
@@ -570,8 +570,8 @@ describe("runStudioJob — parallel scenes", () => {
     expect(last.draftPath).toBe("jobs/job1/v2/runs/task-1/draft.html");
     expect(last.parallel).toMatchObject({
       split: [
-        [0, 6],
-        [6, 15],
+        [0, 7.5],
+        [7.5, 15],
       ],
       stylePath: "jobs/job1/v2/runs/task-1/style.json",
       scenes: { "1": "jobs/job1/v2/runs/task-1/scene-1.json", "2": "jobs/job1/v2/runs/task-1/scene-2.json" },
@@ -621,8 +621,8 @@ describe("runStudioJob — parallel scenes", () => {
       assetsReady: true,
       parallel: {
         split: [
-          [0, 6],
-          [6, 15],
+          [0, 7.5],
+          [7.5, 15],
         ],
         stylePath: "jobs/job1/v2/runs/task-1/style.json",
         scenes: { "1": "jobs/job1/v2/runs/task-1/scene-1.json" },
