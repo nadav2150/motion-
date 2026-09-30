@@ -74,6 +74,11 @@ EXPOSE 8080
 RUN chown -R pwuser:pwuser /app
 USER pwuser
 
+# Worker secrets reach the container only when an instance starts, and
+# `wrangler deploy` replaces running instances only when the image changes.
+# After changing secrets, bump this value and deploy to roll every instance.
+LABEL io.videly.rollout="2026-09-30-dodo-test-mode"
+
 # Two processes, one container: the React Router web server and the Studio
 # task worker (studio_tasks queue; generate / edit / render run there, so web
 # requests never share a process with headless-Chrome renders and a web
