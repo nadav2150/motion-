@@ -15,6 +15,7 @@ import { MarketingShell } from "./marketing-shell";
 export type UseCaseFaq = { q: string; a: string };
 export type UseCaseExample = { title: string; description: string };
 export type UseCaseSolution = { title: string; description: string };
+export type UseCaseAlternative = { name: string; bestFor: string; description: string };
 
 export type UseCaseContent = {
   // 11-char monospace pill above the headline. Keep keyword-led, ALL CAPS.
@@ -39,6 +40,10 @@ export type UseCaseContent = {
   faq: UseCaseFaq[];
   // Primary CTA text. Defaults to "Start free".
   ctaLabel?: string;
+  // "X alternatives" pages: a ranked list of tools, one <h3> per tool, shown
+  // between the examples and the FAQ. Searchers for "loom alternative" expect
+  // a list, not a one-on-one comparison, so keep competitors described fairly.
+  alternatives?: { heading: string; intro: string; items: UseCaseAlternative[] };
 };
 
 export const UseCaseScreen = ({
@@ -189,6 +194,35 @@ export const UseCaseScreen = ({
         </div>
       </div>
     </section>
+
+    {content.alternatives && (
+      <section style={{ padding: "96px 24px", borderTop: "1px solid var(--line)" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto" }}>
+          <div className="mf-eyebrow" style={{ marginBottom: 16 }}>ALTERNATIVES</div>
+          <h2 style={{ margin: 0, fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+            {content.alternatives.heading}
+          </h2>
+          <p style={{ marginTop: 20, fontSize: 17, color: "var(--ink-2)", lineHeight: 1.65 }}>
+            {content.alternatives.intro}
+          </p>
+          <ol style={{ listStyle: "none", padding: 0, margin: "36px 0 0", display: "flex", flexDirection: "column", gap: 16 }}>
+            {content.alternatives.items.map((alt, i) => (
+              <li key={i}>
+                <Glass style={{ padding: 28 }}>
+                  <h3 style={{ margin: 0, fontSize: 19, fontWeight: 500, letterSpacing: "-0.015em" }}>
+                    {i + 1}. {alt.name}
+                  </h3>
+                  <div className="mf-mono" style={{ marginTop: 8, fontSize: 12, color: "var(--ink-3)", letterSpacing: "0.04em" }}>
+                    BEST FOR: {alt.bestFor}
+                  </div>
+                  <p style={{ marginTop: 12, fontSize: 14, color: "var(--ink-2)", lineHeight: 1.6 }}>{alt.description}</p>
+                </Glass>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+    )}
 
     {/* FAQ */}
     <section style={{ padding: "96px 24px", borderTop: "1px solid var(--line)", background: "rgba(8,9,13,0.4)" }}>

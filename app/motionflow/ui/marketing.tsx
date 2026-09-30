@@ -108,6 +108,7 @@ const FOOTER_COLS: { title: string; links: { href: string; label: string }[] }[]
       { href: "/feature-announcement-videos", label: "Feature announcements" },
       { href: "/product-demo-videos", label: "Product demos" },
       { href: "/demo-video-agency-alternative", label: "Demo video agency alternative" },
+      { href: "/saas-explainer-video", label: "SaaS explainer videos" },
     ],
   },
   {
@@ -118,6 +119,8 @@ const FOOTER_COLS: { title: string; links: { href: string; label: string }[] }[]
       { href: "/vs/runway", label: "Videly vs Runway" },
       { href: "/vs/pictory", label: "Videly vs Pictory" },
       { href: "/vs/veed", label: "Videly vs Veed" },
+      { href: "/loom-alternative", label: "Loom alternatives" },
+      { href: "/synthesia-alternative", label: "Synthesia alternatives" },
     ],
   },
   {

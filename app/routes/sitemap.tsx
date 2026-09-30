@@ -26,6 +26,7 @@ const ENTRIES: SitemapEntry[] = [
   { path: "/feature-announcement-videos",  changefreq: "weekly", priority: "0.8" },
   { path: "/product-demo-videos",          changefreq: "weekly", priority: "0.8" },
   { path: "/demo-video-agency-alternative", changefreq: "weekly", priority: "0.8" },
+  { path: "/saas-explainer-video",          changefreq: "weekly", priority: "0.8" },
 
   // Competitor comparison pages. Monthly is enough — these only change
   // when a competitor changes pricing or we update the feature table.
@@ -34,6 +35,8 @@ const ENTRIES: SitemapEntry[] = [
   { path: "/vs/runway",    changefreq: "monthly", priority: "0.7" },
   { path: "/vs/pictory",   changefreq: "monthly", priority: "0.7" },
   { path: "/vs/veed",      changefreq: "monthly", priority: "0.7" },
+  { path: "/loom-alternative",      changefreq: "monthly", priority: "0.7" },
+  { path: "/synthesia-alternative", changefreq: "monthly", priority: "0.7" },
 
   { path: "/privacy", changefreq: "yearly",  priority: "0.3" },
   { path: "/terms",   changefreq: "yearly",  priority: "0.3" },

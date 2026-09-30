@@ -9,16 +9,16 @@ import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
   return buildMeta({
-    title: "AI launch video generator — Videly",
+    title: "Product Launch Video Maker — AI Launch Videos for SaaS | Videly",
     description:
-      "Make a SaaS launch video without an editor or motion designer. Videly's AI launch video generator turns screenshots, scripts, and brand colours into a polished launch video in minutes.",
+      "Make a product launch video without an editor or motion designer. Videly turns screenshots, a short script and your brand colours into a polished SaaS launch video in minutes.",
     path: "/launch-videos",
   });
 }
 
 const CONTENT: UseCaseContent = {
-  eyebrow: "LAUNCH VIDEOS · AI MOTION DESIGN",
-  headline: "Ship a launch video the same day you ship the",
+  eyebrow: "PRODUCT LAUNCH VIDEO MAKER",
+  headline: "Make a product launch video the same day you ship the",
   headlineHighlight: "product.",
   subhead:
     "Videly is an AI launch video generator built for SaaS teams. Drop in your screenshots, paste a 1-paragraph script, and get a launch-ready video — scenes, transitions, captions, music — without hiring a motion designer.",
