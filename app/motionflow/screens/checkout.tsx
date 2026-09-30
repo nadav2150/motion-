@@ -399,7 +399,7 @@ export function CheckoutScreen({
               }}
             >
               <CoLockIcon />
-              Payment details are collected securely by Polar once you continue.
+              Payment details are collected securely by our payment processor once you continue.
             </div>
           </CoSection>
 
@@ -568,7 +568,7 @@ export function CheckoutScreen({
                     lineHeight: 1.45,
                   }}
                 >
-                  Local sales tax and any promo codes are applied at the secure Polar checkout based on your billing location.
+                  Local sales tax and any promo codes are applied at the secure checkout based on your billing location.
                 </div>
                 <div
                   className="mf-mono"
@@ -632,7 +632,7 @@ export function CheckoutScreen({
             {[
               { i: <IconCheck size={11} />, t: "Cancel anytime — no questions" },
               { i: <IconCheck size={11} />, t: "30-day money-back guarantee" },
-              { i: <CoLockIcon />, t: "Secured by Polar · SSL encrypted" },
+              { i: <CoLockIcon />, t: "Secure checkout · SSL encrypted" },
             ].map((it, i) => (
               <div
                 key={i}

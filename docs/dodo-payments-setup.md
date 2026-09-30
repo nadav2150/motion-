@@ -63,6 +63,33 @@ local dev put the same keys in `.env`.
 
 ## 5. Go live
 
-Dodo only allows live payments after business verification
-(dashboard → Verification, reviews take up to 72h). Then: import products to
-Live, add the live webhook, set the `DODO_LIVE_*` secrets, `DODO_ENV=live_mode`.
+Dodo only allows live payments after verification (dashboard → Verification):
+account type → Product Information Form → identity (Persona: government ID +
+selfie) → payout bank details. Reviews take 1–3 business days; payouts also
+need a compliance review.
+
+Reviewers compare the form to videly.io, which already has public pricing,
+/terms, /privacy, /refund and support@videly.io; those pages name Dodo Payments
+as merchant of record (deploy this branch before submitting).
+
+Suggested Product Information Form answers (must match the site):
+
+| Field | Answer |
+|---|---|
+| Website | https://videly.io |
+| Description | Videly turns a script or idea into a finished AI-generated motion video (storyboard, visuals, voiceover) in the browser. |
+| Category | SaaS |
+| Delivery | Instant access; monthly subscriptions plus one-time credit packs |
+| Automation | Fully automated |
+| Compliance-sensitive | None (AI-generated video content; no regulated goods) |
+| Integration | Checkout Sessions API + webhooks |
+| Pricing | Starter $19/mo, Pro $49/mo, Studio $149/mo; packs $13 / $59 / $159 |
+
+Then, in Live Mode:
+
+1. Products → **Import from Test** (copies all six products) and note the new `pdt_…` ids.
+2. Developer → Webhooks → add `https://videly.io/api/webhooks/dodo` again (Live has its own secret).
+3. Developer → API Keys → create a Live key.
+4. Secrets: `DODO_LIVE_API_KEY`, `DODO_LIVE_WEBHOOK_SECRET`, the six `DODO_LIVE_PRODUCT_*`, then
+   `DODO_ENV=live_mode` (keep `BILLING_PROVIDER=dodo`).
+5. Buy the cheapest item (5,000-credit pack, $13) with a real card, confirm the credits land, refund it.

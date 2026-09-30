@@ -503,7 +503,7 @@ export function PaywallModal({
             {[
               "Cancel anytime — credits stay until period end",
               "Top up with one-time credit packs anytime",
-              "Secure payment · Polar",
+              "Secure payment · SSL encrypted",
             ].map((t, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <IconCheck size={11} style={{ color: "rgba(166,240,189,0.7)" }} />
