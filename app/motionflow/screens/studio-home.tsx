@@ -109,6 +109,7 @@ export function StudioHomeScreen({
   const [language, setLanguage] = useState("en");
   const [music, setMusic] = useState(true);
   const [useBrandKit, setUseBrandKit] = useState(true);
+  const [matchReference, setMatchReference] = useState(true);
   const [template, setTemplate] = useState<StudioTemplate | null>(null);
   const [voices, setVoices] = useState<VoiceOption[]>(loaderVoices);
   const [submitting, setSubmitting] = useState(false);
@@ -294,6 +295,7 @@ export function StudioHomeScreen({
       sources,
       useBrandKit,
       templateId: template?.id ?? null,
+      ...(hasVideoRef ? { referenceMode: matchReference ? ("close" as const) : ("inspired" as const) } : {}),
     };
     try {
       const { id } = await api.createJob(input);
@@ -586,6 +588,22 @@ export function StudioHomeScreen({
                 </li>
               ))}
             </ul>
+          )}
+
+          {hasVideoRef && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <div className="inline-flex h-9 items-center gap-2 rounded-full border border-slate/55 bg-ink-800 px-3">
+                <Toggle checked={matchReference} onChange={setMatchReference} label="Match reference closely" size="sm" />
+                <span className="text-[13px] font-medium text-paper" aria-hidden>
+                  Match reference closely
+                </span>
+              </div>
+              <p className="text-[12px] text-silver" aria-live="polite">
+                {matchReference
+                  ? "Follows the reference's layouts, type, colors and pacing — with your content."
+                  : "Borrows the reference's feel only."}
+              </p>
+            </div>
           )}
 
           <div className="my-4 h-px bg-slate/35" />
