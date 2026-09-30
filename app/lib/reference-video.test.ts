@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeViaOpenRouter,
+  parseAnalysisJson,
   canonicalYouTubeUrl,
   generateWithFallback,
   getGeminiModels,
@@ -15,6 +16,18 @@ import {
   youTubeVideoId,
   type ReferenceAnalysis,
 } from "./reference-video";
+
+describe("parseAnalysisJson", () => {
+  it("accepts fences and text around the object", () => {
+    expect(parseAnalysisJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(parseAnalysisJson('Sure! {"a":1} Hope this helps.')).toEqual({ a: 1 });
+  });
+  it("rejects cut-off or non-object answers", () => {
+    expect(parseAnalysisJson('{"a":1, "b": [')).toBeNull();
+    expect(parseAnalysisJson("[1,2]")).toBeNull();
+    expect(parseAnalysisJson("")).toBeNull();
+  });
+});
 
 describe("analyzeViaOpenRouter", () => {
   const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -46,6 +59,19 @@ describe("analyzeViaOpenRouter", () => {
     const r = await analyzeViaOpenRouter("https://x.test/v.mp4", "p", "k", ["a", "b", "c"], f);
     expect(seen).toEqual(["google/a", "google/b", "google/c"]);
     expect(r.model).toBe("c");
+  });
+
+  it("treats a cut-off (invalid JSON) answer as a failure and tries the next model", async () => {
+    const seen: string[] = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      const model = JSON.parse(String(init.body)).model as string;
+      seen.push(model);
+      if (model.endsWith("a")) return reply(200, { choices: [{ message: { content: '{"summary":"cut of' }, finish_reason: "length" }] });
+      return reply(200, { model, choices: [{ message: { content: 'Here you go:\n```json\n{"summary":"ok"}\n```' } }] });
+    }) as unknown as typeof fetch;
+    const r = await analyzeViaOpenRouter("https://x.test/v.mp4", "p", "k", ["a", "b"], f);
+    expect(seen).toEqual(["google/a", "google/b"]);
+    expect(r.model).toBe("b");
   });
 
   it("stops at once on an account problem (no credit)", async () => {

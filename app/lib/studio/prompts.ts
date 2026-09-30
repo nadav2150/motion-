@@ -620,7 +620,9 @@ export function buildPlanMessages(ctx: PlanContext): OpusMessage[] {
 
 // ─── CODE ──────────────────────────────────────────────────────────────────
 
-export function buildCodeMessages(ctx: CodeContext): OpusMessage[] {
+// Canvas, plan, cues, assets, brand kit and reference text: everything the
+// code call and the parallel foundation / scene calls share.
+function codeContextParts(ctx: CodeContext): { parts: string[]; frames: ReferencePromptFrame[] } {
   const parts: string[] = [];
   parts.push(canvasBlock(ctx.preset, ctx.duration, ctx.fps));
   parts.push(`LANGUAGE: ${ctx.language}`);
@@ -643,6 +645,12 @@ export function buildCodeMessages(ctx: CodeContext): OpusMessage[] {
   if (ctx.brandKit) parts.push(tag("brand_kit", brandKitBlock(ctx.brandKit)));
   const ref = referenceBlocks(ctx, "code", { template: false });
   parts.push(...ref.parts);
+  return { parts, frames: ref.frames };
+}
+
+export function buildCodeMessages(ctx: CodeContext): OpusMessage[] {
+  const { parts, frames } = codeContextParts(ctx);
+  const ref = { frames };
   const budget = ctx.budgetKb ?? documentBudgetKb(ctx.duration);
   parts.push(
     `SIZE BUDGET: the whole document must stay under ${budget} KB (about ${budget * 250} tokens). ` +
@@ -663,6 +671,195 @@ export function buildCodeMessages(ctx: CodeContext): OpusMessage[] {
         ...referenceFrameContent(ctx.reference, ref.frames),
         { type: "text", text: "(end of reference frames)", cache: true },
         { type: "text", text },
+      ],
+    },
+  ];
+}
+
+// ─── PARALLEL SCENES (foundation call + one call per scene) ────────────────
+//
+// Caching layout: system = [STUDIO_CORE_SYSTEM, PARALLEL_TASK] (the same two
+// blocks for the foundation and every scene call), then in the user message
+// [reference images…, shared context (cached), foundation (cached, scene calls
+// only), the scene's own text]. The foundation call writes the context block
+// to the cache; every scene call reads it.
+
+export const PARALLEL_TASK = `
+TASK: WRITE THE VIDEO IN PARALLEL SCENES. To finish faster, the video is written by several calls at once: first one FOUNDATION call designs the shared visual system, then one SCENE call per scene designs and codes that scene. The scene calls run simultaneously and cannot see each other's code; an assembler stitches the parts into the final document. The creative bar in your system prompt applies in full: every scene is designed from scratch — a designed idea per beat, kinetic typography, layered depth, designed transitions. The foundation is a shared vocabulary, not a template, and scenes must not look like copies of each other.
+This replaces rule 1 of the document contract: you never write the whole document. Rules 4–8 still apply to every part you write.
+
+WHAT THE ASSEMBLER WRITES (never write these yourself)
+• <!DOCTYPE html>, <html>, <head> with window.__videly (exact numbers) and the <head> tags of the plan's libraries; html/body sized to the canvas with margin 0 and overflow hidden; <div id="stage"> holding the scene sections in order (later scenes stack on top).
+• ONE <script type="module"> that: imports THREE (as \`THREE\`) when three is a plan library and createNoise2D/createNoise3D/createNoise4D when simplex-noise is; registers every loaded GSAP plugin; runs the foundation helpers on the object V; creates the ONE master timeline \`tl\` (paused, window.__videly.timeline = tl); waits for document.fonts.ready; calls each scene's function in order (a scene that throws is reported without stopping the others); awaits the Promises they return (that is window.__videly.ready); and ends the timeline at the duration.
+• Scene visibility: #scene-N is visibility:hidden outside its window [start, end) and visible inside it (the first scene from 0, the last one until the end). Cuts between scenes are therefore exact at the boundary times; a transition is designed as the outgoing scene's exit plus the incoming scene's entrance meeting at the boundary as described in the handoff.
+
+WHEN ASKED FOR THE FOUNDATION — JSON matching the schema:
+• fontsHead: only <link> tags for the fonts (Google Fonts css2 with &display=block, or /studio-libs/fonts/inter/inter.css) and, if scenes need them, extra /studio-libs/gsap/*.min.js plugin <script src> tags. Nothing else.
+• css: :root design tokens (palette as --c-*, font stacks --font-display / --font-text, type scale --fs-*, spacing, radii, shadows), shared utility classes prefixed "v-", shared keyframes prefixed "v-", and optionally a film-grain / vignette overlay on #stage::after (z-index above the scenes, pointer-events none). Do not position or size html, body, #stage or .scene (the assembler owns that) and put nothing scene-specific here.
+• helpersJs: JavaScript statements that register the signature eases (CustomEase.create) and attach small shared helpers to V — e.g. V.clamp, V.lerp, V.reveal = (tl, el, at, o) => …, V.wipeIn(tl, el, at). Helpers are deterministic functions of their arguments: they add tweens only to the timeline they receive, at the positions they receive, and touch only the elements they receive. No other top-level side effects. At most ~4 KB.
+• motionLanguage: the easing and duration vocabulary every scene uses (named eases and when to use each, entrance / exit durations, stagger values, the ambient drift rule).
+• transitionStyle: the rule for how scenes hand over, so neighbours match (e.g. "cuts land on the VO line start; the outgoing scene spends its last 0.3 s pushing its layers out left with a blur whip; the incoming scene's layers arrive from the right").
+• scenes: one entry per scene: a one-line summary — its role in the story, what it shows, and its signature move (different for every scene).
+• handoffs: one entry per boundary (after = the outgoing scene's index): the exact frame state at the cut — what the outgoing scene's last frame shows and what the incoming scene's first frame shows (match cut, colour flood that becomes the next background, wipe cover, hard cut on a word…). Vary them. Both neighbours are given this text verbatim.
+
+WHEN ASKED FOR SCENE N — JSON {html, css, js}:
+• html: exactly ONE <section class="scene" id="scene-N">…</section>. Every id, class and SVG id you invent inside starts with "sN-" (foundation "v-" classes are fine). No <script>, <style> or <link> in it.
+• css: every selector starts with #scene-N (keyframes named sN-…). Use the foundation tokens (var(--c-…), var(--font-…)). Never style html, body, #stage or other scenes, and never set visibility / display / opacity on #scene-N itself.
+• js: the BODY of \`async function (tl, root, V)\` — tl is the master timeline, root this scene's <section>, V the foundation helpers. Add every tween at an ABSOLUTE time inside the scene's window (tl.to(el, {...}, 12.4)). Query only inside root (root.querySelector…). No window.__videly writes, no other timelines driving the video, no tl.set({}, {}, …) padding, no globals, no top-level import statements. Async setup (img.decode(), await import("three/addons/…")) may be awaited: the returned Promise gates the first frame. Canvas / WebGL follow the contract: a requestAnimationFrame loop computes t = performance.now() / 1000, draws only while start - 0.05 ≤ t ≤ end, and always re-requests the next frame.
+• Fill the whole window: something designed and moving in every frame from start to end. The entrance at start follows the handoff from the previous scene; the exit before end follows the handoff to the next scene; the last scene ends on the composed, held lockup. Hit this scene's VO cues exactly.
+• Stay inside the scene's SIZE BUDGET; keep thinking short and spend the tokens on the scene.
+`.trim();
+
+export type SceneSpec = { index: number; start: number; end: number; beats: StudioPlan["beats"]; voLines: VoLine[] };
+
+export type StyleFoundation = {
+  fontsHead: string;
+  css: string;
+  helpersJs: string;
+  motionLanguage: string;
+  transitionStyle: string;
+  scenes: { index: number; summary: string }[];
+  handoffs: { after: number; frame: string }[];
+};
+
+export type SceneCode = { html: string; css: string; js: string };
+
+export const STYLE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["fontsHead", "css", "helpersJs", "motionLanguage", "transitionStyle", "scenes", "handoffs"],
+  properties: {
+    fontsHead: { type: "string" },
+    css: { type: "string" },
+    helpersJs: { type: "string" },
+    motionLanguage: { type: "string" },
+    transitionStyle: { type: "string" },
+    scenes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["index", "summary"],
+        properties: { index: { type: "number" }, summary: { type: "string" } },
+      },
+    },
+    handoffs: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["after", "frame"],
+        properties: { after: { type: "number" }, frame: { type: "string" } },
+      },
+    },
+  },
+} as const;
+
+export const SCENE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["html", "css", "js"],
+  properties: { html: { type: "string" }, css: { type: "string" }, js: { type: "string" } },
+} as const;
+
+function sceneRange(s: Pick<SceneSpec, "start" | "end">): string {
+  return `${fmtNum(s.start)}–${fmtNum(s.end)}s`;
+}
+
+/** The scene split as the shared context states it (same text for every call). */
+export function sceneListBlock(scenes: SceneSpec[]): string {
+  return [
+    `SCENES: the video is split into ${scenes.length} scenes at beat boundaries (written in parallel):`,
+    ...scenes.map(
+      (s) =>
+        `scene ${s.index} (id "scene-${s.index}", prefix "s${s.index}-"): ${sceneRange(s)} — ${s.beats.length} beat${s.beats.length === 1 ? "" : "s"}` +
+        (s.voLines.length ? `, VO lines: ${s.voLines.map((l) => `"${l.text}"`).join(" ")}` : ""),
+    ),
+  ].join("\n");
+}
+
+export type ParallelContext = CodeContext & { scenes: SceneSpec[] };
+
+// Images first, then the shared context text with a cache breakpoint.
+function parallelPrefix(ctx: ParallelContext): OpusContent[] {
+  const { parts, frames } = codeContextParts(ctx);
+  parts.push(sceneListBlock(ctx.scenes));
+  return [...referenceFrameContent(ctx.reference, frames), { type: "text", text: parts.join("\n\n"), cache: true }];
+}
+
+export function buildStyleMessages(ctx: ParallelContext): OpusMessage[] {
+  return [
+    {
+      role: "user",
+      content: [
+        ...parallelPrefix(ctx),
+        {
+          type: "text",
+          text:
+            `Write the FOUNDATION JSON now for these ${ctx.scenes.length} scenes: ${ctx.scenes.length} scene summaries and ` +
+            `${ctx.scenes.length - 1} handoffs. Use the plan's palette and typography` +
+            (ctx.brandKit ? ", with the brand kit winning" : "") +
+            (ctx.reference && referenceModeOf(ctx.referenceMode) === "close" ? ", matching the reference's look" : "") +
+            ". Keep it compact: this call gates every scene.",
+        },
+      ],
+    },
+  ];
+}
+
+/** The foundation as the scene calls see it (byte-identical for every scene: cached). */
+export function foundationBlock(f: StyleFoundation, scenes: SceneSpec[]): string {
+  const range = new Map(scenes.map((s) => [s.index, s]));
+  return [
+    "FOUNDATION (written already — shared by every scene; use it as is):",
+    `fontsHead:\n${f.fontsHead.trim() || "(none)"}`,
+    `Shared CSS (loaded before your css):\n${f.css.trim()}`,
+    `Helpers on V (already defined when your function runs):\n${f.helpersJs.trim() || "(none)"}`,
+    `MOTION LANGUAGE: ${f.motionLanguage.trim()}`,
+    `TRANSITION STYLE: ${f.transitionStyle.trim()}`,
+    "SCENE SUMMARIES:\n" +
+      f.scenes.map((s) => `scene ${s.index}${range.has(s.index) ? ` (${sceneRange(range.get(s.index)!)})` : ""}: ${s.summary}`).join("\n"),
+    "HANDOFFS:\n" +
+      f.handoffs
+        .map((h) => `scene ${h.after} → ${h.after + 1}${range.has(h.after) ? ` at ${fmtNum(range.get(h.after)!.end)}s` : ""}: ${h.frame}`)
+        .join("\n"),
+  ].join("\n\n");
+}
+
+export function buildSceneMessages(
+  ctx: ParallelContext,
+  foundation: StyleFoundation,
+  scene: SceneSpec,
+  budgetKb: number,
+): OpusMessage[] {
+  const n = scene.index;
+  const total = ctx.scenes.length;
+  const summary = (i: number) => foundation.scenes.find((s) => s.index === i)?.summary ?? "(see the plan)";
+  const handoff = (after: number) => foundation.handoffs.find((h) => h.after === after)?.frame ?? foundation.transitionStyle;
+  const lines = [
+    `YOUR SCENE: scene ${n} of ${total} — <section class="scene" id="scene-${n}">, window ${sceneRange(scene)} (${fmtNum(scene.end - scene.start)} s). Prefix every id/class you invent with "s${n}-"; scope every CSS selector under #scene-${n}.`,
+    `Your summary: ${summary(n)}`,
+    `BEATS (absolute times; implement every one, with its on-screen text):\n${JSON.stringify(scene.beats, null, 1)}`,
+    scene.voLines.length
+      ? "VOICEOVER CUES in this scene (measured — hit these exactly):\n" +
+        scene.voLines.map((l) => `${fmtNum(l.start)}–${fmtNum(l.end)}s: ${l.text}`).join("\n")
+      : "VOICEOVER CUES in this scene: none.",
+    n > 1
+      ? `ENTRANCE — previous scene ${n - 1}: ${summary(n - 1)}\nHandoff into you at ${fmtNum(scene.start)}s: ${handoff(n - 1)}`
+      : "ENTRANCE: you open the video — frame 0 must already look designed and the hook must land in the first 1.5 s.",
+    n < total
+      ? `EXIT — next scene ${n + 1}: ${summary(n + 1)}\nHandoff out of you at ${fmtNum(scene.end)}s: ${handoff(n)}`
+      : "EXIT: you close the video — hold a composed, legible lockup (logo/name + CTA) for at least the last 2 s.",
+    `SIZE BUDGET: html + css + js together under ${budgetKb} KB (about ${budgetKb * 250} tokens). Compact idioms: loops over data arrays, the V helpers, CSS classes.`,
+    `Return the scene ${n} JSON now.`,
+  ];
+  return [
+    {
+      role: "user",
+      content: [
+        ...parallelPrefix(ctx),
+        { type: "text", text: foundationBlock(foundation, ctx.scenes), cache: true },
+        { type: "text", text: lines.join("\n\n") },
       ],
     },
   ];
