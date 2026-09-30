@@ -11,7 +11,6 @@ import { withMeterContext } from "../billing/meter";
 import { getPlanFeatures } from "../billing/plan-features";
 import { flushPostHog, getPostHog } from "../posthog";
 import { uploadBuffer } from "../storage";
-import { markDone, markRunning } from "./active";
 import { callOpus, extractHtmlDocument, newTokenBudget } from "./anthropic";
 import {
   claimJob,
@@ -222,6 +221,12 @@ export async function repairUntilValid(
 /**
  * Run one Studio operation on a job: ambient meter context with a fresh token
  * budget, then settle credits (reconcileJob) and flush PostHog.
+ *
+ * Credits are settled only when the operation concludes (operations handle
+ * their own failures by restoring / failing the stage). If it throws, the
+ * worker retries the task — settling now would refund the reservation the
+ * retry still needs — or, with no attempts left, fails it and settles
+ * (queue.ts settleFailedTask).
  */
 export async function withStudioOperation<T>(
   row: Pick<StudioJobRow, "id" | "user_id">,
@@ -234,14 +239,13 @@ export async function withStudioOperation<T>(
   return withMeterContext(
     { userId: row.user_id, jobId: row.id, planTier, tokenBudget: newTokenBudget() },
     async () => {
-      markRunning(row.id);
       try {
-        return await fn();
-      } finally {
-        markDone(row.id);
+        const out = await fn();
         await reconcileJob(row.id).catch((err) =>
           console.error(`[studio ${row.id}] reconcile failed:`, err instanceof Error ? err.message : err),
         );
+        return out;
+      } finally {
         await flushPostHog();
       }
     },
@@ -315,21 +319,48 @@ export async function claimForOperation(row: StudioJobRow, stage: StudioStage): 
   return previous === "failed" ? "preview_ready" : previous;
 }
 
+/** The duration a document declares in `window.__videly = { duration }`, clamped. */
+export function declaredDuration(html: string): number | null {
+  const m = /__videly\s*=\s*\{[^}]*\bduration\s*:\s*(\d+(?:\.\d+)?)/.exec(html);
+  return m ? Math.min(120, Math.max(3, Number(m[1]))) : null;
+}
+
 /**
  * Apply a chat instruction to a revision (default: current) and store the
  * result as a new revision. The job must already be claimed (stage
- * "writing") by the caller; this runs in the background.
+ * "writing") by the caller; the worker runs this from an "edit" task.
+ *
+ * `expectedRevision` is the revision number the route promised (the job is
+ * claimed, so nothing else adds revisions meanwhile). When a re-claimed task
+ * finds that revision already saved as an edit, the edit is not redone: the
+ * job just moves to it.
  */
 export async function applyChatEdit(
   jobId: string,
   instruction: string,
   baseRevision?: number,
   restoreStage: StudioStage = "preview_ready",
+  opts: { expectedRevision?: number } = {},
 ): Promise<number | null> {
   const row = await getStudioJob(jobId);
   if (!row) throw new Error(`applyChatEdit: job ${jobId} not found`);
   return withStudioOperation(row, async () => {
     try {
+      if (opts.expectedRevision !== undefined) {
+        const saved = await getRevision(jobId, opts.expectedRevision);
+        if (saved?.kind === "edit") {
+          const d = docContextFor(row);
+          const newDuration = declaredDuration(await downloadText(saved.html_path)) ?? d.duration;
+          const planRecord = row.studio_plan;
+          await setStage(jobId, "preview_ready", {
+            current_revision: saved.revision,
+            error: null,
+            ...(planRecord && newDuration !== d.duration ? { studio_plan: { ...planRecord, finalDuration: newDuration } } : {}),
+          });
+          console.log(`[studio ${jobId}] edit revision ${saved.revision} was already saved; resumed without redoing it`);
+          return saved.revision;
+        }
+      }
       const base = baseRevision ?? row.current_revision ?? 0;
       const rev = await getRevision(jobId, base);
       if (!rev) throw new Error(`Revision ${base} not found`);
@@ -340,8 +371,7 @@ export async function applyChatEdit(
       const edited = await patchOrRewrite(html, { kind: "edit", instruction }, d);
 
       // The user may have asked for a different length; follow the document.
-      const declared = /__videly\s*=\s*\{[^}]*\bduration\s*:\s*(\d+(?:\.\d+)?)/.exec(edited.html);
-      const newDuration = declared ? Math.min(120, Math.max(3, Number(declared[1]))) : d.duration;
+      const newDuration = declaredDuration(edited.html) ?? d.duration;
       const dNew = { ...d, duration: newDuration };
 
       await setStage(jobId, "validating");

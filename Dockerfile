@@ -74,4 +74,11 @@ EXPOSE 8080
 RUN chown -R pwuser:pwuser /app
 USER pwuser
 
-CMD ["npm", "run", "start"]
+# Two processes, one container: the React Router web server and the Studio
+# task worker (studio_tasks queue; generate / edit / render run there, so web
+# requests never share a process with headless-Chrome renders and a web
+# restart never kills a video). build/worker/supervisor.mjs starts both,
+# forwards SIGTERM (the worker gets up to 60 s to finish running tasks) and
+# restarts a crashed child; see app/lib/studio/supervisor.ts for the policy.
+# node directly (not npm) so signals reach the supervisor.
+CMD ["node", "build/worker/supervisor.mjs"]

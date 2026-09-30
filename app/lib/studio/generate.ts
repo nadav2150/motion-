@@ -1,7 +1,7 @@
 // Studio (v2) generation pipeline.
 //
 //   parseCreateStudioJobInput()  validate POST /api/studio/jobs bodies (pure)
-//   createStudioJob()            estimate → reserveCredits → insert → run
+//   createStudioJob()            estimate → reserveCredits → insert → enqueue
 //   runStudioJob()               reference → plan → (voiceover ∥ images ∥
 //                                music) → code → validate/repair → review →
 //                                revision(s) → preview_ready → render → done
@@ -15,7 +15,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { adjustBalance, attachReservationToJob, getOrCreateBilling, reserveCredits } from "../billing/credits";
+import { adjustBalance, attachReservationToJob, getOrCreateBilling, reconcileJob, reserveCredits } from "../billing/credits";
 import { getPlanFeatures, type PlanFeatures } from "../billing/plan-features";
 import { recordModelCost } from "../billing/track-cost";
 import { scrapeBrand } from "../brand-scrape";
@@ -50,7 +50,7 @@ import {
   getStudioJob,
   insertUserAsset,
   isBrandKitEmpty,
-  jobDuration,
+  listRevisions,
   nextRevisionNumber,
   publicUrl,
   revisionPaths,
@@ -59,9 +59,11 @@ import {
   storageHost,
   updateJob,
   updateRevision,
+  type JobRevisionRow,
   type StudioAudioRecord,
   type StudioJobRow,
   type StudioPlanRecord,
+  type StudioRunCheckpoint,
 } from "./db";
 import {
   capture,
@@ -102,6 +104,7 @@ import {
   type ReviewResponse,
   type WebsiteBrief,
 } from "./prompts";
+import { enqueueStudioTask } from "./queue";
 import { captureFrames, renderVideo } from "./render";
 import { getTemplate } from "./templates";
 import {
@@ -377,7 +380,16 @@ export async function createStudioJob(
     }
   }
 
-  void runStudioJob(id).catch((err) => console.error(`runStudioJob(${id}) threw:`, err));
+  // The worker process picks the task up (app/lib/studio/worker.ts).
+  try {
+    await enqueueStudioTask(id, "generate", {});
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[studio ${id}] enqueue failed:`, message);
+    await setStage(id, "failed", { error: "Could not start this video. Try again — your credits were returned." }).catch(() => {});
+    await reconcileJob(id).catch((e) => console.error(`[studio ${id}] reconcile after failed enqueue failed:`, e));
+    throw new Error(`createStudioJob enqueue failed: ${message}`);
+  }
   return { id, estimate };
 }
 
@@ -564,13 +576,77 @@ async function reviewDocument(
 export type RunKind = "initial" | "regenerate";
 
 /**
+ * What a (re-claimed) generate / regenerate run has already persisted.
+ *
+ * A first generation is the only run that ever writes its job's plan, audio
+ * and first revisions, so its checkpoints are read straight from the data:
+ * studio_plan.plan, studio_plan.{finalDuration,generatedAssets} + jobs.audio,
+ * and the "initial" / "review" rows in job_revisions. A regenerate starts
+ * from a job that already has all of those, so it only trusts what its own
+ * run marker (studio_plan.run, keyed by the task id) says it wrote, plus the
+ * revision number the route promised.
+ */
+export type ResumeState = {
+  planned: boolean;
+  assetsReady: boolean;
+  draftPath: string | null;
+  firstRevision: number | null; // initial: the saved "initial" revision
+  finalRevision: number | null; // the revision to render: review finished
+};
+
+export function resumeStateFor(
+  row: Pick<StudioJobRow, "studio_plan" | "audio">,
+  kind: RunKind,
+  runId: string | null,
+  revisions: Pick<JobRevisionRow, "revision" | "kind">[],
+  expectedRevision?: number | null,
+): ResumeState {
+  const record = row.studio_plan;
+  const run = runId && record?.run?.runId === runId ? record.run : null;
+  if (kind === "initial") {
+    const planned = !!record?.plan;
+    const assetsReady =
+      planned && typeof record?.finalDuration === "number" && Array.isArray(record?.generatedAssets) && !!row.audio;
+    const initialRev = revisions.find((r) => r.kind === "initial")?.revision ?? null;
+    const reviewRev = revisions.find((r) => r.kind === "review")?.revision ?? null;
+    return {
+      planned,
+      assetsReady,
+      draftPath: run?.draftPath ?? null,
+      firstRevision: initialRev,
+      finalRevision: reviewRev ?? (initialRev !== null && run?.reviewDone ? initialRev : null),
+    };
+  }
+  const saved =
+    expectedRevision != null
+      ? (revisions.find((r) => r.revision === expectedRevision && r.kind === "regenerate")?.revision ?? null)
+      : null;
+  const finalRevision = run?.finalRevision ?? saved;
+  // A saved revision implies this run's plan and assets were saved before it.
+  const planned = (!!run?.planned || finalRevision !== null) && !!record?.plan;
+  return {
+    planned,
+    assetsReady: planned && (!!run?.assetsReady || finalRevision !== null) && typeof record?.finalDuration === "number",
+    draftPath: run?.draftPath ?? null,
+    firstRevision: finalRevision,
+    finalRevision,
+  };
+}
+
+/**
  * Full generation. kind "regenerate" re-plans from the same inputs and adds
  * one revision; on failure it restores `restoreStage` instead of failing the
  * whole video.
+ *
+ * Resumable: `runId` (the studio_tasks id) keys the checkpoints this run
+ * writes, and a re-claimed task skips everything already persisted —
+ * reference analysis, plan, voiceover / images / music, the code call's
+ * draft, saved revisions — continuing at the first missing step. Credits are
+ * reserved when the task is enqueued, never here.
  */
 export async function runStudioJob(
   jobId: string,
-  opts: { kind?: RunKind; restoreStage?: StudioStage } = {},
+  opts: { kind?: RunKind; restoreStage?: StudioStage; runId?: string; expectedRevision?: number } = {},
 ): Promise<void> {
   const kind = opts.kind ?? "initial";
   const initial = await getStudioJob(jobId);
@@ -579,12 +655,13 @@ export async function runStudioJob(
     return;
   }
   const started = Date.now();
+  const runId = opts.runId ?? null;
   await withStudioOperation(initial, async () => {
     let row = initial;
     try {
       const billing = row.user_id ? await getOrCreateBilling(row.user_id) : null;
       const features = getPlanFeatures(billing?.plan_tier ?? null);
-      const record: StudioPlanRecord = row.studio_plan ?? {
+      let record: StudioPlanRecord = row.studio_plan ?? {
         version: 1,
         input: { sources: [], useBrandKit: true, templateId: row.template_id },
         plan: null,
@@ -593,9 +670,32 @@ export async function runStudioJob(
       const cap = maxVideoDuration(target, features.maxStudioDuration);
       const fps = row.fps ?? DEFAULT_FPS;
 
-      // 1. Reference analysis (reused on regenerate).
+      const revisions = await listRevisions(jobId);
+      const resume = resumeStateFor(row, kind, runId, revisions, opts.expectedRevision);
+      const resumed = resume.planned || resume.firstRevision !== null || !!resume.draftPath;
+      if (resumed) {
+        console.log(
+          `[studio ${jobId}] resuming ${kind} run ${runId}: planned=${resume.planned} assets=${resume.assetsReady} draft=${!!resume.draftPath} firstRevision=${resume.firstRevision} finalRevision=${resume.finalRevision}`,
+        );
+      }
+
+      // Merge a checkpoint into this run's marker and persist the record.
+      const runKey = runId ?? `local-${started.toString(36)}`;
+      const checkpoint = async (
+        patch: Omit<Partial<StudioRunCheckpoint>, "runId" | "kind">,
+        extra: Record<string, unknown> = {},
+        next: StudioPlanRecord = record,
+      ) => {
+        const prev: StudioRunCheckpoint = next.run?.runId === runKey ? next.run : { runId: runKey, kind };
+        record = { ...next, run: { ...prev, ...patch } };
+        await updateJob(jobId, { ...extra, studio_plan: record });
+        row = { ...row, ...extra, studio_plan: record };
+      };
+
+      // 1. Reference analysis (reused on regenerate; a first generation tries it once).
       let reference = referenceFrom(row);
-      if (row.reference_video_url && !reference) {
+      const referenceTried = kind === "initial" && row.reference_analysis != null;
+      if (row.reference_video_url && !reference && !referenceTried && !resume.planned) {
         await setStage(jobId, "analyzing_reference");
         try {
           reference = await analyzeReferenceVideo(row.reference_video_url, { maxScriptChars: features.maxScriptChars });
@@ -622,7 +722,7 @@ export async function runStudioJob(
       }
       const websiteSrc = record.input.sources.find((s) => s.kind === "website");
       let website: WebsiteBrief | null = null;
-      if (websiteSrc) {
+      if (websiteSrc && !resume.planned) {
         await setStage(jobId, "analyzing_reference");
         const w = await websiteBrief(websiteSrc.url);
         website = w;
@@ -643,202 +743,263 @@ export async function runStudioJob(
         .forEach((s, i) => locked.push({ id: `user${i + 1}`, url: s.url, name: s.name, role: "image" }));
 
       // 2. Plan.
-      await setStage(jobId, "planning");
       const voiceOn = !!row.voice_id && features.audio;
       const musicOn = !!row.music_enabled && features.audio;
-      const planRes = await callOpus<RawPlan>({
-        system: systemFor(PLAN_TASK),
-        messages: buildPlanMessages({
-          prompt: row.prompt || template?.prompt || "",
-          preset,
-          targetDuration: target,
-          maxDuration: cap,
-          fps,
-          language: row.language ?? "en",
-          voiceover: voiceOn,
-          music: musicOn,
-          brandKit,
-          website,
-          reference,
-          lockedAssets: locked,
-          template: template ? { name: template.name, styleNotes: template.styleNotes } : null,
-        }),
-        schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
-        effort: "high",
-        maxTokens: 32_000,
-        reason: "opus_studio_plan",
-        label: "plan",
-      });
-      const plan = normalizePlan(planRes.json!, { cap, voiceover: voiceOn, music: musicOn });
-      await updateJob(jobId, {
-        ...(row.title ? {} : { title: plan.title }),
-        studio_plan: { ...record, plan },
-      });
-
-      // 3. Voiceover ∥ images ∥ music.
-      await setStage(jobId, voiceOn && plan.voiceover.length ? "voiceover" : "assets");
-      const audio: StudioAudioRecord = { voiceover: null, music: null };
-      const stamp = Date.now().toString(36);
-      const [vo, generated, music] = await Promise.all([
-        voiceOn && plan.voiceover.length
-          ? recordVoiceover({ lines: plan.voiceover.map((l) => l.text), voiceId: row.voice_id! }).catch((err) => {
-              // A failed voiceover should not cost the user the whole video:
-              // continue without narration (beats keep the plan's timing).
-              console.warn(`[studio ${jobId}] voiceover failed, continuing without it:`, err instanceof Error ? err.message : err);
-              return null;
-            })
-          : Promise.resolve(null),
-        generateImages(jobId, plan, preset.width, preset.height),
-        plan.musicMood
-          ? (async () => {
-              const track = await pickMusicTrack(plan.musicMood!, target);
-              if (!track) return null;
-              const buf = await downloadAudio(track.streamUrl);
-              const up = await uploadBuffer({
-                storagePath: `jobs/${jobId}/v2/audio/music-${stamp}.mp3`,
-                body: buf,
-                contentType: "audio/mpeg",
-              });
-              return { url: up.publicUrl, path: up.storagePath, title: track.title, artist: track.artist, trackId: track.id };
-            })().catch((err) => {
-              console.warn(`[studio ${jobId}] music failed:`, err instanceof Error ? err.message : err);
-              return null;
-            })
-          : Promise.resolve(null),
-      ]);
-      if (vo) {
-        const up = await uploadBuffer({
-          storagePath: `jobs/${jobId}/v2/audio/voiceover-${stamp}.mp3`,
-          body: vo.audio,
-          contentType: "audio/mpeg",
+      let plan: StudioPlan;
+      if (resume.planned && record.plan) {
+        plan = record.plan;
+      } else {
+        await setStage(jobId, "planning");
+        const planRes = await callOpus<RawPlan>({
+          system: systemFor(PLAN_TASK),
+          messages: buildPlanMessages({
+            prompt: row.prompt || template?.prompt || "",
+            preset,
+            targetDuration: target,
+            maxDuration: cap,
+            fps,
+            language: row.language ?? "en",
+            voiceover: voiceOn,
+            music: musicOn,
+            brandKit,
+            website,
+            reference,
+            lockedAssets: locked,
+            template: template ? { name: template.name, styleNotes: template.styleNotes } : null,
+          }),
+          schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
+          effort: "high",
+          maxTokens: 32_000,
+          reason: "opus_studio_plan",
+          label: "plan",
         });
-        audio.voiceover = { url: up.publicUrl, path: up.storagePath, duration: vo.duration, lines: vo.lines };
-        if (row.user_id) {
-          void insertUserAsset({
-            userId: row.user_id,
-            kind: "audio",
-            name: `Voiceover — ${plan.title}`,
-            url: up.publicUrl,
-            path: up.storagePath,
-            mime: "audio/mpeg",
-            bytes: vo.audio.byteLength,
-            duration: vo.duration,
-            source: "voiceover",
-            jobId,
-          }).catch(() => {});
-        }
-      }
-      audio.music = music;
-
-      // Timings: the recorded voiceover is the clock.
-      const finalDuration = computeFinalDuration({
-        planDuration: plan.duration,
-        voiceover: vo?.lines ?? [],
-        cap,
-        fps,
-      });
-      const timedPlan: StudioPlan = {
-        ...plan,
-        duration: finalDuration,
-        beats: vo
-          ? remapBeats(plan.beats, plan.voiceover, vo.lines, plan.duration, finalDuration)
-          : scaleBeats(plan.beats, plan.duration, finalDuration),
-        voiceover: vo?.lines ?? [],
-      };
-      const generatedAssets: GeneratedAsset[] = generated.map((g) => ({ id: g.id, url: g.url, description: g.description }));
-      await updateJob(jobId, {
-        audio,
-        studio_plan: { ...record, plan: timedPlan, finalDuration, generatedAssets: generated },
-      });
-      row = { ...row, audio, studio_plan: { ...record, plan: timedPlan, finalDuration, generatedAssets: generated } };
-
-      // 4. Code.
-      await setStage(jobId, "writing");
-      const codeContext = {
-        plan: timedPlan,
-        preset,
-        duration: finalDuration,
-        fps,
-        language: row.language ?? "en",
-        voiceover: timedPlan.voiceover,
-        lockedAssets: locked,
-        generatedAssets,
-        brandKit,
-        reference,
-      };
-      const writeCode = (budgetKb: number | undefined, effort: OpusEffort) =>
-        callOpus({
-          system: systemFor(CODE_TASK),
-          messages: buildCodeMessages({ ...codeContext, budgetKb }),
-          effort,
-          maxTokens: CODE_MAX_TOKENS,
-          reason: "opus_studio_code",
-          label: "code",
-        });
-      let code;
-      try {
-        code = await writeCode(undefined, CODE_EFFORT);
-      } catch (err) {
-        if (!(err instanceof TruncatedOutputError)) throw err;
-        // Ran out of room: one more attempt with a tighter budget and less thinking.
-        console.warn(`[studio ${jobId}] code output too long, retrying with a tighter budget`);
-        code = await writeCode(Math.round(documentBudgetKb(finalDuration) * 0.6), "low");
-      }
-      const html = extractHtmlDocument(code.text);
-      if (!html) throw new Error("The model did not return an HTML document.");
-
-      // 5. Validate + repair.
-      const d = docContextFor(row, finalDuration);
-      await setStage(jobId, "validating");
-      const repaired = await repairUntilValid(html, d, {
-        onRound: (n) => setStage(jobId, "validating", {}, 0.55 + n * 0.04),
-      });
-      if (hasBlockingErrors(repaired.report)) {
-        // Keep the rejected document so the failure can be inspected later.
-        await uploadBuffer({
-          storagePath: `jobs/${jobId}/v2/debug/failed-${Date.now().toString(36)}.html`,
-          body: Buffer.from(repaired.html, "utf8"),
-          contentType: "text/html; charset=utf-8",
-        }).catch((err) => console.warn(`[studio ${jobId}] could not save failed draft:`, err instanceof Error ? err.message : err));
-        throw new Error(
-          `The generated video did not pass validation: ${repaired.report.errors.map((e) => e.message).slice(0, 3).join("; ")}`,
+        plan = normalizePlan(planRes.json!, { cap, voiceover: voiceOn, music: musicOn });
+        await checkpoint(
+          { planned: true, assetsReady: false, draftPath: null, reviewDone: false, finalRevision: null },
+          row.title ? {} : { title: plan.title },
+          { ...record, plan },
         );
       }
 
-      // 6. Revisions + self-review.
-      let revision = await nextRevisionNumber(jobId);
-      let finalHtml = repaired.html;
-      let frames = repaired.report.frames;
-      if (kind === "initial") {
-        await saveRevision({ jobId, revision, kind: "initial", instruction: null, html: finalHtml, thumbJpeg: pickThumbFrame(frames) });
-      }
-      let reviewed = false;
-      if (remainingBudget() >= REVIEW_MIN_BUDGET) {
-        await setStage(jobId, "reviewing", kind === "initial" ? { current_revision: revision } : {});
-        try {
-          const r = await reviewDocument(finalHtml, d, timedPlan, { errorCount: repaired.report.errors.length });
-          if (r) {
-            finalHtml = r.html;
-            frames = r.frames.length ? r.frames : frames;
-            reviewed = true;
+      // 3. Voiceover ∥ images ∥ music.
+      let timedPlan: StudioPlan;
+      let finalDuration: number;
+      let generated: NonNullable<StudioPlanRecord["generatedAssets"]>;
+      if (resume.assetsReady && record.plan && typeof record.finalDuration === "number") {
+        timedPlan = record.plan;
+        finalDuration = record.finalDuration;
+        generated = record.generatedAssets ?? [];
+      } else {
+        await setStage(jobId, voiceOn && plan.voiceover.length ? "voiceover" : "assets");
+        const audio: StudioAudioRecord = { voiceover: null, music: null };
+        const stamp = Date.now().toString(36);
+        const [vo, images, music] = await Promise.all([
+          voiceOn && plan.voiceover.length
+            ? recordVoiceover({ lines: plan.voiceover.map((l) => l.text), voiceId: row.voice_id! }).catch((err) => {
+                // A failed voiceover should not cost the user the whole video:
+                // continue without narration (beats keep the plan's timing).
+                console.warn(`[studio ${jobId}] voiceover failed, continuing without it:`, err instanceof Error ? err.message : err);
+                return null;
+              })
+            : Promise.resolve(null),
+          generateImages(jobId, plan, preset.width, preset.height),
+          plan.musicMood
+            ? (async () => {
+                const track = await pickMusicTrack(plan.musicMood!, target);
+                if (!track) return null;
+                const buf = await downloadAudio(track.streamUrl);
+                const up = await uploadBuffer({
+                  storagePath: `jobs/${jobId}/v2/audio/music-${stamp}.mp3`,
+                  body: buf,
+                  contentType: "audio/mpeg",
+                });
+                return { url: up.publicUrl, path: up.storagePath, title: track.title, artist: track.artist, trackId: track.id };
+              })().catch((err) => {
+                console.warn(`[studio ${jobId}] music failed:`, err instanceof Error ? err.message : err);
+                return null;
+              })
+            : Promise.resolve(null),
+        ]);
+        generated = images;
+        if (vo) {
+          const up = await uploadBuffer({
+            storagePath: `jobs/${jobId}/v2/audio/voiceover-${stamp}.mp3`,
+            body: vo.audio,
+            contentType: "audio/mpeg",
+          });
+          audio.voiceover = { url: up.publicUrl, path: up.storagePath, duration: vo.duration, lines: vo.lines };
+          if (row.user_id) {
+            void insertUserAsset({
+              userId: row.user_id,
+              kind: "audio",
+              name: `Voiceover — ${plan.title}`,
+              url: up.publicUrl,
+              path: up.storagePath,
+              mime: "audio/mpeg",
+              bytes: vo.audio.byteLength,
+              duration: vo.duration,
+              source: "voiceover",
+              jobId,
+            }).catch(() => {});
           }
-        } catch (err) {
-          console.warn(`[studio ${jobId}] review skipped:`, err instanceof Error ? err.message : err);
         }
+        audio.music = music;
+
+        // Timings: the recorded voiceover is the clock.
+        finalDuration = computeFinalDuration({
+          planDuration: plan.duration,
+          voiceover: vo?.lines ?? [],
+          cap,
+          fps,
+        });
+        timedPlan = {
+          ...plan,
+          duration: finalDuration,
+          beats: vo
+            ? remapBeats(plan.beats, plan.voiceover, vo.lines, plan.duration, finalDuration)
+            : scaleBeats(plan.beats, plan.duration, finalDuration),
+          voiceover: vo?.lines ?? [],
+        };
+        await checkpoint({ assetsReady: true }, { audio }, { ...record, plan: timedPlan, finalDuration, generatedAssets: generated });
       }
-      if (kind === "initial" && reviewed) {
-        revision += 1;
-        await saveRevision({ jobId, revision, kind: "review", instruction: "Self-review polish", html: finalHtml, thumbJpeg: pickThumbFrame(frames) });
-      } else if (kind === "regenerate") {
-        await saveRevision({ jobId, revision, kind: "regenerate", instruction: null, html: finalHtml, thumbJpeg: pickThumbFrame(frames) });
+      const generatedAssets: GeneratedAsset[] = generated.map((g) => ({ id: g.id, url: g.url, description: g.description }));
+      const d = docContextFor(row, finalDuration);
+
+      let revision: number;
+      let reviewed = false;
+      let repairRounds = 0;
+      if (resume.finalRevision !== null) {
+        // Everything up to the preview is saved: straight to the render.
+        revision = resume.finalRevision;
+      } else {
+        let finalHtml: string;
+        let frames: { time: number; jpeg: Buffer }[];
+        let errorCount: number;
+        if (resume.firstRevision !== null) {
+          // The initial revision is saved; only the self-review is missing.
+          revision = resume.firstRevision;
+          const rev = await getRevision(jobId, revision);
+          if (!rev) throw new Error(`Revision ${revision} not found`);
+          finalHtml = await downloadText(rev.html_path);
+          await setStage(jobId, "validating");
+          const report = await validateWith(finalHtml, d);
+          frames = report.frames;
+          errorCount = report.errors.length;
+        } else {
+          // 4. Code (the draft is saved so a resumed run skips this call).
+          let html = resume.draftPath
+            ? await downloadText(resume.draftPath).catch((err) => {
+                console.warn(`[studio ${jobId}] saved draft unreadable, rewriting:`, err instanceof Error ? err.message : err);
+                return null;
+              })
+            : null;
+          if (!html) {
+            await setStage(jobId, "writing");
+            const codeContext = {
+              plan: timedPlan,
+              preset,
+              duration: finalDuration,
+              fps,
+              language: row.language ?? "en",
+              voiceover: timedPlan.voiceover,
+              lockedAssets: locked,
+              generatedAssets,
+              brandKit,
+              reference,
+            };
+            const writeCode = (budgetKb: number | undefined, effort: OpusEffort) =>
+              callOpus({
+                system: systemFor(CODE_TASK),
+                messages: buildCodeMessages({ ...codeContext, budgetKb }),
+                effort,
+                maxTokens: CODE_MAX_TOKENS,
+                reason: "opus_studio_code",
+                label: "code",
+              });
+            let code;
+            try {
+              code = await writeCode(undefined, CODE_EFFORT);
+            } catch (err) {
+              if (!(err instanceof TruncatedOutputError)) throw err;
+              // Ran out of room: one more attempt with a tighter budget and less thinking.
+              console.warn(`[studio ${jobId}] code output too long, retrying with a tighter budget`);
+              code = await writeCode(Math.round(documentBudgetKb(finalDuration) * 0.6), "low");
+            }
+            html = extractHtmlDocument(code.text);
+            if (!html) throw new Error("The model did not return an HTML document.");
+            if (runId) {
+              try {
+                const up = await uploadBuffer({
+                  storagePath: `jobs/${jobId}/v2/runs/${runId}/draft.html`,
+                  body: Buffer.from(html, "utf8"),
+                  contentType: "text/html; charset=utf-8",
+                });
+                await checkpoint({ draftPath: up.storagePath });
+              } catch (err) {
+                console.warn(`[studio ${jobId}] draft checkpoint failed:`, err instanceof Error ? err.message : err);
+              }
+            }
+          }
+
+          // 5. Validate + repair.
+          await setStage(jobId, "validating");
+          const repaired = await repairUntilValid(html, d, {
+            onRound: (n) => setStage(jobId, "validating", {}, 0.55 + n * 0.04),
+          });
+          if (hasBlockingErrors(repaired.report)) {
+            // Keep the rejected document so the failure can be inspected later.
+            await uploadBuffer({
+              storagePath: `jobs/${jobId}/v2/debug/failed-${Date.now().toString(36)}.html`,
+              body: Buffer.from(repaired.html, "utf8"),
+              contentType: "text/html; charset=utf-8",
+            }).catch((err) => console.warn(`[studio ${jobId}] could not save failed draft:`, err instanceof Error ? err.message : err));
+            throw new Error(
+              `The generated video did not pass validation: ${repaired.report.errors.map((e) => e.message).slice(0, 3).join("; ")}`,
+            );
+          }
+          finalHtml = repaired.html;
+          frames = repaired.report.frames;
+          errorCount = repaired.report.errors.length;
+          repairRounds = repaired.rounds;
+
+          // 6. Revisions.
+          revision = await nextRevisionNumber(jobId);
+          if (kind === "initial") {
+            await saveRevision({ jobId, revision, kind: "initial", instruction: null, html: finalHtml, thumbJpeg: pickThumbFrame(frames) });
+          }
+        }
+
+        // Self-review.
+        if (remainingBudget() >= REVIEW_MIN_BUDGET) {
+          await setStage(jobId, "reviewing", kind === "initial" ? { current_revision: revision } : {});
+          try {
+            const r = await reviewDocument(finalHtml, d, timedPlan, { errorCount });
+            if (r) {
+              finalHtml = r.html;
+              frames = r.frames.length ? r.frames : frames;
+              reviewed = true;
+            }
+          } catch (err) {
+            console.warn(`[studio ${jobId}] review skipped:`, err instanceof Error ? err.message : err);
+          }
+        }
+        if (kind === "initial" && reviewed) {
+          revision += 1;
+          await saveRevision({ jobId, revision, kind: "review", instruction: "Self-review polish", html: finalHtml, thumbJpeg: pickThumbFrame(frames) });
+        } else if (kind === "regenerate") {
+          await saveRevision({ jobId, revision, kind: "regenerate", instruction: null, html: finalHtml, thumbJpeg: pickThumbFrame(frames) });
+        }
+        await checkpoint({ reviewDone: true, finalRevision: revision });
       }
+
       await setStage(jobId, "preview_ready", { current_revision: revision, error: null });
       capture(row, "studio_preview_ready", {
         kind,
         revision,
         duration: finalDuration,
-        repair_rounds: repaired.rounds,
+        repair_rounds: repairRounds,
         reviewed,
+        resumed,
         seconds: Math.round((Date.now() - started) / 1000),
       });
 
@@ -851,7 +1012,7 @@ export async function runStudioJob(
         includeVoiceover: true,
         watermark,
       }, "preview_ready");
-      capture(row, "studio_job_completed", { kind, seconds: Math.round((Date.now() - started) / 1000) });
+      capture(row, "studio_job_completed", { kind, resumed, seconds: Math.round((Date.now() - started) / 1000) });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[studio ${jobId}] ${kind} failed:`, message);

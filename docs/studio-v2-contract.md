@@ -45,3 +45,14 @@ Polling: the UI polls `GET /api/jobs/:id` every 2 s while `stage` is not `previe
 - Libraries only from `/studio-libs/<name>/...` (see `libs.ts`); fonts from Google Fonts CSS or `/studio-libs/fonts/`. Assets only from the URLs the pipeline passes in.
 - Pure function of time: everything is drawn from the absolute time (GSAP timelines, CSS/WAAPI animations, or rAF loops reading `performance.now()`); no `dt` accumulation, no user input, no network (`fetch`/XHR/WebSocket blocked).
 - Voiceover cue times given in the prompt are hit exactly; audio is never embedded in the document (the renderer muxes it).
+
+## Background work (studio_tasks)
+
+Routes never run a Studio operation in the web process. They reserve credits, claim the job, and insert a `studio_tasks` row (`supabase/migrations/20260930_studio_tasks.sql`); the task worker (`app/lib/studio/worker.ts`) claims it with `claim_studio_task()` and runs it.
+
+- Kinds: `generate` (POST /api/studio/jobs), `regenerate`, `edit`, `render`. At most one queued/running task per job (partial unique index).
+- Worker: up to 3 generate/edit/regenerate tasks at once, renders one at a time. Heartbeat every 15 s (`studio_tasks.heartbeat_at` + `jobs.updated_at`); a task whose heartbeat is older than 90 s is re-claimed. A task that throws is retried (30 s × attempt backoff) up to `max_attempts` (3), then failed and its job settled (`settleFailedTask`). SIGTERM: stop claiming, up to 60 s for running tasks, the rest go back to the queue.
+- Resume: a re-claimed generate skips what is persisted — `reference_analysis`, `studio_plan.plan`, `jobs.audio` + `studio_plan.generatedAssets`, the code call's draft (`studio_plan.run.draftPath`), saved revisions. Edits check the promised revision; renders simply re-render. Credits are reserved at enqueue time only.
+- Reaper (`active.ts`, on every GET /api/jobs/:id): fails a busy-looking job only when it has no queued/running task, or its task is stale with no attempts left.
+- Local: `npm run dev` starts app + tunnel + worker; `npm run dev:local` + `npm run worker` in a second terminal; or `STUDIO_INLINE_WORKER=1` to run the worker inside the web process (dies with it).
+- Production: one container runs both processes (`build/worker/supervisor.mjs`); the Worker's every-minute cron pings `GET /api/internal/worker-ping` while tasks are pending so the container does not sleep mid-video.

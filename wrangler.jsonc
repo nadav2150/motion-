@@ -78,6 +78,12 @@
     }
   ],
 
+  // Every minute: while Studio tasks are queued/running, ping the container so
+  // its 15-minute sleepAfter never fires mid-video (src/worker.ts scheduled).
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

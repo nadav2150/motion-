@@ -2,6 +2,7 @@ import type { Route } from "./+types/api.jobs.$id";
 import { deleteJob, getJob, updateJobBrand } from "../lib/jobs";
 import { requireUserApi } from "../lib/auth";
 import { reapInterruptedJob } from "../lib/studio/active";
+import { ensureInlineWorker } from "../lib/studio/inline-worker";
 import { getOwnedStudioJob, listRevisions, toStudioJobView } from "../lib/studio/db";
 
 // GET /api/jobs/:id — StudioJobView for v2 jobs, the existing
@@ -15,6 +16,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const { user, headers } = await requireUserApi(request);
 
   try {
+    ensureInlineWorker(); // no-op unless STUDIO_INLINE_WORKER=1
     let row = await getOwnedStudioJob(id, user.id);
     if (row?.generation_mode === "v2" && (await reapInterruptedJob(row))) {
       row = await getOwnedStudioJob(id, user.id);
