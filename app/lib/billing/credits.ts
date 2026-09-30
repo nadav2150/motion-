@@ -30,6 +30,8 @@ export type ConsumptionReason =
   | "gemini_reference"
   | "opus_studio_plan"
   | "opus_studio_code"
+  | "opus_studio_style"
+  | "opus_studio_scene"
   | "opus_studio_repair"
   | "opus_studio_review"
   | "opus_studio_edit"
