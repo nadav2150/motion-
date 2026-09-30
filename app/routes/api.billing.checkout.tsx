@@ -2,6 +2,9 @@
 // in user and returns its hosted URL. We pass externalCustomerId = our Supabase
 // user.id so Polar auto-creates/links the customer (no pre-mint step) and
 // metadata carries userId/planTier/packKey for the webhook handler.
+//
+// BILLING_PROVIDER=dodo routes the same request to a Dodo Payments checkout
+// session instead (see dodoCheckout below and lib/billing/dodo.ts).
 
 import type { Route } from "./+types/api.billing.checkout";
 import { requireUserApi } from "../lib/auth";
@@ -12,6 +15,16 @@ import {
   productIdForPack,
   productIdForTier,
 } from "../lib/billing/polar";
+import {
+  createCheckoutSession,
+  dodoEnv,
+  dodoEnvVarName,
+  dodoProductIdForPack,
+  dodoProductIdForTier,
+  isDodoConfigured,
+} from "../lib/billing/dodo";
+import { billingProvider } from "../lib/billing/provider";
+import type { AuthUser } from "../lib/auth";
 
 const POLAR_ENV = (process.env.POLAR_ENV ?? "sandbox").toLowerCase();
 // Surface the real failure reason to the client only outside production, so we
@@ -38,6 +51,10 @@ export async function action({ request }: Route.ActionArgs) {
   const tier = body.tier;
   if (!isTier(tier)) {
     return Response.json({ error: `Invalid tier "${tier}"` }, { status: 400, headers });
+  }
+
+  if (billingProvider() === "dodo") {
+    return dodoCheckout(request, user, headers, tier, body.pack);
   }
 
   // Fail fast with a precise message when the access token isn't wired. This is
@@ -101,6 +118,72 @@ export async function action({ request }: Route.ActionArgs) {
     );
     return Response.json(
       { error: "Could not create checkout", ...(EXPOSE_ERRORS ? { detail: msg } : {}) },
+      { status: 502, headers },
+    );
+  }
+}
+
+async function dodoCheckout(
+  request: Request,
+  user: AuthUser,
+  headers: Headers,
+  tier: "starter" | "pro" | "studio",
+  pack: string | null | undefined,
+): Promise<Response> {
+  const env = dodoEnv();
+  const exposeErrors = env !== "live_mode";
+
+  if (!isDodoConfigured()) {
+    const missing = dodoEnvVarName("API_KEY");
+    console.error(`[checkout] Dodo not configured: ${missing} is empty (DODO_ENV=${env})`);
+    return Response.json(
+      { error: "Billing is not configured", ...(exposeErrors ? { detail: `${missing} is not set (DODO_ENV=${env})` } : {}) },
+      { status: 500, headers },
+    );
+  }
+
+  const tierProduct = dodoProductIdForTier(tier);
+  if (!tierProduct) {
+    return Response.json(
+      { error: `No Dodo product configured for tier "${tier}". Set ${dodoEnvVarName(`PRODUCT_${tier.toUpperCase()}`)}.` },
+      { status: 500, headers },
+    );
+  }
+
+  const productIds: string[] = [tierProduct];
+  const metadata: Record<string, string> = { userId: user.id, planTier: tier };
+  if (isPack(pack)) {
+    const packProduct = dodoProductIdForPack(pack);
+    if (packProduct) {
+      productIds.push(packProduct);
+      metadata.packKey = pack;
+    } else {
+      console.warn(`[checkout] no Dodo product for pack "${pack}" — continuing subscription only`);
+    }
+  }
+
+  const origin = new URL(request.url).origin;
+  console.log(
+    `[checkout] creating Dodo session user=${user.id} tier=${tier} pack=${metadata.packKey ?? "none"} ` +
+      `env=${env} products=${productIds.join(",")}`,
+  );
+
+  try {
+    const session = await createCheckoutSession({
+      productIds,
+      email: user.email,
+      metadata,
+      returnUrl: `${origin}/home?upgraded=${tier}`,
+      cancelUrl: `${origin}/pricing`,
+    });
+    if (!session.checkout_url) throw new Error(`session ${session.session_id} has no checkout_url`);
+    console.log(`[checkout] Dodo session created user=${user.id} session_id=${session.session_id}`);
+    return Response.json({ url: session.checkout_url }, { headers });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[checkout] Dodo checkout create failed user=${user.id} env=${env} products=${productIds.join(",")}: ${msg}`);
+    return Response.json(
+      { error: "Could not create checkout", ...(exposeErrors ? { detail: msg } : {}) },
       { status: 502, headers },
     );
   }

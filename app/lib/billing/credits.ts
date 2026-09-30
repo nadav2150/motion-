@@ -11,7 +11,7 @@
 // Phase B+ behaviour when a Polar access token is configured.
 
 import { getSupabase } from "../supabase";
-import { isPolarConfigured } from "./polar";
+import { isProviderConfigured } from "./provider";
 
 export type ConsumptionReason =
   | "opus_director"
@@ -47,12 +47,13 @@ export type UserBilling = {
   period_end: string | null;
 };
 
-// Returns true once the user has opted in to billing by configuring Polar.
-// In dev environments without a Polar token, gates short-circuit to "allowed"
+// Returns true once billing is configured for the active provider
+// (BILLING_PROVIDER: Polar by default, or Dodo). In dev environments without
+// a provider API key, gates short-circuit to "allowed"
 // so the dev loop stays unblocked — but the ledger still records consumption
 // so cost dashboards work locally.
 export function isBillingEnabled(): boolean {
-  return isPolarConfigured();
+  return isProviderConfigured();
 }
 
 export async function getOrCreateBilling(userId: string): Promise<UserBilling> {

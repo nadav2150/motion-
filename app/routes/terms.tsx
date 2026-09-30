@@ -12,7 +12,7 @@ export function meta(_: Route.MetaArgs) {
   });
 }
 
-const LAST_UPDATED = "May 22, 2026";
+const LAST_UPDATED = "September 30, 2026";
 
 const SECTIONS: LegalSection[] = [
   {
@@ -58,10 +58,10 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <UL>
-          <li>Paid plans are billed monthly through Polar, our merchant of record. Each renewal grants a fresh credit allowance for that billing period.</li>
+          <li>Paid plans are billed monthly through Dodo Payments, our merchant of record (subscriptions started earlier continue to be billed by Polar). Each renewal grants a fresh credit allowance for that billing period.</li>
           <li>Unused monthly credits do not roll over. Add-on credit packs do not expire while your account is active.</li>
           <li>Prices may change for future billing periods on at least 30 days’ notice; your current period is honoured at the price you agreed to.</li>
-          <li>Taxes are calculated and collected by Polar based on your billing address.</li>
+          <li>Taxes are calculated and collected by our merchant of record based on your billing address.</li>
         </UL>
       </>
     ),
