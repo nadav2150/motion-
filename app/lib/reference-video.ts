@@ -31,6 +31,21 @@ const FILES_STEP_TIMEOUT_MS = 60_000;
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 const MAX_REDIRECTS = 3;
 
+// Per-beat visual spec (optional: analyses stored before it existed lack it).
+export type ReferenceColorUse = { element: string; hex: string };
+
+export type ReferenceBeatVisual = {
+  layout: string; // grid / element positions in % of the frame
+  background: string; // color, gradient, texture, imagery, depth
+  textStyle: string; // weight, case, tracking, size relative to frame height, alignment
+  uiElements: string; // mockups, cards, icons, shapes, lines, badges
+  colorUsage: ReferenceColorUse[]; // which element carries which color
+  transitionIn: string; // type + easing + duration
+  transitionOut: string;
+  camera: string; // push / pan / parallax / zoom
+  keyFrame: string; // exhaustive description of the representative frame
+};
+
 export type ReferenceBeat = {
   start: number;
   end: number;
@@ -38,6 +53,16 @@ export type ReferenceBeat = {
   onScreenText: string;
   motion: string;
   transitionOut: string;
+  keyTime?: number; // the most representative (fully composed) moment of the beat
+  visual?: ReferenceBeatVisual;
+};
+
+// A still of the reference stored at jobs/<jobId>/v2/reference/frame-<n>.jpg.
+export type ReferenceFrame = {
+  time: number; // seconds into the reference (0 for a YouTube thumbnail)
+  url: string;
+  path: string;
+  beatIndex: number | null;
 };
 
 export type ReferenceAnalysis = {
@@ -56,9 +81,18 @@ export type ReferenceAnalysis = {
   suggestedScript: string;
   recreationNotes: string;
   model: string;
+  // Richer visual spec (optional; newer analyses only).
+  designSystem?: string; // grid, margins, type scale, recurring elements
+  fontMatches?: string[]; // closest Google Fonts families
+  source?: "video" | "youtube";
+  // Stills extracted after the analysis (studio pipeline). `frames` present
+  // (even empty) means extraction ran; framesError says why it produced none.
+  frames?: ReferenceFrame[];
+  framesError?: string;
+  frameSource?: "video" | "youtube_thumbnail";
 };
 
-const ANALYSIS_PROMPT = `You are a senior motion designer breaking down a reference video so another designer can direct a NEW motion-graphics film in the same style (not a copy of its content).
+export const ANALYSIS_PROMPT = `You are a senior motion designer breaking down a reference video so another designer can recreate its LOOK AND FEEL in a new motion-graphics film (HTML/CSS/GSAP) with different content. The other designer will match layouts, typography, colors, pacing and transitions from your spec, so it must be precise enough to rebuild each moment without watching the video.
 
 Watch the whole video and return ONLY a JSON object with exactly these keys:
 {
@@ -73,13 +107,34 @@ Watch the whole video and return ONLY a JSON object with exactly these keys:
   "cameraMoves": string,             // virtual camera: pushes, pans, zooms, rotations, rack focus
   "transitions": string[],           // concrete transition types in order of frequency
   "audioMood": string,               // music genre/energy/BPM feel, SFX usage, voiceover presence
-  "beats": [                         // one entry per distinct shot/beat, in order
-    { "start": number, "end": number, "description": string, "onScreenText": string, "motion": string, "transitionOut": string }
+  "designSystem": string,            // the recurring system: grid/columns, margins in % of width/height, type scale (px at 1080p and % of frame height), corner radii, stroke weights, shadows, recurring graphic devices
+  "fontMatches": string[],           // 1-3 closest Google Fonts families for the typefaces used (display first)
+  "beats": [                         // one entry per distinct shot/beat, in order, covering the whole video
+    {
+      "start": number, "end": number,
+      "keyTime": number,             // the most representative moment of this beat (fully composed, not mid-transition), between start and end
+      "description": string, "onScreenText": string, "motion": string, "transitionOut": string,
+      "visual": {
+        "layout": string,            // where each element sits, as % of frame (e.g. "headline left-aligned at x 8%, y 38-52%; phone mockup centered at x 62%, 70% of frame height")
+        "background": string,        // color/gradient (hex), texture, imagery, depth planes
+        "textStyle": string,         // weight (e.g. 800), case, tracking (em), size as % of frame height, line height, alignment, color
+        "uiElements": string,        // mockups, cards, icons, shapes, lines, badges, charts — how they look (radius, border, shadow)
+        "colorUsage": [ { "element": string, "hex": "#rrggbb" } ],
+        "transitionIn": string,      // type + easing + duration (e.g. "masked wipe up, expo.out, 0.6s")
+        "transitionOut": string,     // type + easing + duration
+        "camera": string,            // push/pan/zoom/parallax with amounts, or "static"
+        "keyFrame": string           // exhaustive description of the frame at keyTime, as if for someone who cannot see it
+      }
+    }
   ],
   "suggestedScript": string,         // the video's message rewritten as a concise script (the spoken/on-screen copy), in the video's language
   "recreationNotes": string          // the 5-8 most important instructions for recreating this LOOK AND FEEL in HTML/CSS/GSAP motion graphics
 }
-Be concrete and specific (numbers, hex codes, named easings). No markdown, no commentary outside the JSON.`;
+Be concrete and specific (numbers, percentages, hex codes, named easings, durations in seconds). No markdown, no commentary outside the JSON.`;
+
+// Added for YouTube links: we never download those, so the downstream
+// designer sees at most the public thumbnail and relies on this text.
+export const YOUTUBE_ANALYSIS_NOTE = `The downstream designer will NOT see this video, only your JSON. Make every beat's "visual" block exhaustive — exact positions, sizes relative to the frame, hex colors per element, type weight/case/tracking, and transition easing + duration — and split the video into enough beats (up to 30) that no distinct layout is missing.`;
 
 function getApiKey(): string {
   const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
@@ -350,18 +405,74 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function normalizeAnalysis(raw: Record<string, unknown>, model: string): ReferenceAnalysis {
-  const beats = Array.isArray(raw.beats) ? (raw.beats as Array<Record<string, unknown>>) : [];
-  return {
+function num(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function hexColor(v: unknown): string | null {
+  const c = str(v).toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(c)) return c;
+  if (/^#[0-9a-f]{3}$/.test(c)) return `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`;
+  return null;
+}
+
+// Free-text fields Gemini sometimes returns as a list of strings.
+function prose(v: unknown): string {
+  return Array.isArray(v) ? v.map(str).filter(Boolean).join("; ") : str(v);
+}
+
+const MAX_SPEC_CHARS = 700;
+
+function spec(v: unknown): string {
+  return prose(v).slice(0, MAX_SPEC_CHARS);
+}
+
+function normalizeVisual(raw: unknown): ReferenceBeatVisual | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const v = raw as Record<string, unknown>;
+  const colorUsage = Array.isArray(v.colorUsage)
+    ? (v.colorUsage as unknown[])
+        .map((c) => {
+          if (!c || typeof c !== "object") return null;
+          const o = c as Record<string, unknown>;
+          const hex = hexColor(o.hex);
+          const element = str(o.element).slice(0, 80);
+          return hex && element ? { element, hex } : null;
+        })
+        .filter((c): c is ReferenceColorUse => c !== null)
+        .slice(0, 8)
+    : [];
+  const visual: ReferenceBeatVisual = {
+    layout: spec(v.layout),
+    background: spec(v.background),
+    textStyle: spec(v.textStyle),
+    uiElements: spec(v.uiElements),
+    colorUsage,
+    transitionIn: spec(v.transitionIn),
+    transitionOut: spec(v.transitionOut),
+    camera: spec(v.camera),
+    keyFrame: str(v.keyFrame).slice(0, 1200),
+  };
+  const empty = Object.values(visual).every((x) => (Array.isArray(x) ? x.length === 0 : !x));
+  return empty ? undefined : visual;
+}
+
+/** Coerce Gemini's JSON into a ReferenceAnalysis; tolerant of missing / mistyped fields. */
+export function normalizeAnalysis(raw: Record<string, unknown>, model: string): ReferenceAnalysis {
+  const beats = Array.isArray(raw.beats)
+    ? (raw.beats as unknown[]).filter((b): b is Record<string, unknown> => !!b && typeof b === "object" && !Array.isArray(b))
+    : [];
+  const analysis: ReferenceAnalysis = {
     summary: str(raw.summary),
-    totalDurationSeconds: Number(raw.totalDurationSeconds) || 0,
+    totalDurationSeconds: Math.max(0, num(raw.totalDurationSeconds)),
     aspectRatio: str(raw.aspectRatio),
     pacing: str(raw.pacing),
     editingRhythm: str(raw.editingRhythm),
     colorPalette: Array.isArray(raw.colorPalette)
       ? (raw.colorPalette as unknown[])
-          .map((c) => str(c).toLowerCase())
-          .filter((c) => /^#[0-9a-f]{6}$/.test(c))
+          .map(hexColor)
+          .filter((c): c is string => c !== null)
           .slice(0, 6)
       : [],
     typography: str(raw.typography),
@@ -369,24 +480,68 @@ function normalizeAnalysis(raw: Record<string, unknown>, model: string): Referen
     cameraMoves: str(raw.cameraMoves),
     transitions: Array.isArray(raw.transitions) ? (raw.transitions as unknown[]).map(str).filter(Boolean) : [],
     audioMood: str(raw.audioMood),
-    beats: beats.slice(0, 40).map((b) => ({
-      start: Number(b.start) || 0,
-      end: Number(b.end) || 0,
-      description: str(b.description),
-      onScreenText: str(b.onScreenText),
-      motion: str(b.motion),
-      transitionOut: str(b.transitionOut),
-    })),
+    beats: beats.slice(0, 40).map((b) => {
+      const start = Math.max(0, num(b.start));
+      const end = Math.max(start, num(b.end));
+      const beat: ReferenceBeat = {
+        start,
+        end,
+        description: str(b.description),
+        onScreenText: str(b.onScreenText),
+        motion: str(b.motion),
+        transitionOut: str(b.transitionOut),
+      };
+      if (b.keyTime !== undefined && b.keyTime !== null && b.keyTime !== "") {
+        const key = num(b.keyTime);
+        if (end > start && key >= start && key <= end) beat.keyTime = key;
+      }
+      const visual = normalizeVisual(b.visual);
+      if (visual) beat.visual = visual;
+      return beat;
+    }),
     suggestedScript: str(raw.suggestedScript),
-    recreationNotes: str(raw.recreationNotes),
+    recreationNotes: prose(raw.recreationNotes),
     model,
   };
+  const designSystem = prose(raw.designSystem).slice(0, 1500);
+  if (designSystem) analysis.designSystem = designSystem;
+  if (Array.isArray(raw.fontMatches)) {
+    const fonts = (raw.fontMatches as unknown[])
+      .map((f) => str(f).replace(/[^\w .'-]/g, "").trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 3);
+    if (fonts.length) analysis.fontMatches = fonts;
+  }
+  return analysis;
 }
+
+/** The 11-character video id of a single-video YouTube link, or null. */
+export function youTubeVideoId(raw: string): string | null {
+  const canonical = canonicalYouTubeUrl(raw);
+  return canonical ? new URL(canonical).searchParams.get("v") : null;
+}
+
+/**
+ * Public thumbnail URLs for a YouTube video, best first (maxresdefault is
+ * missing for some videos; hqdefault always exists). We never download the
+ * video itself.
+ */
+export function youTubeThumbnailUrls(raw: string): string[] {
+  const id = youTubeVideoId(raw);
+  return id ? [`https://i.ytimg.com/vi/${id}/maxresdefault.jpg`, `https://i.ytimg.com/vi/${id}/hqdefault.jpg`] : [];
+}
+
+export { downloadVideo as downloadReferenceVideo };
 
 /** Analyze a reference video (YouTube link or direct/public video URL) with Gemini. */
 export async function analyzeReferenceVideo(
   videoUrl: string,
-  opts: { maxScriptChars?: number | null } = {},
+  opts: {
+    maxScriptChars?: number | null;
+    // Receives the downloaded bytes of a non-YouTube reference (so frames can
+    // be extracted without a second download). Errors are logged, not thrown.
+    onVideoBytes?: (bytes: Buffer, mimeType: string) => void | Promise<void>;
+  } = {},
 ): Promise<ReferenceAnalysis> {
   const urlError = validateReferenceUrl(videoUrl);
   if (urlError) throw new Error(urlError);
@@ -405,6 +560,13 @@ export async function analyzeReferenceVideo(
     videoPart = { file_data: { file_uri: canonical } };
   } else {
     const { bytes, mimeType } = await downloadVideo(videoUrl);
+    if (opts.onVideoBytes) {
+      try {
+        await opts.onVideoBytes(bytes, mimeType);
+      } catch (err) {
+        console.warn("[reference-video] onVideoBytes failed:", err instanceof Error ? err.message : err);
+      }
+    }
     const file = await uploadToGemini(bytes, mimeType, apiKey);
     uploadedName = file.name;
     videoPart = { file_data: { file_uri: file.uri, mime_type: file.mimeType || mimeType } };
@@ -413,7 +575,7 @@ export async function analyzeReferenceVideo(
   const startedAt = Date.now();
   try {
     const res = await generateWithRetry(model, apiKey, {
-      contents: [{ role: "user", parts: [videoPart, { text: ANALYSIS_PROMPT }] }],
+      contents: [{ role: "user", parts: [videoPart, { text: youtube ? `${ANALYSIS_PROMPT}\n\n${YOUTUBE_ANALYSIS_NOTE}` : ANALYSIS_PROMPT }] }],
       generationConfig: { responseMimeType: "application/json" },
     });
     if (!res.ok) {
@@ -450,6 +612,7 @@ export async function analyzeReferenceVideo(
       throw new Error("Gemini returned an analysis that is not valid JSON.");
     }
     const analysis = normalizeAnalysis(parsed, model);
+    analysis.source = youtube ? "youtube" : "video";
     const maxChars = opts.maxScriptChars;
     if (typeof maxChars === "number" && maxChars > 0 && analysis.suggestedScript.length > maxChars) {
       analysis.suggestedScript = truncateAtWord(analysis.suggestedScript, maxChars);
@@ -491,32 +654,72 @@ function meterGemini(
   });
 }
 
-/** Render the analysis as the REFERENCE VIDEO block the Opus director reads. */
-export function formatReferenceBrief(a: ReferenceAnalysis): string {
-  const lines: string[] = [
-    "REFERENCE VIDEO (analyzed by Gemini — match its LOOK, PACING and MOTION FEEL; write original content from the SCRIPT, do not copy the reference's content):",
-    `  summary:        ${a.summary}`,
-    `  duration:       ${a.totalDurationSeconds}s · aspect ${a.aspectRatio || "unknown"}`,
-    `  pacing:         ${a.pacing}`,
-    `  editingRhythm:  ${a.editingRhythm}`,
-    `  colorPalette:   ${a.colorPalette.join(", ") || "(not detected)"}`,
-    `  typography:     ${a.typography}`,
-    `  motionStyle:    ${a.motionStyle}`,
-    `  cameraMoves:    ${a.cameraMoves}`,
-    `  transitions:    ${a.transitions.join(" · ")}`,
-    `  audioMood:      ${a.audioMood}`,
-  ];
-  if (a.beats.length > 0) {
-    lines.push("  beats:");
-    for (const b of a.beats) {
-      lines.push(
-        `    ${b.start.toFixed(1)}–${b.end.toFixed(1)}s: ${b.description}` +
-          (b.onScreenText ? ` | text: "${b.onScreenText}"` : "") +
-          (b.motion ? ` | motion: ${b.motion}` : "") +
-          (b.transitionOut ? ` | out: ${b.transitionOut}` : ""),
-      );
+const DEFAULT_BRIEF_HEADER =
+  "REFERENCE VIDEO (analyzed by Gemini — match its LOOK, PACING and MOTION FEEL; write original content from the SCRIPT, do not copy the reference's content):";
+const MAX_BRIEF_CHARS = 24_000;
+
+/** One beat's visual spec as indented lines (empty when the beat has none). */
+export function formatBeatVisual(v: ReferenceBeatVisual | undefined, indent: string, opts: { keyFrame?: boolean } = {}): string[] {
+  if (!v) return [];
+  const out: string[] = [];
+  const add = (k: string, val: string) => {
+    if (val) out.push(`${indent}${k}: ${val}`);
+  };
+  add("layout", v.layout);
+  add("background", v.background);
+  add("text", v.textStyle);
+  add("ui", v.uiElements);
+  if (v.colorUsage.length) out.push(`${indent}colors: ${v.colorUsage.map((c) => `${c.element} ${c.hex}`).join("; ")}`);
+  add("in", v.transitionIn);
+  add("out", v.transitionOut);
+  add("camera", v.camera);
+  if (opts.keyFrame) add("keyFrame", v.keyFrame);
+  return out;
+}
+
+/**
+ * Render the analysis as the REFERENCE VIDEO block the Opus director reads.
+ * `keyFrames` adds each beat's exhaustive key-frame description (useful when
+ * no stills of the reference are attached, e.g. YouTube links).
+ */
+export function formatReferenceBrief(
+  a: ReferenceAnalysis,
+  opts: { header?: string; keyFrames?: boolean } = {},
+): string {
+  const build = (detail: "full" | "compact") => {
+    const lines: string[] = [
+      opts.header ?? DEFAULT_BRIEF_HEADER,
+      `  summary:        ${a.summary}`,
+      `  duration:       ${a.totalDurationSeconds}s · aspect ${a.aspectRatio || "unknown"}`,
+      `  pacing:         ${a.pacing}`,
+      `  editingRhythm:  ${a.editingRhythm}`,
+      `  colorPalette:   ${a.colorPalette.join(", ") || "(not detected)"}`,
+      `  typography:     ${a.typography}`,
+      `  motionStyle:    ${a.motionStyle}`,
+      `  cameraMoves:    ${a.cameraMoves}`,
+      `  transitions:    ${a.transitions.join(" · ")}`,
+      `  audioMood:      ${a.audioMood}`,
+    ];
+    if (a.designSystem) lines.push(`  designSystem:   ${a.designSystem}`);
+    if (a.fontMatches?.length) lines.push(`  closestFonts:   ${a.fontMatches.join(", ")} (Google Fonts)`);
+    if (a.beats.length > 0) {
+      lines.push("  beats:");
+      a.beats.forEach((b, i) => {
+        lines.push(
+          `    #${i + 1} ${b.start.toFixed(1)}–${b.end.toFixed(1)}s: ${b.description}` +
+            (b.onScreenText ? ` | text: "${b.onScreenText}"` : "") +
+            (b.motion ? ` | motion: ${b.motion}` : "") +
+            (b.transitionOut ? ` | out: ${b.transitionOut}` : ""),
+        );
+        if (detail === "full") lines.push(...formatBeatVisual(b.visual, "       ", { keyFrame: opts.keyFrames }));
+      });
     }
-  }
-  if (a.recreationNotes) lines.push(`  recreationNotes: ${a.recreationNotes}`);
-  return lines.join("\n");
+    if (a.recreationNotes) lines.push(`  recreationNotes: ${a.recreationNotes}`);
+    return lines.join("\n");
+  };
+  const full = build("full");
+  if (full.length <= MAX_BRIEF_CHARS) return full;
+  // Very long analyses: drop the per-beat visual blocks (the frames and their
+  // labels still carry them for the beats that have a still).
+  return build("compact").slice(0, MAX_BRIEF_CHARS);
 }

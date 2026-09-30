@@ -6,7 +6,10 @@ import {
   isPrivateIp,
   truncateAtWord,
   isYouTubeUrl,
+  normalizeAnalysis,
   validateReferenceUrl,
+  youTubeThumbnailUrls,
+  youTubeVideoId,
   type ReferenceAnalysis,
 } from "./reference-video";
 
@@ -147,5 +150,135 @@ describe("formatReferenceBrief", () => {
     expect(brief).toContain('0.0–1.5s: logo slam | text: "NEW"');
     expect(brief).toContain("hard cut · mask wipe");
     expect(brief).toContain("recreationNotes: Keep every beat under a second.");
+  });
+});
+
+describe("youTubeThumbnailUrls", () => {
+  it("builds maxres then hq thumbnail URLs from any single-video link", () => {
+    for (const url of ["https://youtu.be/mtPqxJBMXCQ?si=x", "https://www.youtube.com/shorts/mtPqxJBMXCQ", "https://m.youtube.com/watch?v=mtPqxJBMXCQ&t=3"]) {
+      expect(youTubeThumbnailUrls(url)).toEqual([
+        "https://i.ytimg.com/vi/mtPqxJBMXCQ/maxresdefault.jpg",
+        "https://i.ytimg.com/vi/mtPqxJBMXCQ/hqdefault.jpg",
+      ]);
+    }
+    expect(youTubeVideoId("https://youtu.be/mtPqxJBMXCQ")).toBe("mtPqxJBMXCQ");
+  });
+  it("returns nothing without a valid video id", () => {
+    expect(youTubeThumbnailUrls("https://www.youtube.com/playlist?list=PL1")).toEqual([]);
+    expect(youTubeThumbnailUrls("https://youtu.be/abc")).toEqual([]);
+    expect(youTubeThumbnailUrls("not a url")).toEqual([]);
+  });
+});
+
+describe("normalizeAnalysis", () => {
+  it("keeps the old fields working when the new ones are missing", () => {
+    const a = normalizeAnalysis({ summary: " s ", beats: [{ start: 0, end: 2, description: "d" }], colorPalette: ["#ABCDEF", "red"] }, "m");
+    expect(a.summary).toBe("s");
+    expect(a.colorPalette).toEqual(["#abcdef"]);
+    expect(a.beats[0]).toEqual({ start: 0, end: 2, description: "d", onScreenText: "", motion: "", transitionOut: "" });
+    expect(a).not.toHaveProperty("designSystem");
+    expect(a).not.toHaveProperty("fontMatches");
+    expect(normalizeAnalysis({ recreationNotes: ["Use caps", " Cut on the kick ", 3] }, "m").recreationNotes).toBe("Use caps; Cut on the kick");
+  });
+
+  it("normalizes the per-beat visual spec", () => {
+    const a = normalizeAnalysis(
+      {
+        designSystem: " 12-col grid, 6% margins ",
+        fontMatches: ["Inter Tight", 42, "<script>", "Space Grotesk", "Manrope", "Extra"],
+        totalDurationSeconds: "14.5",
+        beats: [
+          {
+            start: "1",
+            end: 4,
+            keyTime: 2.5,
+            visual: {
+              layout: "headline left at x 8%, y 40%",
+              background: "#101014 flat",
+              textStyle: "800, uppercase, -0.02em, 9% of frame height",
+              uiElements: 7,
+              colorUsage: [
+                { element: "headline", hex: "#FFF" },
+                { element: "accent bar", hex: "#ff5a36" },
+                { element: "bad", hex: "orange" },
+                "junk",
+              ],
+              transitionIn: "mask wipe up, expo.out, 0.6s",
+              transitionOut: "hard cut",
+              camera: "static",
+              keyFrame: "x".repeat(5000),
+            },
+          },
+          { start: 4, end: 6, keyTime: 9, visual: { layout: "", colorUsage: [] } },
+          { start: 6, end: 5, visual: "not an object" },
+          null,
+          "junk",
+        ],
+      },
+      "gemini",
+    );
+    expect(a.designSystem).toBe("12-col grid, 6% margins");
+    expect(a.fontMatches).toEqual(["Inter Tight", "script", "Space Grotesk"]);
+    expect(a.totalDurationSeconds).toBe(14.5);
+    expect(a.beats).toHaveLength(3);
+    const [b0, b1, b2] = a.beats;
+    expect(b0!.start).toBe(1);
+    expect(b0!.keyTime).toBe(2.5);
+    expect(b0!.visual!.colorUsage).toEqual([
+      { element: "headline", hex: "#ffffff" },
+      { element: "accent bar", hex: "#ff5a36" },
+    ]);
+    expect(b0!.visual!.uiElements).toBe("");
+    expect(b0!.visual!.keyFrame.length).toBe(1200);
+    expect(b1!.keyTime).toBeUndefined(); // outside the beat
+    expect(b1!.visual).toBeUndefined(); // empty spec dropped
+    expect(b2!.end).toBe(6); // end never before start
+    expect(b2!.visual).toBeUndefined();
+  });
+});
+
+describe("formatReferenceBrief — visual spec", () => {
+  const a: ReferenceAnalysis = normalizeAnalysis(
+    {
+      summary: "Minimal SaaS promo",
+      totalDurationSeconds: 8,
+      designSystem: "8% margins",
+      fontMatches: ["Inter"],
+      beats: [
+        {
+          start: 0,
+          end: 4,
+          description: "headline",
+          visual: { layout: "left third", textStyle: "900 caps", colorUsage: [{ element: "bg", hex: "#000000" }], keyFrame: "a black frame with a word" },
+        },
+      ],
+    },
+    "m",
+  );
+  it("includes design system, fonts and each beat's spec; key frames on request", () => {
+    const brief = formatReferenceBrief(a);
+    expect(brief).toContain("designSystem:   8% margins");
+    expect(brief).toContain("closestFonts:   Inter");
+    expect(brief).toContain("#1 0.0–4.0s: headline");
+    expect(brief).toContain("layout: left third");
+    expect(brief).toContain("colors: bg #000000");
+    expect(brief).not.toContain("keyFrame:");
+    expect(formatReferenceBrief(a, { keyFrames: true })).toContain("keyFrame: a black frame with a word");
+    expect(formatReferenceBrief(a, { header: "CUSTOM:" }).split("\n")[0]).toBe("CUSTOM:");
+  });
+  it("drops per-beat specs when the brief would be huge", () => {
+    const big: ReferenceAnalysis = {
+      ...a,
+      beats: Array.from({ length: 40 }, (_, i) => ({
+        ...a.beats[0]!,
+        start: i,
+        end: i + 1,
+        visual: { ...a.beats[0]!.visual!, layout: "y".repeat(700), background: "z".repeat(700) },
+      })),
+    };
+    const brief = formatReferenceBrief(big);
+    expect(brief.length).toBeLessThanOrEqual(24_000);
+    expect(brief).not.toContain("layout: yyy");
+    expect(brief).toContain("#40 39.0–40.0s");
   });
 });
