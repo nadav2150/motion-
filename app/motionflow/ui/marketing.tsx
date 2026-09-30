@@ -107,6 +107,7 @@ const FOOTER_COLS: { title: string; links: { href: string; label: string }[] }[]
       { href: "/launch-videos", label: "Launch videos" },
       { href: "/feature-announcement-videos", label: "Feature announcements" },
       { href: "/product-demo-videos", label: "Product demos" },
+      { href: "/demo-video-agency-alternative", label: "Demo video agency alternative" },
     ],
   },
   {

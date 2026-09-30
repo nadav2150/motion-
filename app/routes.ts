@@ -27,6 +27,7 @@ export default [
   route("launch-videos",                "routes/launch-videos.tsx"),
   route("feature-announcement-videos",  "routes/feature-announcement-videos.tsx"),
   route("product-demo-videos",          "routes/product-demo-videos.tsx"),
+  route("demo-video-agency-alternative", "routes/demo-video-agency-alternative.tsx"),
 
   // SEO — competitor comparison pages
   route("vs/loom",      "routes/vs.loom.tsx"),

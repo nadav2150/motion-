@@ -155,8 +155,27 @@ export class VidelyContainer extends Container<Env> {
   }
 }
 
+// One canonical origin. http:// and www. used to answer 200 with the same
+// HTML, so Search Console filed them as "alternate page with proper canonical"
+// and spent crawl budget on duplicates while real pages sat uncrawled.
+// Permanent-redirect both to https://videly.io, keeping path + query.
+const CANONICAL_HOST = "videly.io";
+
+function canonicalRedirect(request: Request): Response | null {
+  const url = new URL(request.url);
+  const isWww = url.hostname === `www.${CANONICAL_HOST}`;
+  const isHttp = url.protocol === "http:" && url.hostname === CANONICAL_HOST;
+  if (!isWww && !isHttp) return null;
+  url.protocol = "https:";
+  url.hostname = CANONICAL_HOST;
+  return Response.redirect(url.toString(), 301);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const redirect = canonicalRedirect(request);
+    if (redirect) return redirect;
+
     // Single shared instance keeps the Chromium browser pool + Supabase
     // client warm. Per-user instances are unnecessary — auth lives in
     // signed cookies that the container's Node server validates.

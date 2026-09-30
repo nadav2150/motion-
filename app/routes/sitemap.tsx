@@ -25,6 +25,7 @@ const ENTRIES: SitemapEntry[] = [
   { path: "/launch-videos",                changefreq: "weekly", priority: "0.8" },
   { path: "/feature-announcement-videos",  changefreq: "weekly", priority: "0.8" },
   { path: "/product-demo-videos",          changefreq: "weekly", priority: "0.8" },
+  { path: "/demo-video-agency-alternative", changefreq: "weekly", priority: "0.8" },
 
   // Competitor comparison pages. Monthly is enough — these only change
   // when a competitor changes pricing or we update the feature table.
