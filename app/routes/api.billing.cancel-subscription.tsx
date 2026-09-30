@@ -8,11 +8,16 @@
 // eventually overwrite this row with Polar's authoritative state, but the
 // optimistic update lets the UI confirm the action without waiting for the
 // round-trip.
+//
+// Dodo subscriptions (ids start with "sub_") are cancelled through Dodo with
+// cancel_at_next_billing_date, whichever provider is currently selling — a
+// subscription is always cancelled where it lives.
 
 import type { Route } from "./+types/api.billing.cancel-subscription";
 import { requireUserApi } from "../lib/auth";
 import { getSupabase } from "../lib/supabase";
 import { getPolar } from "../lib/billing/polar";
+import { cancelSubscriptionAtPeriodEnd } from "../lib/billing/dodo";
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -47,16 +52,21 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  const polar = getPolar();
+  const subscriptionId = sub.provider_subscription_id as string;
+  const provider = subscriptionId.startsWith("sub_") ? "dodo" : "polar";
   try {
-    await polar.subscriptions.update({
-      id: sub.provider_subscription_id as string,
-      subscriptionUpdate: { cancelAtPeriodEnd: true },
-    });
+    if (provider === "dodo") {
+      await cancelSubscriptionAtPeriodEnd(subscriptionId);
+    } else {
+      await getPolar().subscriptions.update({
+        id: subscriptionId,
+        subscriptionUpdate: { cancelAtPeriodEnd: true },
+      });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[billing] polar cancel failed for ${user.id} sub=${sub.provider_subscription_id}: ${msg}`);
-    return Response.json({ error: "Polar cancel failed" }, { status: 502, headers });
+    console.error(`[billing] ${provider} cancel failed for ${user.id} sub=${subscriptionId}: ${msg}`);
+    return Response.json({ error: `${provider === "dodo" ? "Dodo" : "Polar"} cancel failed` }, { status: 502, headers });
   }
 
   const { error: updateErr } = await db

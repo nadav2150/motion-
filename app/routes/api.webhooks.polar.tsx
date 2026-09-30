@@ -15,20 +15,28 @@ import { getWebhookSecret, lookupProduct } from "../lib/billing/polar";
 import { classifyOrder, extractUserIdHint } from "../lib/billing/webhook-classify";
 import { getSupabase } from "../lib/supabase";
 import { adjustBalance } from "../lib/billing/credits";
-import { getPostHog, flushPostHog } from "../lib/posthog";
+import { flushPostHog } from "../lib/posthog";
 import type { PlanTier } from "../lib/billing/plan-features";
+import {
+  applyPlanAndGrant as sharedApplyPlanAndGrant,
+  identifyPlan as sharedIdentifyPlan,
+  logBillingAfter as sharedLogBillingAfter,
+  webhookLog,
+} from "../lib/billing/webhook-apply";
 
-function log(level: "info" | "warn" | "error", msg: string, fields: Record<string, unknown> = {}) {
-  const parts = [`[polar-webhook] ${msg}`];
-  for (const [k, v] of Object.entries(fields)) {
-    if (v === undefined || v === null) continue;
-    parts.push(`${k}=${typeof v === "string" ? v : JSON.stringify(v)}`);
-  }
-  const line = parts.join(" ");
-  if (level === "error") console.error(line);
-  else if (level === "warn") console.warn(line);
-  else console.log(line);
-}
+const log = (level: "info" | "warn" | "error", msg: string, fields: Record<string, unknown> = {}) =>
+  webhookLog("polar", level, msg, fields);
+const logBillingAfter = (userId: string, context: string, extra: Record<string, unknown> = {}) =>
+  sharedLogBillingAfter("polar", userId, context, extra);
+const applyPlanAndGrant = (
+  userId: string,
+  planTier: PlanTier,
+  monthlyGrant: number,
+  periodEnd: string | null,
+  idempotencyKey: string,
+) => sharedApplyPlanAndGrant("polar", userId, planTier, monthlyGrant, periodEnd, idempotencyKey);
+const identifyPlan = (userId: string, properties: Record<string, unknown>) =>
+  sharedIdentifyPlan("polar", userId, properties);
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
@@ -126,51 +134,6 @@ function toIso(v: unknown): string | null {
   if (v instanceof Date) return v.toISOString();
   if (typeof v === "string" && v) return v;
   return null;
-}
-
-// After a grant/plan change, read the user's billing row back from Supabase and
-// emit a single line showing the resulting plan + balance — so you can confirm
-// at a glance that "webhook → DB → credits" actually landed. Mirrors the same
-// snapshot to PostHog as an event so it shows up in the dashboard too.
-async function logBillingAfter(
-  userId: string,
-  context: string,
-  extra: Record<string, unknown> = {},
-): Promise<void> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("user_billing")
-    .select("plan_tier, credits_balance, credits_reserved, monthly_grant, period_end")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    log("warn", `${context}: could not read back billing state`, { user_id: userId, error: error.message });
-    return;
-  }
-  log("info", `${context} ✓ billing now`, {
-    user_id: userId,
-    plan_tier: data?.plan_tier,
-    credits_balance: data?.credits_balance,
-    credits_reserved: data?.credits_reserved,
-    monthly_grant: data?.monthly_grant,
-    period_end: data?.period_end,
-    ...extra,
-  });
-  try {
-    getPostHog().capture({
-      distinctId: userId,
-      event: "polar_credits_applied",
-      properties: {
-        context,
-        plan_tier: data?.plan_tier,
-        credits_balance: data?.credits_balance,
-        monthly_grant: data?.monthly_grant,
-        ...extra,
-      },
-    });
-  } catch {
-    // PostHog is best-effort; never let telemetry break the grant.
-  }
 }
 
 async function resolveUserId(data: AnyData): Promise<string | null> {
@@ -371,36 +334,4 @@ async function handleOrderPaid(data: AnyData): Promise<void> {
     pack: entry.packSize,
     credits_added: entry.credits,
   });
-}
-
-async function applyPlanAndGrant(
-  userId: string,
-  planTier: PlanTier,
-  monthlyGrant: number,
-  periodEnd: string | null,
-  idempotencyKey: string,
-): Promise<void> {
-  const db = getSupabase();
-  await db.from("user_billing").update({
-    plan_tier: planTier,
-    monthly_grant: monthlyGrant,
-    period_end: periodEnd,
-  }).eq("user_id", userId);
-  await adjustBalance({
-    userId,
-    amount: monthlyGrant,
-    kind: "grant",
-    reason: `monthly_grant:${planTier}`,
-    idempotencyKey,
-  });
-  log("info", "plan applied + monthly grant", { user_id: userId, plan_tier: planTier, monthly_grant: monthlyGrant });
-  await logBillingAfter(userId, `plan applied (${planTier})`, { monthly_grant: monthlyGrant });
-}
-
-function identifyPlan(userId: string, properties: Record<string, unknown>): void {
-  try {
-    getPostHog().identify({ distinctId: userId, properties });
-  } catch (err) {
-    log("warn", "posthog identify failed (non-fatal)", { user_id: userId, error: err instanceof Error ? err.message : String(err) });
-  }
 }
