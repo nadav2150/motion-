@@ -71,7 +71,8 @@ export function renderCredits(seconds: number, resolution: ExportResolution = "1
 export function estimateStudioJob(input: StudioEstimateInput): StudioEstimate {
   const base = CREDITS_STUDIO_BASE;
   const repair = CREDITS_STUDIO_REPAIR * MAX_REPAIR_ROUNDS;
-  const review = CREDITS_STUDIO_REVIEW;
+  // The self-review pass is off unless STUDIO_SELF_REVIEW=1 (see generate.ts).
+  const review = process.env.STUDIO_SELF_REVIEW === "1" ? CREDITS_STUDIO_REVIEW : 0;
   const reference = input.reference ? CREDITS_STUDIO_REFERENCE : 0;
   const images = CREDITS_STUDIO_IMAGE * Math.max(0, input.generatedImages ?? MAX_GENERATED_IMAGES);
   const voiceover = input.voiceover ? voiceoverCredits(input.maxDuration) : 0;

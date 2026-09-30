@@ -218,6 +218,20 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.revisions = [];
   h.updates = [];
+  // These tests cover the resume logic including the (optional) review pass.
+  process.env.STUDIO_SELF_REVIEW = "1";
+});
+
+describe("runStudioJob — self-review off (default)", () => {
+  it("ships V1 without a review call", async () => {
+    delete process.env.STUDIO_SELF_REVIEW;
+    h.row = makeRow();
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(opusLabels()).toEqual(["plan", "code"]);
+    expect(savedKinds()).toEqual(["initial"]);
+    expect(render.renderVideo).toHaveBeenCalledTimes(1);
+    expect(checkpoints().at(-1)!.finalRevision).toBe(1);
+  });
 });
 
 describe("runStudioJob — fresh run", () => {

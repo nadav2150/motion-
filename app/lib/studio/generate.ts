@@ -133,6 +133,7 @@ const CODE_EFFORT: OpusEffort =
 const CODE_MAX_TOKENS = 128_000;
 // Reserve enough budget for a review call (frames + document + patch JSON).
 const REVIEW_MIN_BUDGET = 60_000;
+export const selfReviewEnabled = (): boolean => process.env.STUDIO_SELF_REVIEW === "1";
 const REVIEW_FRAMES = 12;
 
 // ─── Input validation ──────────────────────────────────────────────────────
@@ -1054,8 +1055,9 @@ export async function runStudioJob(
           }
         }
 
-        // Self-review.
-        if (remainingBudget() >= REVIEW_MIN_BUDGET) {
+        // Self-review (off by default: V1 ships as-is, ~10% cheaper and ~1 min
+        // faster). STUDIO_SELF_REVIEW=1 turns the vision polish pass back on.
+        if (selfReviewEnabled() && remainingBudget() >= REVIEW_MIN_BUDGET) {
           await setStage(jobId, "reviewing", kind === "initial" ? { current_revision: revision } : {});
           try {
             const images = await getReferenceImages();
