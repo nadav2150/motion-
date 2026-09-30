@@ -6,6 +6,9 @@
 //   plan call    ~20k in + ~8k out (thinking + JSON)          ≈ 240
 //   code call    ~25k in + ~45k out (thinking + full HTML)    ≈ 1,000
 //   → STUDIO_BASE 1,500 covers plan + code with headroom.
+//   parallel scenes (default) replace the code call with a foundation call
+//   (~25k in + ~6k out) and 2–6 scene calls (~30k in, mostly cache reads,
+//   + ~10–15k out each): about the same output tokens in total.
 //   repair       ~50k in (doc + errors) + ~10k out, up to 2   ≈ 2 × 400
 //   review       12 frames + doc ~45k in + ~8k out            ≈ 300
 //   voiceover    ElevenLabs $0.30 / 1k chars, ~15 chars/s     150–300

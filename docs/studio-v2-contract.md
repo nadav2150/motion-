@@ -46,6 +46,15 @@ Polling: the UI polls `GET /api/jobs/:id` every 2 s while `stage` is not `previe
 - Pure function of time: everything is drawn from the absolute time (GSAP timelines, CSS/WAAPI animations, or rAF loops reading `performance.now()`); no `dt` accumulation, no user input, no network (`fetch`/XHR/WebSocket blocked).
 - Voiceover cue times given in the prompt are hit exactly; audio is never embedded in the document (the renderer muxes it).
 
+## Writing step: parallel scenes (`app/lib/studio/scenes.ts`)
+
+- Default for generate and regenerate (`STUDIO_PARALLEL_SCENES=0` = the old single code call; chat edits always patch/rewrite).
+- `splitScenes()` groups the timed plan's beats into 2–6 contiguous scenes (~6.5 s each, never splitting a beat, avoiding cuts inside a voiceover line). A plan with one beat uses the single call.
+- One FOUNDATION call (`opus_studio_style`, effort medium, 12k max tokens, JSON): font links, shared CSS tokens/utilities, helpers on `V`, motion language, transition rule, one summary per scene and one handoff per boundary. Then one SCENE call per scene (`opus_studio_scene`, effort medium, ~24k max tokens, JSON `{html, css, js}`), all at once (≤ 6 in flight). Scene calls share the cached prefix (system blocks + plan/context block + foundation block).
+- Assembly: `__videly` first, library tags, font links, one `<style>` (canvas rules, foundation, each scene's CSS scoped under `#scene-N`), `<div id="stage">` with the sections, one `<script type="module">` that registers GSAP plugins, runs the helpers, creates the master timeline, and after `document.fonts.ready` calls each scene's `async function (tl, root, V)` in try/catch (a throwing scene is reported via `reportError` so validation sees it, the others still build); `__videly.ready` awaits them; visibility of `#scene-N` switches exactly at the scene boundaries. The assembled document then goes through `ensureVidelyMeta` + `repairUntilValid` like any draft.
+- Failures: a scene that errors, is truncated or fails the local checks (JS syntax, `<script>` in html) is retried once with a 60% budget at effort low; a scene that fails twice, or a failed foundation, falls back to the single code call for the whole video.
+- Resume: the foundation and each finished scene are stored at `storyboards/jobs/<id>/v2/runs/<taskId>/{style,scene-N}.json` and listed in `studio_plan.run.parallel` (`{ split, stylePath, scenes }`); a re-claimed task only writes the missing scenes (a different split ignores the checkpoint).
+
 ## Reference video
 
 - `CreateStudioJobInput.referenceMode` (optional): `"close"` (default when a video reference is attached) or `"inspired"`; stored in `jobs.studio_plan.input.referenceMode` (absent on older jobs → close).
