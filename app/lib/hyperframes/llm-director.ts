@@ -23,6 +23,7 @@
 //     lint errors the per-scene pipeline kept hitting.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { createClaudeClient } from "../llm-provider";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1247,16 +1248,9 @@ Common mistakes that produce rejected output:
 let cachedClient: Anthropic | null = null;
 export function getClient(): Anthropic {
   if (cachedClient) return cachedClient;
-  // .env in this project spells it "ANTROPIC_API_KEY" (sic). Honour that
-  // first so the director picks the key without any rename, then fall
-  // back to the correctly-spelled var.
-  const apiKey = process.env.ANTROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "ANTROPIC_API_KEY (or ANTHROPIC_API_KEY) must be set for the hyperframes LLM director.",
-    );
-  }
-  cachedClient = new Anthropic({ apiKey });
+  // Anthropic directly, or OpenRouter when OPENROUTER_API_KEY is set (see
+  // app/lib/llm-provider.ts).
+  cachedClient = createClaudeClient();
   return cachedClient;
 }
 

@@ -22,6 +22,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { getClient } from "../hyperframes/llm-director";
+import { canonicalClaudeModel } from "../llm-provider";
 import type { ConsumptionReason } from "../billing/credits";
 import {
   creditsForAnthropic,
@@ -208,7 +209,7 @@ export async function callOpus<T = unknown>(args: CallOpusArgs): Promise<CallOpu
     cache_creation_input_tokens: response.usage?.cache_creation_input_tokens ?? 0,
     cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
   };
-  const model = response.model || STUDIO_MODEL;
+  const model = canonicalClaudeModel(response.model || STUDIO_MODEL);
   meterOpus(model, usage, args.reason, latencyMs, args.effort);
   if (budget) budget.used += weightedTokens(usage);
 
