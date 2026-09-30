@@ -1,10 +1,11 @@
-import { useNavigate } from "react-router";
+import { data, useLoaderData, useNavigate } from "react-router";
 import type { Route } from "./+types/pricing";
 import {
   PricingScreen,
   type PackKey,
   type PricingTierKey,
 } from "../motionflow/screens/pricing";
+import { getUserFromRequest } from "../lib/auth";
 import { buildMeta } from "../lib/seo";
 
 export function meta(_: Route.MetaArgs) {
@@ -16,12 +17,21 @@ export function meta(_: Route.MetaArgs) {
   });
 }
 
+type LoaderData = { isAuthed: boolean };
+
+// Soft auth check — never redirects, only adapts the header CTA.
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUserFromRequest(request);
+  return data({ isAuthed: user !== null } satisfies LoaderData);
+}
+
 export default function PricingRoute() {
   const navigate = useNavigate();
+  const { isAuthed } = useLoaderData() as LoaderData;
 
   const handleSelectTier = (tier: PricingTierKey, pack: PackKey) => {
     if (tier === "free") {
-      navigate("/register");
+      navigate(isAuthed ? "/home" : "/register");
       return;
     }
     // Checkout route reads plan/pack from the query string — see
@@ -32,12 +42,5 @@ export default function PricingRoute() {
     navigate(`/checkout?${params.toString()}`);
   };
 
-  return (
-    <PricingScreen
-      onSelectTier={handleSelectTier}
-      onBack={() => navigate("/")}
-      onCta={() => navigate("/register")}
-      onSignIn={() => navigate("/signin")}
-    />
-  );
+  return <PricingScreen isAuthed={isAuthed} onSelectTier={handleSelectTier} />;
 }
