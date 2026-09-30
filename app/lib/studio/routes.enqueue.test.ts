@@ -118,6 +118,7 @@ describe("routes enqueue studio tasks", () => {
         job_id: params.id,
         kind: "edit",
         payload: { instruction: "Make it blue", baseRevision: null, restoreStage: "preview_ready", expectedRevision: 3 },
+        queue: "dev",
       },
     ]);
     expect(credits.reserveCredits).toHaveBeenCalledTimes(1);
@@ -176,7 +177,7 @@ describe("routes enqueue studio tasks", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "00000000-0000-4000-8000-00000000000a" });
     expect(h.inserted[0]).toMatchObject({ generation_mode: "v2", status: "pending", stage_label: "Queued" });
-    expect(tasks()).toEqual([{ table: "studio_tasks", job_id: "00000000-0000-4000-8000-00000000000a", kind: "generate", payload: {} }]);
+    expect(tasks()).toEqual([{ table: "studio_tasks", job_id: "00000000-0000-4000-8000-00000000000a", kind: "generate", payload: {}, queue: "dev" }]);
     expect(credits.reserveCredits).toHaveBeenCalledTimes(1);
   });
 
