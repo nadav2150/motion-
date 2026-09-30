@@ -1,5 +1,13 @@
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { normalizePlan, parseCreateStudioJobInput, StudioInputError, timelineTimes, type InputPolicy } from "./generate";
+import {
+  buildReviewReference,
+  normalizePlan,
+  parseCreateStudioJobInput,
+  StudioInputError,
+  timelineTimes,
+  type InputPolicy,
+} from "./generate";
 import { listTemplates, STUDIO_TEMPLATES, TEMPLATE_CATEGORIES } from "./templates";
 
 const HOST = "abc.supabase.co";
@@ -63,6 +71,39 @@ describe("parseCreateStudioJobInput", () => {
   });
   it("allows an empty prompt when a source or template is attached", () => {
     expect(parseCreateStudioJobInput({ prompt: "", templateId: "logo-reveal" }, paid).templateId).toBe("logo-reveal");
+  });
+  it("referenceMode: close by default with a video reference, absent without one", () => {
+    const yt = { kind: "youtube", url: "https://youtu.be/mtPqxJBMXCQ" };
+    expect(parseCreateStudioJobInput({ prompt: "x", sources: [yt] }, paid).referenceMode).toBe("close");
+    expect(parseCreateStudioJobInput({ prompt: "x", sources: [yt], referenceMode: "inspired" }, paid).referenceMode).toBe("inspired");
+    expect(parseCreateStudioJobInput({ prompt: "x", sources: [yt], referenceMode: "close" }, paid).referenceMode).toBe("close");
+    expect(parseCreateStudioJobInput({ prompt: "x", referenceMode: "inspired" }, paid)).not.toHaveProperty("referenceMode");
+    expect(() => parseCreateStudioJobInput({ prompt: "x", sources: [yt], referenceMode: "exact" }, paid)).toThrow(StudioInputError);
+  });
+});
+
+describe("buildReviewReference", () => {
+  const still = (w: number, h: number) =>
+    sharp({ create: { width: w, height: h, channels: 3, background: { r: 10, g: 120, b: 200 } } }).jpeg().toBuffer();
+  it("contact sheets for the reference stills and the video's own frames", async () => {
+    const s = await still(1280, 720);
+    const ref = await buildReviewReference(
+      null,
+      [0, 1, 2].map((i) => ({ time: i * 2, beatIndex: i, thumbnail: false, jpeg: s })),
+      [{ time: 1, jpeg: s }, { time: 3, jpeg: s }],
+    );
+    expect(ref!.thumbnail).toBe(false);
+    const sheet = await sharp(Buffer.from(ref!.sheetBase64, "base64")).metadata();
+    expect(sheet.format).toBe("jpeg");
+    expect(sheet.width).toBeGreaterThan(3 * 400); // 3 tiles across
+    expect(ref!.candidateSheetBase64).toBeTruthy();
+  });
+  it("a YouTube thumbnail is sent as-is (resized), and nothing without stills", async () => {
+    const ref = await buildReviewReference(null, [{ time: 0, beatIndex: null, thumbnail: true, jpeg: await still(1280, 720) }], []);
+    expect(ref!.thumbnail).toBe(true);
+    expect((await sharp(Buffer.from(ref!.sheetBase64, "base64")).metadata()).width).toBe(1024);
+    expect(ref!.candidateSheetBase64).toBeNull();
+    expect(await buildReviewReference(null, [], [])).toBeNull();
   });
 });
 

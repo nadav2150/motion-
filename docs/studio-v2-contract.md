@@ -46,13 +46,20 @@ Polling: the UI polls `GET /api/jobs/:id` every 2 s while `stage` is not `previe
 - Pure function of time: everything is drawn from the absolute time (GSAP timelines, CSS/WAAPI animations, or rAF loops reading `performance.now()`); no `dt` accumulation, no user input, no network (`fetch`/XHR/WebSocket blocked).
 - Voiceover cue times given in the prompt are hit exactly; audio is never embedded in the document (the renderer muxes it).
 
+## Reference video
+
+- `CreateStudioJobInput.referenceMode` (optional): `"close"` (default when a video reference is attached) or `"inspired"`; stored in `jobs.studio_plan.input.referenceMode` (absent on older jobs → close).
+- Gemini (`app/lib/reference-video.ts`) returns the breakdown plus, on newer analyses, `designSystem`, `fontMatches` and per-beat `keyTime` + `visual` specs (layout in % of frame, background, text style, UI elements, per-element hex colors, transitions with easing/duration, camera, key-frame description).
+- Close mode only: after the analysis, `app/lib/studio/reference-frames.ts` stores up to 10 stills at `storyboards/jobs/<id>/v2/reference/frame-<n>.jpg` (≤ 1280 px wide, JPEG q82) and records `{ time, url, path, beatIndex }[]` in `jobs.reference_analysis.frames` (+ `frameSource`, `framesError`). Uploads / direct links: ffmpeg at each beat's key moment (Gemini's `keyTime`, else the midpoint; evenly spaced without beats). YouTube: never downloaded — only the public thumbnail (`i.ytimg.com/vi/<id>/maxresdefault.jpg`, fallback `hqdefault.jpg`).
+- The plan and code calls get the stills as labelled image blocks before the text, plus CLOSE MATCH rules (the reference is the primary visual spec; content from the prompt; brand kit hues replace reference colors role for role). The self-review gets a contact sheet of the stills next to one of the video's frames and a REFERENCE MATCH criterion. Inspired mode keeps the text-only brief.
+
 ## Background work (studio_tasks)
 
 Routes never run a Studio operation in the web process. They reserve credits, claim the job, and insert a `studio_tasks` row (`supabase/migrations/20260930_studio_tasks.sql`); the task worker (`app/lib/studio/worker.ts`) claims it with `claim_studio_task()` and runs it.
 
 - Kinds: `generate` (POST /api/studio/jobs), `regenerate`, `edit`, `render`. At most one queued/running task per job (partial unique index).
 - Worker: up to 3 generate/edit/regenerate tasks at once, renders one at a time. Heartbeat every 15 s (`studio_tasks.heartbeat_at` + `jobs.updated_at`); a task whose heartbeat is older than 90 s is re-claimed. A task that throws is retried (30 s × attempt backoff) up to `max_attempts` (3), then failed and its job settled (`settleFailedTask`). SIGTERM: stop claiming, up to 60 s for running tasks, the rest go back to the queue.
-- Resume: a re-claimed generate skips what is persisted — `reference_analysis`, `studio_plan.plan`, `jobs.audio` + `studio_plan.generatedAssets`, the code call's draft (`studio_plan.run.draftPath`), saved revisions. Edits check the promised revision; renders simply re-render. Credits are reserved at enqueue time only.
+- Resume: a re-claimed generate skips what is persisted — `reference_analysis`, the reference stills (`reference_analysis.frames`, present even when empty after a failed extraction), `studio_plan.plan`, `jobs.audio` + `studio_plan.generatedAssets`, the code call's draft (`studio_plan.run.draftPath`), saved revisions. Edits check the promised revision; renders simply re-render. Credits are reserved at enqueue time only.
 - Reaper (`active.ts`, on every GET /api/jobs/:id): fails a busy-looking job only when it has no queued/running task, or its task is stale with no attempts left.
 - Local: `npm run dev` starts app + tunnel + worker; `npm run dev:local` + `npm run worker` in a second terminal; or `STUDIO_INLINE_WORKER=1` to run the worker inside the web process (dies with it).
 - Production: one container runs both processes (`build/worker/supervisor.mjs`); the Worker's every-minute cron pings `GET /api/internal/worker-ping` while tasks are pending so the container does not sleep mid-video.

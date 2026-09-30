@@ -34,7 +34,14 @@ export type CreateStudioJobInput = {
   sources: StudioSource[]; // at most one video reference (youtube | video_url | upload)
   useBrandKit: boolean;
   templateId?: string | null;
+  // How closely to follow an attached reference video. "close" (the default
+  // when a video reference is attached) makes the reference's layouts,
+  // typography, pacing, transitions and colors the primary visual spec;
+  // "inspired" only borrows its feel. Ignored without a video reference.
+  referenceMode?: ReferenceMode;
 };
+
+export type ReferenceMode = "inspired" | "close";
 
 export type StudioStage =
   | "queued"

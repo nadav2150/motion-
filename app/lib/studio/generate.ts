@@ -95,16 +95,21 @@ import {
   CODE_TASK,
   PLAN_SCHEMA,
   PLAN_TASK,
+  referenceModeOf,
   REVIEW_SCHEMA,
   REVIEW_TASK,
   systemFor,
   type GeneratedAsset,
   type LockedAsset,
   type RawPlan,
+  type ReferencePromptFrame,
+  type ReviewReference,
   type ReviewResponse,
   type WebsiteBrief,
 } from "./prompts";
+import { makeContactSheet } from "./contact-sheet";
 import { enqueueStudioTask } from "./queue";
+import { ensureReferenceFrames, loadReferenceImages, type ReferenceImage } from "./reference-frames";
 import { captureFrames, renderVideo } from "./render";
 import { getTemplate } from "./templates";
 import {
@@ -274,6 +279,9 @@ export function parseCreateStudioJobInput(body: unknown, policy: InputPolicy): C
   if (!prompt && sources.length === 0 && !templateId) {
     throw new StudioInputError("Describe your video, or attach a reference, website or template.");
   }
+  if (b.referenceMode !== undefined && b.referenceMode !== null && b.referenceMode !== "close" && b.referenceMode !== "inspired") {
+    throw new StudioInputError('referenceMode must be "close" or "inspired"');
+  }
 
   return {
     prompt,
@@ -285,6 +293,8 @@ export function parseCreateStudioJobInput(body: unknown, policy: InputPolicy): C
     sources,
     useBrandKit: b.useBrandKit !== false,
     templateId,
+    // Only meaningful with a video reference; defaults to a close match.
+    ...(videoRefs > 0 ? { referenceMode: b.referenceMode === "inspired" ? ("inspired" as const) : ("close" as const) } : {}),
   };
 }
 
@@ -318,7 +328,12 @@ export async function createStudioJob(
   const template = getTemplate(input.templateId);
   const record: StudioPlanRecord = {
     version: 1,
-    input: { sources: input.sources, useBrandKit: input.useBrandKit, templateId: input.templateId ?? null },
+    input: {
+      sources: input.sources,
+      useBrandKit: input.useBrandKit,
+      templateId: input.templateId ?? null,
+      ...(refUrl ? { referenceMode: input.referenceMode === "inspired" ? ("inspired" as const) : ("close" as const) } : {}),
+    },
     plan: null,
   };
   const db = getSupabase();
@@ -523,12 +538,36 @@ async function toBase64Jpeg(jpeg: Buffer, width = 768): Promise<string> {
   return out.toString("base64");
 }
 
+/**
+ * The reference side of the review: a contact sheet of the reference stills
+ * (the thumbnail itself for YouTube) and one of the video's own frames, so
+ * the reviewer can compare them side by side. Null without reference stills.
+ */
+export async function buildReviewReference(
+  analysis: ReferenceAnalysis | null,
+  images: ReferenceImage[],
+  candidate: { time: number; jpeg: Buffer }[],
+): Promise<ReviewReference | null> {
+  if (!images.length) return null;
+  const thumbnail = images.every((i) => i.thumbnail);
+  const sheet = thumbnail
+    ? await toBase64Jpeg(images[0]!.jpeg, 1024)
+    : (await makeContactSheet(images.map((i) => ({ time: i.time, jpeg: i.jpeg })), images.length > 6 ? 4 : 3)).toString("base64");
+  const candidateSheet = candidate.length ? (await makeContactSheet(candidate, 4)).toString("base64") : null;
+  return { analysis, sheetBase64: sheet, candidateSheetBase64: candidateSheet, thumbnail };
+}
+
+export function toPromptFrames(images: ReferenceImage[]): ReferencePromptFrame[] {
+  return images.map((i) => ({ time: i.time, beatIndex: i.beatIndex, thumbnail: i.thumbnail, jpegBase64: i.jpeg.toString("base64") }));
+}
+
 /** One vision review pass. Returns the improved document or null to keep the current one. */
 async function reviewDocument(
   html: string,
   d: DocContext,
   plan: StudioPlan | null,
   before: { errorCount: number },
+  reference: { analysis: ReferenceAnalysis | null; images: ReferenceImage[] } | null = null,
 ): Promise<{ html: string; frames: { time: number; jpeg: Buffer }[]; score: number } | null> {
   const times = Array.from({ length: REVIEW_FRAMES }, (_, i) =>
     Math.min(d.duration - 1 / d.fps, Math.round(((i + 0.5) / REVIEW_FRAMES) * d.duration * d.fps) / d.fps),
@@ -546,9 +585,15 @@ async function reviewDocument(
     times,
   );
   const frames = await Promise.all(cap.frames.map(async (f) => ({ time: f.time, jpegBase64: await toBase64Jpeg(f.jpeg) })));
+  const reviewRef = reference
+    ? await buildReviewReference(reference.analysis, reference.images, cap.frames).catch((err) => {
+        console.warn(`[studio review] reference sheets failed:`, err instanceof Error ? err.message : err);
+        return null;
+      })
+    : null;
   const res = await callOpus<ReviewResponse>({
     system: systemFor(REVIEW_TASK),
-    messages: buildReviewMessages(html, frames, { plan, preset: d.preset, duration: d.duration, fps: d.fps }),
+    messages: buildReviewMessages(html, frames, { plan, preset: d.preset, duration: d.duration, fps: d.fps, reference: reviewRef }),
     schema: REVIEW_SCHEMA as unknown as Record<string, unknown>,
     effort: "high",
     maxTokens: 32_000,
@@ -695,10 +740,16 @@ export async function runStudioJob(
       // 1. Reference analysis (reused on regenerate; a first generation tries it once).
       let reference = referenceFrom(row);
       const referenceTried = kind === "initial" && row.reference_analysis != null;
+      const referenceMode = referenceModeOf(record.input.referenceMode);
+      let referenceBytes: Buffer | null = null;
       if (row.reference_video_url && !reference && !referenceTried && !resume.planned) {
         await setStage(jobId, "analyzing_reference");
         try {
-          reference = await analyzeReferenceVideo(row.reference_video_url, { maxScriptChars: features.maxScriptChars });
+          reference = await analyzeReferenceVideo(row.reference_video_url, {
+            maxScriptChars: features.maxScriptChars,
+            // Keep the downloaded bytes for the frame extraction below.
+            onVideoBytes: referenceMode === "close" ? (bytes) => void (referenceBytes = bytes) : undefined,
+          });
           await updateJob(jobId, { reference_analysis: reference });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -706,6 +757,36 @@ export async function runStudioJob(
           await updateJob(jobId, { reference_analysis: { error: message } });
         }
       }
+
+      // 1b. Reference stills (close mode). Checkpoint: `frames` on the stored
+      // analysis — present (even empty after a failure) means done.
+      if (row.reference_video_url && reference && referenceMode === "close" && !Array.isArray(reference.frames)) {
+        const uploadSrc = record.input.sources.find((s) => s.kind === "upload");
+        reference = await ensureReferenceFrames(
+          {
+            jobId,
+            videoUrl: row.reference_video_url,
+            analysis: reference,
+            videoBytes: referenceBytes,
+            storagePath: uploadSrc?.kind === "upload" ? (uploadSrc.storagePath ?? null) : null,
+          },
+          { downloadStored: downloadBuffer },
+        );
+        referenceBytes = null;
+        await updateJob(jobId, { reference_analysis: reference });
+        row = { ...row, reference_analysis: reference };
+        console.log(
+          `[studio ${jobId}] reference frames: ${reference.frames?.length ?? 0} (${reference.frameSource ?? "none"})` +
+            (reference.framesError ? ` — ${reference.framesError}` : ""),
+        );
+      }
+      // Loaded once, only when a call that shows them is about to run.
+      let referenceImages: ReferenceImage[] | null = null;
+      const getReferenceImages = async (): Promise<ReferenceImage[]> => {
+        if (referenceMode !== "close" || !reference?.frames?.length) return [];
+        referenceImages ??= await loadReferenceImages(reference, downloadBuffer);
+        return referenceImages;
+      };
 
       // Format ("match" resolves from the reference).
       const preset = resolveFormat((row.format as CreateStudioJobInput["format"]) ?? "16:9", reference);
@@ -764,6 +845,8 @@ export async function runStudioJob(
             brandKit,
             website,
             reference,
+            referenceMode,
+            referenceFrames: toPromptFrames(await getReferenceImages()),
             lockedAssets: locked,
             template: template ? { name: template.name, styleNotes: template.styleNotes } : null,
           }),
@@ -906,6 +989,8 @@ export async function runStudioJob(
               generatedAssets,
               brandKit,
               reference,
+              referenceMode,
+              referenceFrames: toPromptFrames(await getReferenceImages()),
             };
             const writeCode = (budgetKb: number | undefined, effort: OpusEffort) =>
               callOpus({
@@ -973,7 +1058,14 @@ export async function runStudioJob(
         if (remainingBudget() >= REVIEW_MIN_BUDGET) {
           await setStage(jobId, "reviewing", kind === "initial" ? { current_revision: revision } : {});
           try {
-            const r = await reviewDocument(finalHtml, d, timedPlan, { errorCount });
+            const images = await getReferenceImages();
+            const r = await reviewDocument(
+              finalHtml,
+              d,
+              timedPlan,
+              { errorCount },
+              images.length ? { analysis: reference, images } : null,
+            );
             if (r) {
               finalHtml = r.html;
               frames = r.frames.length ? r.frames : frames;

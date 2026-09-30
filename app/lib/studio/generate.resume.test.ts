@@ -54,6 +54,18 @@ vi.mock("../reference-video", async (orig) => ({
   ...(await orig<typeof import("../reference-video")>()),
   analyzeReferenceVideo: vi.fn(async () => h.ref),
 }));
+vi.mock("./reference-frames", async (orig) => ({
+  ...(await orig<typeof import("./reference-frames")>()),
+  ensureReferenceFrames: vi.fn(async ({ analysis }: { analysis: Record<string, unknown> }) => ({
+    ...analysis,
+    frameSource: "video",
+    frames: [
+      { time: 2, url: "https://cdn/f1.jpg", path: "jobs/job1/v2/reference/frame-1.jpg", beatIndex: null },
+      { time: 6, url: "https://cdn/f2.jpg", path: "jobs/job1/v2/reference/frame-2.jpg", beatIndex: null },
+    ],
+  })),
+}));
+vi.mock("./contact-sheet", () => ({ makeContactSheet: vi.fn(async () => Buffer.from("sheet")) }));
 vi.mock("./anthropic", async (orig) => ({
   ...(await orig<typeof import("./anthropic")>()),
   remainingBudget: vi.fn(() => 1_000_000),
@@ -128,6 +140,7 @@ const edit = await import("./edit");
 const render = await import("./render");
 const db = await import("./db");
 const credits = await import("../billing/credits");
+const refFrames = await import("./reference-frames");
 
 function baseRecord(over: Partial<StudioPlanRecord> = {}): StudioPlanRecord {
   return { version: 1, input: { sources: [], useBrandKit: false, templateId: null }, plan: null, ...over };
@@ -380,6 +393,85 @@ describe("runStudioJob — regenerate", () => {
     expect(anthropic.callOpus).not.toHaveBeenCalled();
     expect(edit.saveRevision).not.toHaveBeenCalled();
     expect(vi.mocked(db.setStage).mock.calls).toContainEqual(["job1", "preview_ready", { current_revision: 3, error: null }]);
+  });
+});
+
+describe("runStudioJob — reference frames", () => {
+  const imagesIn = (label: string) => {
+    const call = vi.mocked(anthropic.callOpus).mock.calls.find((c) => c[0].label === label)!;
+    const content = call[0].messages[0]!.content;
+    return typeof content === "string" ? 0 : content.filter((b) => b.type === "image").length;
+  };
+  const refUpdates = () => h.updates.filter((u) => "reference_analysis" in u);
+  const upload = { kind: "upload" as const, url: "https://cdn/ref.mp4", name: "ref.mp4", storagePath: "uploads/u1/ref.mp4" };
+
+  it("close (default): extracts frames after the analysis and shows them to plan, code and review", async () => {
+    h.row = makeRow({ reference_video_url: "https://cdn/ref.mp4", studio_plan: baseRecord({ input: { sources: [upload], useBrandKit: false, templateId: null } }) });
+    await runStudioJob("job1", { runId: "task-1" });
+    const analyzeOpts = vi.mocked(refVideo.analyzeReferenceVideo).mock.calls[0]![1]!;
+    expect(typeof analyzeOpts.onVideoBytes).toBe("function");
+    expect(refFrames.ensureReferenceFrames).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(refFrames.ensureReferenceFrames).mock.calls[0]![0]).toMatchObject({
+      jobId: "job1",
+      videoUrl: "https://cdn/ref.mp4",
+      storagePath: "uploads/u1/ref.mp4",
+    });
+    // The analysis is saved, then saved again with its frames (the checkpoint).
+    const saved = refUpdates().map((u) => u.reference_analysis as { frames?: unknown[] });
+    expect(saved).toHaveLength(2);
+    expect(saved[1]!.frames).toHaveLength(2);
+    expect(imagesIn("plan")).toBe(2);
+    expect(imagesIn("code")).toBe(2);
+    // Review: the reference contact sheet (capture is mocked to return no
+    // frames of our own, so there is no second sheet).
+    expect(imagesIn("review")).toBe(1);
+    const review = vi.mocked(anthropic.callOpus).mock.calls.find((c) => c[0].label === "review")!;
+    expect(JSON.stringify(review[0].messages)).toContain("REFERENCE MATCH");
+    // Each stored still is downloaded once for the whole run.
+    expect(vi.mocked(db.downloadBuffer).mock.calls.map((c) => c[0]).filter((p) => p.includes("/reference/"))).toEqual([
+      "jobs/job1/v2/reference/frame-1.jpg",
+      "jobs/job1/v2/reference/frame-2.jpg",
+    ]);
+  });
+
+  it("resume: frames already stored are not extracted again", async () => {
+    h.row = makeRow({
+      reference_analysis: { ...h.ref, frameSource: "video", frames: [{ time: 2, url: "u", path: "p1", beatIndex: null }] },
+      studio_plan: baseRecord({ plan: PLAN }),
+    });
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(refVideo.analyzeReferenceVideo).not.toHaveBeenCalled();
+    expect(refFrames.ensureReferenceFrames).not.toHaveBeenCalled();
+    expect(refUpdates()).toHaveLength(0);
+    expect(imagesIn("code")).toBe(1);
+  });
+
+  it("resume: an empty frames list (a failed extraction) is not retried", async () => {
+    h.row = makeRow({ reference_analysis: { ...h.ref, frames: [], framesError: "ffmpeg missing" } });
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(refFrames.ensureReferenceFrames).not.toHaveBeenCalled();
+    expect(imagesIn("plan")).toBe(0);
+  });
+
+  it("resume after the analysis but before the frames: extracts them then", async () => {
+    h.row = makeRow({ reference_analysis: h.ref, studio_plan: baseRecord({ plan: PLAN }) });
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(refVideo.analyzeReferenceVideo).not.toHaveBeenCalled();
+    expect(refFrames.ensureReferenceFrames).toHaveBeenCalledTimes(1);
+    expect(imagesIn("code")).toBe(2);
+  });
+
+  it("inspired: no frames, no images, no reference comparison in the review", async () => {
+    h.row = makeRow({
+      studio_plan: baseRecord({ input: { sources: [], useBrandKit: false, templateId: null, referenceMode: "inspired" } }),
+    });
+    await runStudioJob("job1", { runId: "task-1" });
+    expect(vi.mocked(refVideo.analyzeReferenceVideo).mock.calls[0]![1]!.onVideoBytes).toBeUndefined();
+    expect(refFrames.ensureReferenceFrames).not.toHaveBeenCalled();
+    expect(imagesIn("plan")).toBe(0);
+    expect(imagesIn("code")).toBe(0);
+    const review = vi.mocked(anthropic.callOpus).mock.calls.find((c) => c[0].label === "review")!;
+    expect(JSON.stringify(review[0].messages)).not.toContain("REFERENCE MATCH");
   });
 });
 

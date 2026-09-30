@@ -10,6 +10,7 @@ import {
   STAGE_LABELS,
   type BrandKit,
   type ExportOptions,
+  type ReferenceMode,
   type RenderStatus,
   type StudioAudio,
   type StudioFormat,
@@ -33,6 +34,7 @@ export type StudioPlanRecord = {
     sources: StudioSource[];
     useBrandKit: boolean;
     templateId: string | null;
+    referenceMode?: ReferenceMode; // absent on older jobs → "close"
   };
   plan: StudioPlan | null;
   finalDuration?: number | null;
