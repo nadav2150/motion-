@@ -43,7 +43,9 @@ export async function requireAdminOrRedirect(
   if (!user || !isAdmin(user.email)) {
     const url = new URL(request.url);
     const next = encodeURIComponent(url.pathname + url.search);
-    headers.set("Location", `/signin?next=${next}`);
+    // A signed-in non-admin must see the form (switch=1), or /signin would
+    // bounce them straight back here and loop forever.
+    headers.set("Location", `/signin?next=${next}${user ? "&switch=1" : ""}`);
     throw new Response(null, { status: 302, headers });
   }
 
