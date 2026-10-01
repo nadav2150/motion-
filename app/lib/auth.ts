@@ -1,4 +1,5 @@
 import { createAuthSupabaseClient, getSupabase } from "./supabase";
+import type { Attribution } from "./attribution";
 
 export const ACCESS_COOKIE = "mf_at";
 export const REFRESH_COOKIE = "mf_rt";
@@ -96,6 +97,7 @@ export async function registerWithEmail(
   email: string,
   password: string,
   name?: string,
+  attribution?: Attribution | null,
 ): Promise<Session & { userId: string }> {
   const trimmedEmail = email?.trim();
   if (!trimmedEmail) throw new AuthError("Email is required");
@@ -108,7 +110,10 @@ export async function registerWithEmail(
     email: trimmedEmail,
     password,
     email_confirm: true,
-    user_metadata: name ? { name } : undefined,
+    user_metadata: {
+      ...(name ? { name } : {}),
+      ...(attribution ? { attribution } : {}),
+    },
   });
   if (createErr || !created.user) {
     // Supabase returns a friendly message for "User already registered"
