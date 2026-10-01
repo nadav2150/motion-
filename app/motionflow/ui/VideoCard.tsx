@@ -40,7 +40,7 @@ export function StatusLine({
 }) {
   const map: Record<VideoStatusKind, { dot: string; text: string; label: string }> = {
     generating: { dot: "bg-coral vd-pulse", text: "text-coral", label: `Generating · ${pct}%` },
-    rendering: { dot: "bg-coral vd-pulse", text: "text-coral", label: `Exporting · ${pct}%` },
+    rendering: { dot: "bg-coral vd-pulse", text: "text-coral", label: `Rendering · ${pct}%` },
     ready: { dot: "bg-ready", text: "text-ready", label: when ? `Ready · ${timeAgo(when)}` : "Ready" },
     draft: { dot: "bg-silver", text: "text-silver", label: "Draft" },
     failed: { dot: "bg-danger", text: "text-danger", label: "Failed" },
