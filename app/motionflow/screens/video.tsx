@@ -519,7 +519,7 @@ export function VideoScreen({
         <div className="min-w-0">
           {/* Media is capped so its height fits the viewport, leaving the edit
               prompt bar on screen without scrolling. */}
-          <div className="mx-auto w-full" style={{ maxWidth: "max(320px, calc((100dvh - 540px) * 16 / 9))" }}>
+          <div className="mx-auto w-full" style={{ maxWidth: "max(320px, calc((100dvh - 566px) * 16 / 9))" }}>
             {!job ? (
               <Skeleton className="aspect-video w-full rounded-2xl" />
             ) : failed && !rev ? (
@@ -605,10 +605,11 @@ export function VideoScreen({
                     }
                   }}
                   disabled={!rev}
-                  rows={1}
+                  rows={2}
                   maxLength={2000}
-                  placeholder={rev ? "Describe a change..." : "You can edit once the first version is ready"}
-                  className="block min-h-[28px] w-full resize-none border-0 bg-transparent p-0 text-[16px] leading-[1.6] text-paper placeholder:text-[#a3a8b0] focus-visible:outline-none disabled:opacity-60"
+                  // The video's original prompt doubles as the placeholder.
+                  placeholder={!rev ? "You can edit once the first version is ready" : job?.prompt || "Describe a change..."}
+                  className="block min-h-[52px] w-full resize-none border-0 bg-transparent p-0 text-[16px] leading-[1.6] text-paper placeholder:text-[#a3a8b0] focus-visible:outline-none disabled:opacity-60"
                 />
               </div>
               <div className="mt-3 flex items-center gap-2.5">
@@ -701,12 +702,6 @@ export function VideoScreen({
               Generate new version
             </Button>
           </Card>
-          {job?.prompt && (
-            <Card className="mt-4 p-4">
-              <h2 className="text-sm font-semibold">Prompt</h2>
-              <p className="mt-1.5 line-clamp-5 text-sm text-silver">{job.prompt}</p>
-            </Card>
-          )}
         </aside>
       </div>
 
