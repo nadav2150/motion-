@@ -7,6 +7,7 @@ import {
   IconPlus,
   IconSparkle,
 } from "../primitives";
+import { PACKS, PLANS } from "../../lib/billing/catalog";
 
 // Container-width based mobile detection — same pattern as landing.tsx /
 // pricing.tsx. We watch the scroll container so the layout reacts to its
@@ -35,17 +36,17 @@ const TIER_LABEL: Record<CheckoutTier, string> = {
   pro: "Videly Pro",
   studio: "Videly Studio",
 };
+// Prices and grants come from the shared catalog (app/lib/billing/catalog.ts),
+// which the Polar/Dodo webhook catalogs also read.
 const TIER_MONTHLY_USD: Record<CheckoutTier, number> = {
-  starter: 19,
-  pro: 49,
-  studio: 149,
+  starter: PLANS.starter.priceUsd,
+  pro: PLANS.pro.priceUsd,
+  studio: PLANS.studio.priceUsd,
 };
-// Monthly credit grant per tier. Mirrors the buildCatalog() grant defaults in
-// app/lib/billing/polar.ts (keyed by Polar product id) — keep in sync.
 const TIER_MONTHLY_CREDITS: Record<CheckoutTier, number> = {
-  starter: 8000,
-  pro: 20000,
-  studio: 60000,
+  starter: PLANS.starter.monthlyCredits,
+  pro: PLANS.pro.monthlyCredits,
+  studio: PLANS.studio.monthlyCredits,
 };
 // What each plan includes — surfaced in the "What's included" section above
 // the account form. Mirrors PLANS[].perks in app/motionflow/screens/pricing.tsx;
@@ -88,14 +89,22 @@ const PACK_LABEL: Record<CheckoutPack, string> = {
   large: "Credit Pack — Large",
 };
 const PACK_PRICE_USD: Record<CheckoutPack, number> = {
-  small: 13,
-  medium: 59,
-  large: 159,
+  small: PACKS.small.priceUsd,
+  medium: PACKS.medium.priceUsd,
+  large: PACKS.large.priceUsd,
 };
 const PACK_CREDITS: Record<CheckoutPack, number> = {
-  small: 5000,
-  medium: 25000,
-  large: 75000,
+  small: PACKS.small.credits,
+  medium: PACKS.medium.credits,
+  large: PACKS.large.credits,
+};
+
+// Existing subscriber switching plans in place: only the copy changes.
+export type CheckoutPlanChange = {
+  fromLabel: string;
+  direction: "up" | "down";
+  // Estimated prorated charge today for the plan (excludes any pack).
+  estimateUsd: number;
 };
 
 export function CheckoutScreen({
@@ -107,6 +116,8 @@ export function CheckoutScreen({
   firstName,
   lastName,
   submitting = false,
+  planChange = null,
+  error = null,
 }: {
   onBack?: () => void;
   onComplete?: (selected: { monthlyUsd: number; pack: CheckoutPack | null }) => void;
@@ -116,6 +127,8 @@ export function CheckoutScreen({
   firstName?: string;
   lastName?: string;
   submitting?: boolean;
+  planChange?: CheckoutPlanChange | null;
+  error?: string | null;
 }) {
   const monthlyUsd = TIER_MONTHLY_USD[tier];
   // Pack price is a one-time charge added alongside the subscription in the
@@ -124,7 +137,8 @@ export function CheckoutScreen({
   // the hosted checkout, so any estimate we render in-page would diverge from
   // the actual invoice.
   const packPrice = pack ? PACK_PRICE_USD[pack] : 0;
-  const dueToday = monthlyUsd + packPrice;
+  const dueTodayRaw = (planChange ? planChange.estimateUsd : monthlyUsd) + packPrice;
+  const dueToday = Number.isInteger(dueTodayRaw) ? dueTodayRaw : dueTodayRaw.toFixed(2);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const m = useIsMobile(scrollRef, 720);
 
@@ -547,7 +561,7 @@ export function CheckoutScreen({
                   }}
                 >
                   <span style={{ fontSize: 14, color: "white", fontWeight: 500 }}>
-                    Due today
+                    {planChange ? "Due today (estimate)" : "Due today"}
                   </span>
                   <span
                     style={{
@@ -568,7 +582,11 @@ export function CheckoutScreen({
                     lineHeight: 1.45,
                   }}
                 >
-                  Local sales tax and any promo codes are applied at the secure checkout based on your billing location.
+                  {planChange
+                    ? planChange.direction === "up"
+                      ? `Switching from ${planChange.fromLabel}: you're charged the prorated difference now, and your credits for the new plan are added right away. Tax may apply.`
+                      : `Switching from ${planChange.fromLabel} takes effect now. Your current credits stay, and your next bill is $${monthlyUsd}/month.`
+                    : "Local sales tax and any promo codes are applied at the secure checkout based on your billing location."}
                 </div>
                 <div
                   className="mf-mono"
@@ -614,9 +632,22 @@ export function CheckoutScreen({
               e.currentTarget.style.backgroundPosition = "0% 0";
             }}
           >
-            <span>{submitting ? "Opening secure checkout…" : `Continue to secure checkout · $${dueToday}`}</span>
+            <span>
+              {planChange
+                ? submitting
+                  ? "Switching your plan…"
+                  : `Switch to ${TIER_LABEL[tier].replace("Videly ", "")} · $${dueToday}`
+                : submitting
+                  ? "Opening secure checkout…"
+                  : `Continue to secure checkout · $${dueToday}`}
+            </span>
             <IconArrowRight size={14} />
           </button>
+          {error && (
+            <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: "#FCA5A5", lineHeight: 1.45 }}>
+              {error}
+            </div>
+          )}
 
           <div
             style={{

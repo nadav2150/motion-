@@ -15,6 +15,7 @@ import {
 import { MarketingFooter, MarketingHeader } from "../ui/marketing";
 import { photo, type PhotoKey } from "../ui/showcase";
 import { cn } from "../ui/format";
+import { FREE_SIGNUP_CREDITS, PACKS, PLANS as CATALOG_PLANS } from "../../lib/billing/catalog";
 
 // Subscription tiers shown on /pricing. Numbers come from the real billing
 // catalog: polar.ts / dodo.ts buildCatalog() grants + checkout.tsx
@@ -42,8 +43,8 @@ type Plan = {
   perks: string[];
 };
 
-const PACK_VALUES: Record<PackKey, number> = { none: 0, small: 5_000, medium: 25_000, large: 75_000 };
-const PACK_PRICE_USD: Record<PackKey, number> = { none: 0, small: 13, medium: 59, large: 159 };
+const PACK_VALUES: Record<PackKey, number> = { none: 0, small: PACKS.small.credits, medium: PACKS.medium.credits, large: PACKS.large.credits };
+const PACK_PRICE_USD: Record<PackKey, number> = { none: 0, small: PACKS.small.priceUsd, medium: PACKS.medium.priceUsd, large: PACKS.large.priceUsd };
 const PACK_STOPS: PackKey[] = ["none", "small", "medium", "large"];
 const PACK_MAX_CREDITS = PACK_VALUES.large;
 
@@ -53,7 +54,7 @@ const PLANS: Plan[] = [
     name: "Free",
     tagline: "Get started and explore Videly.",
     monthlyUsd: 0,
-    baseCredits: 3_100,
+    baseCredits: FREE_SIGNUP_CREDITS,
     icon: Box,
     accent: "#BFC0C0",
     gradient: "linear-gradient(135deg, #4F5D75 0%, #BFC0C0 100%)",
@@ -70,8 +71,8 @@ const PLANS: Plan[] = [
     key: "starter",
     name: "Starter",
     tagline: "For founders shipping launch films solo.",
-    monthlyUsd: 19,
-    baseCredits: 8_000,
+    monthlyUsd: CATALOG_PLANS.starter.priceUsd,
+    baseCredits: CATALOG_PLANS.starter.monthlyCredits,
     icon: Zap,
     accent: "#EF8354",
     gradient: "linear-gradient(90deg, #D96C3D 0%, #F39A73 100%)",
@@ -90,8 +91,8 @@ const PLANS: Plan[] = [
     key: "pro",
     name: "Pro",
     tagline: "For teams iterating on launches every week.",
-    monthlyUsd: 49,
-    baseCredits: 20_000,
+    monthlyUsd: CATALOG_PLANS.pro.priceUsd,
+    baseCredits: CATALOG_PLANS.pro.monthlyCredits,
     icon: Crown,
     accent: "#A78BFA",
     gradient: "linear-gradient(90deg, #A855F7 0%, #818CF8 50%, #22D3EE 100%)",
@@ -110,8 +111,8 @@ const PLANS: Plan[] = [
     key: "studio",
     name: "Studio",
     tagline: "For agencies and in-house content engines.",
-    monthlyUsd: 149,
-    baseCredits: 60_000,
+    monthlyUsd: CATALOG_PLANS.studio.priceUsd,
+    baseCredits: CATALOG_PLANS.studio.monthlyCredits,
     icon: Users,
     accent: "#22D3EE",
     gradient: "linear-gradient(90deg, #0EA5E9 0%, #22D3EE 100%)",

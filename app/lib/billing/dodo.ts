@@ -4,12 +4,13 @@
 // credit count without re-fetching the product on every event.
 //
 // Plain fetch instead of the `dodopayments` SDK: we only call two endpoints
-// (create checkout session, patch subscription) and verify Standard Webhooks
+// (create checkout session, patch / change-plan a subscription) and verify Standard Webhooks
 // signatures, so a dependency buys us nothing.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { CatalogEntry } from "./polar";
 import type { PlanTier } from "./plan-features";
+import { PACKS, PLANS } from "./catalog";
 
 export type DodoEnv = "test_mode" | "live_mode";
 
@@ -80,6 +81,23 @@ export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Pro
   });
 }
 
+// In-place plan change. Upgrades use prorated_immediately (charges the new
+// price minus unused time now and restarts the period); downgrades use
+// do_not_bill (switch now, lower price from the next renewal).
+export type DodoProrationMode = "prorated_immediately" | "full_immediately" | "difference_immediately" | "do_not_bill";
+
+export async function changePlan(
+  subscriptionId: string,
+  productId: string,
+  mode: DodoProrationMode,
+): Promise<void> {
+  await dodoFetch("POST", `/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`, {
+    product_id: productId,
+    quantity: 1,
+    proration_billing_mode: mode,
+  });
+}
+
 // ─────────────────────────── Webhook signatures ───────────────────────────
 
 export class DodoWebhookVerificationError extends Error {}
@@ -131,17 +149,17 @@ export function verifyDodoWebhook(
 export function buildDodoCatalog(): Record<string, CatalogEntry> {
   const map: Record<string, CatalogEntry> = {};
   const subs: Array<[string | undefined, PlanTier, number]> = [
-    [readDodoEnvVar("PRODUCT_STARTER"), "starter", 8_000],
-    [readDodoEnvVar("PRODUCT_PRO"),     "pro",     20_000],
-    [readDodoEnvVar("PRODUCT_STUDIO"),  "studio",  60_000],
+    [readDodoEnvVar("PRODUCT_STARTER"), "starter", PLANS.starter.monthlyCredits],
+    [readDodoEnvVar("PRODUCT_PRO"),     "pro",     PLANS.pro.monthlyCredits],
+    [readDodoEnvVar("PRODUCT_STUDIO"),  "studio",  PLANS.studio.monthlyCredits],
   ];
   for (const [id, planTier, monthlyGrant] of subs) {
     if (id) map[id] = { kind: "subscription", planTier, monthlyGrant };
   }
   const packs: Array<[string | undefined, "small" | "medium" | "large", number]> = [
-    [readDodoEnvVar("PRODUCT_PACK_SMALL"),  "small",  5_000],
-    [readDodoEnvVar("PRODUCT_PACK_MEDIUM"), "medium", 25_000],
-    [readDodoEnvVar("PRODUCT_PACK_LARGE"),  "large",  75_000],
+    [readDodoEnvVar("PRODUCT_PACK_SMALL"),  "small",  PACKS.small.credits],
+    [readDodoEnvVar("PRODUCT_PACK_MEDIUM"), "medium", PACKS.medium.credits],
+    [readDodoEnvVar("PRODUCT_PACK_LARGE"),  "large",  PACKS.large.credits],
   ];
   for (const [id, packSize, credits] of packs) {
     if (id) map[id] = { kind: "credit_pack", packSize, credits };

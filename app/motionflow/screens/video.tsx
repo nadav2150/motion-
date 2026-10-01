@@ -28,6 +28,10 @@ import { ExportModal } from "../ui/ExportModal";
 import { PreviewPlayer, usePreviewController } from "../ui/Player";
 import { toast } from "../ui/Toast";
 import { cn, timeAgo } from "../ui/format";
+import { handlePaymentRequired, openUpsell } from "../ui/upsell";
+import { refreshUsage } from "../ui/usage-store";
+import { PLANS } from "../../lib/billing/catalog";
+import { track } from "../../lib/analytics";
 
 const TERMINAL: StudioStage[] = ["preview_ready", "done", "failed"];
 
@@ -255,18 +259,39 @@ export function VideoScreen({
   const lastRevCount = useRef(0);
   const jobRef = useRef<StudioJobView | null>(null);
   jobRef.current = job;
+  // First preview of a video the user watched being generated: the moment
+  // they love it, nudge free users toward a clean, watermark-free export.
+  const sawGenerating = useRef(false);
+  const [previewNudge, setPreviewNudge] = useState(false);
+  const isFree = !planTier || planTier === "free";
 
   const ctl = usePreviewController(job?.duration ?? 30);
 
   const applyJob = useCallback((j: StudioJobView) => {
     setJob(j);
+    if (j.revisions.length === 0) sawGenerating.current = true;
     // Jump to a newly finished version automatically.
     if (j.revisions.length > lastRevCount.current) {
       if (lastRevCount.current > 0) toast(`Version ${j.revisions[j.revisions.length - 1]!.revision} is ready`);
+      // A finished version spent credits: refresh the shell's balance.
+      if (lastRevCount.current > 0 || sawGenerating.current) void refreshUsage();
+      if (lastRevCount.current === 0 && sawGenerating.current) {
+        sawGenerating.current = false;
+        track("first_preview_ready", { job_id: j.id, plan_tier: planTier ?? "free" });
+        const key = `videly.previewNudge.${j.id}`;
+        let shown = false;
+        try {
+          shown = window.sessionStorage.getItem(key) === "1";
+          window.sessionStorage.setItem(key, "1");
+        } catch {
+          // storage blocked: show it this once
+        }
+        if (isFree && !shown) setPreviewNudge(true);
+      }
       setSelectedRev(j.currentRevision || j.revisions[j.revisions.length - 1]!.revision);
       lastRevCount.current = j.revisions.length;
     }
-  }, []);
+  }, [planTier, isFree]);
 
   const load = useCallback(async () => {
     try {
@@ -333,6 +358,7 @@ export function VideoScreen({
       toast("Generating a new version…", "info");
       void load();
     } catch (e) {
+      if (handlePaymentRequired(e, "video_regenerate")) return;
       toast(
         e instanceof ApiError && e.status === 409
           ? "This video is still working — try again when it finishes."
@@ -355,6 +381,7 @@ export function VideoScreen({
       toast(`Working on version ${r.revision}…`, "info");
       void load();
     } catch (e) {
+      if (handlePaymentRequired(e, "video_edit")) return;
       toast(
         e instanceof ApiError && e.status === 409
           ? "This video is still working — send your edit when it finishes."
@@ -449,6 +476,32 @@ export function VideoScreen({
           </Button>
         </div>
       </div>
+
+      {previewNudge && (
+        <div
+          role="status"
+          className="mb-5 flex flex-col gap-3 rounded-2xl border border-coral/45 bg-[linear-gradient(90deg,rgb(239_131_84/0.16),rgb(24_26_36/0.4))] px-4 py-3.5 sm:flex-row sm:items-center"
+        >
+          <p className="min-w-0 flex-1 text-sm text-[#e4e5e8]">
+            <span className="font-semibold text-paper">Love your video?</span> Export it without the watermark, add AI voiceover
+            and make videos up to 30s with {PLANS.starter.label} — ${PLANS.starter.priceUsd}/month.
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button size="sm" onClick={() => openUpsell("first_preview", { surface: "video_preview_nudge" })}>
+              See plans
+            </Button>
+            <IconButton
+              label="Dismiss"
+              onClick={() => {
+                setPreviewNudge(false);
+                track("paywall_dismissed", { trigger: "first_preview", surface: "video_preview_nudge" });
+              }}
+            >
+              <X className="size-4" aria-hidden />
+            </IconButton>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">

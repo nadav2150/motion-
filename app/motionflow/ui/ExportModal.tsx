@@ -9,6 +9,10 @@ import { Badge, ProgressBar } from "./Card";
 import { Thumb } from "./VideoCard";
 import { toast } from "./Toast";
 import { cn } from "./format";
+import { handlePaymentRequired, openUpsell, type UpsellTrigger } from "./upsell";
+import { refreshUsage } from "./usage-store";
+import { getPlanFeatures } from "../../lib/billing/plan-features";
+import { track } from "../../lib/analytics";
 
 type Phase = "options" | "rendering" | "ready" | "failed";
 
@@ -42,6 +46,8 @@ export function ExportModal({
   onJobUpdate?: (j: StudioJobView) => void;
 }) {
   const isFree = !planTier || planTier === "free";
+  // 4K is Pro+ (the server refuses it below that), not just "paid".
+  const can4k = getPlanFeatures(planTier).export4k;
   const hasVoice = !!job.audio.voiceover || !!job.voiceId;
   const [resolution, setResolution] = useState<ExportResolution>("1080p");
   const [quality, setQuality] = useState<ExportQuality>("high");
@@ -54,6 +60,18 @@ export function ExportModal({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const rev = job.revisions.find((r) => r.revision === revision);
+
+  // A finished render spent credits: refresh the shell's balance.
+  useEffect(() => {
+    if (phase === "ready") void refreshUsage();
+  }, [phase]);
+
+  // Close the export dialog and open the upgrade prompt for a locked option.
+  const upsell = (trigger: UpsellTrigger, feature: string) => {
+    track("locked_feature_clicked", { feature, surface: "export" });
+    onClose();
+    openUpsell(trigger, { surface: "export" });
+  };
 
   useEffect(() => {
     if (!open) {
@@ -140,6 +158,13 @@ export function ExportModal({
       }
       startPolling();
     } catch (e) {
+      if (e instanceof ApiError && e.isPaymentRequired) {
+        // Swap the export dialog for the top-up / upgrade prompt.
+        setPhase("options");
+        onClose();
+        handlePaymentRequired(e, "export");
+        return;
+      }
       setPhase("failed");
       setError(
         e instanceof ApiError && e.isPaymentRequired
@@ -180,11 +205,17 @@ export function ExportModal({
                   label="Resolution"
                   hideLabel={false}
                   value={resolution}
-                  onChange={(v) => setResolution(v as ExportResolution)}
+                  onChange={(v) => {
+                    if (v === "4k" && !can4k) {
+                      upsell("export_4k", "export_4k");
+                      return;
+                    }
+                    setResolution(v as ExportResolution);
+                  }}
                   options={[
                     { value: "720p", label: "720p" },
                     { value: "1080p", label: "1080p (Full HD)" },
-                    { value: "4k", label: isFree ? "4K — Pro" : "4K", disabled: isFree },
+                    { value: "4k", label: can4k ? "4K" : "4K — Pro" },
                   ]}
                 />
                 <Select
@@ -198,9 +229,12 @@ export function ExportModal({
                   ]}
                 />
               </div>
-              {isFree && (
+              {!can4k && (
                 <p className="mt-2 flex items-center gap-1.5 text-xs text-silver">
-                  <Badge tone="coral">Pro</Badge> 4K export is available on paid plans.
+                  <Badge tone="coral">Pro</Badge> 4K export comes with Pro and Studio.{" "}
+                  <button type="button" className="font-semibold text-coral hover:text-coral-400" onClick={() => upsell("export_4k", "export_4k")}>
+                    Upgrade
+                  </button>
                 </p>
               )}
               <div className="mt-4 divide-y divide-slate/35 rounded-xl border border-slate/40 bg-ink-800 px-4">
@@ -212,8 +246,23 @@ export function ExportModal({
                 </Row>
                 <Row label="Watermark" hint={isFree ? "Always on for the Free plan — upgrade to remove it" : undefined}>
                   <span className="flex items-center gap-2">
-                    {isFree && <Lock className="size-3.5 text-silver" aria-label="Locked" />}
-                    <Toggle checked={isFree ? true : watermark} onChange={setWatermark} label="Watermark" disabled={isFree} />
+                    {isFree && (
+                      <button
+                        type="button"
+                        onClick={() => upsell("watermark", "watermark")}
+                        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold text-coral hover:bg-coral/10"
+                      >
+                        <Lock className="size-3.5" aria-hidden />
+                        Remove
+                      </button>
+                    )}
+                    {isFree ? (
+                      <span onClick={() => upsell("watermark", "watermark")} className="cursor-pointer">
+                        <Toggle checked onChange={() => {}} label="Watermark" disabled />
+                      </span>
+                    ) : (
+                      <Toggle checked={watermark} onChange={setWatermark} label="Watermark" />
+                    )}
                   </span>
                 </Row>
               </div>

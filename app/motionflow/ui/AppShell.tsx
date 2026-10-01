@@ -14,7 +14,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { api, isMockMode, type UsageInfo } from "./api";
+import { isMockMode, type UsageInfo } from "./api";
 import { cn, formatNumber } from "./format";
 import { focusRing, IconButton } from "./Button";
 import { SearchBar } from "./controls";
@@ -22,6 +22,10 @@ import { Menu } from "./Menu";
 import { Logo } from "./Logo";
 import { ToastHost } from "./Toast";
 import { ProgressBar } from "./Card";
+import { useSharedUsage } from "./usage-store";
+import { UpsellHost, openUpsell } from "./upsell";
+import { LowCreditBanner } from "./LowCreditBanner";
+import { usePurchaseReturn } from "./purchase-return";
 
 export type ShellUser = { id: string; name: string | null; email: string | null };
 
@@ -61,24 +65,14 @@ const PLAN_NAMES: Record<string, string> = {
   studio: "Studio Plan",
 };
 
-// Plan widget data: GET /api/me/usage, falling back to what the loader knew.
+// Plan widget data: GET /api/me/usage (shared across the shell, see
+// usage-store.ts), falling back to what the loader knew.
 export function useUsage(planTier?: string | null, credits?: number | null): UsageInfo | null {
-  const [usage, setUsage] = useState<UsageInfo | null>(
+  return useSharedUsage(
     credits != null
       ? { planTier: planTier ?? "free", planName: PLAN_NAMES[planTier ?? "free"] ?? "Free Plan", creditsBalance: credits, creditsMonthly: 0 }
       : null,
   );
-  useEffect(() => {
-    let alive = true;
-    api
-      .getUsage()
-      .then((u) => alive && setUsage(u))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return usage;
 }
 
 function initials(u: ShellUser): string {
@@ -102,6 +96,7 @@ function PlanWidget({ usage }: { usage: UsageInfo | null }) {
   const hasMonthly = usage.creditsMonthly > 0;
   const frac = hasMonthly ? usage.creditsBalance / usage.creditsMonthly : 1;
   const isFree = usage.planTier === "free";
+  const isTop = usage.planTier === "studio";
   return (
     <div className="rounded-xl border border-[#18202a] bg-[#0c131b] p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-paper">
@@ -113,11 +108,13 @@ function PlanWidget({ usage }: { usage: UsageInfo | null }) {
         {hasMonthly && ` / ${formatNumber(usage.creditsMonthly)}`} credits
       </p>
       <ProgressBar value={frac} className="mt-3" label="Credits remaining" />
-      {isFree && (
-        <Link to="/pricing" className={cn("mt-3 inline-block text-[12.5px] font-semibold text-coral hover:text-coral-400", focusRing)}>
-          Upgrade plan →
-        </Link>
-      )}
+      <button
+        type="button"
+        onClick={() => openUpsell("plan_widget", { balance: usage.creditsBalance, surface: "sidebar" })}
+        className={cn("mt-3 inline-block text-[12.5px] font-semibold text-coral hover:text-coral-400", focusRing)}
+      >
+        {isFree ? "Upgrade plan →" : isTop ? "Top up credits →" : "Upgrade or top up →"}
+      </button>
     </div>
   );
 }
@@ -154,6 +151,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ user, planTier, credits, children, wide, bare }: ShellProps) {
   const usage = useUsage(planTier, credits);
+  usePurchaseReturn();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawer, setDrawer] = useState(false);
@@ -295,6 +293,7 @@ export function AppShell({ user, planTier, credits, children, wide, bare }: Shel
           id="main"
           className={cn("mx-auto px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-12", wide ? "max-w-[1600px]" : "max-w-[1400px]")}
         >
+          <LowCreditBanner usage={usage} />
           {children}
         </main>
       </div>
@@ -331,6 +330,7 @@ export function AppShell({ user, planTier, credits, children, wide, bare }: Shel
       </nav>
 
       <ToastHost />
+      <UpsellHost />
     </div>
   );
 }
