@@ -32,7 +32,15 @@ export type ShellProps = {
   children: ReactNode;
   // Full-bleed pages (video page) use a wider content area.
   wide?: boolean;
+  // Home: transparent top bar without the search field, so the hero runs
+  // up to the bell/avatar like the design.
+  bare?: boolean;
 };
+
+// Shell palette from the v2 home design. Set inline because .vd-root's
+// unlayered background would beat Tailwind's layered bg-* utilities.
+const SHELL_BG = "#060c11";
+const SIDEBAR_BG = "#070e13";
 
 const NAV = [
   { to: "/home", label: "Home", icon: Home },
@@ -95,7 +103,7 @@ function PlanWidget({ usage }: { usage: UsageInfo | null }) {
   const frac = hasMonthly ? usage.creditsBalance / usage.creditsMonthly : 1;
   const isFree = usage.planTier === "free";
   return (
-    <div className="rounded-2xl border border-slate/45 bg-ink-800 p-4">
+    <div className="rounded-xl border border-[#18202a] bg-[#0c131b] p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-paper">
         <Crown className="size-4 text-coral" aria-hidden />
         {usage.planName}
@@ -104,7 +112,7 @@ function PlanWidget({ usage }: { usage: UsageInfo | null }) {
         {formatNumber(usage.creditsBalance)}
         {hasMonthly && ` / ${formatNumber(usage.creditsMonthly)}`} credits
       </p>
-      <ProgressBar value={frac} className="mt-2.5" label="Credits remaining" />
+      <ProgressBar value={frac} className="mt-3" label="Credits remaining" />
       {isFree && (
         <Link to="/pricing" className={cn("mt-3 inline-block text-[12.5px] font-semibold text-coral hover:text-coral-400", focusRing)}>
           Upgrade plan →
@@ -124,21 +132,27 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium transition-colors",
-              isActive ? "bg-slate/70 text-paper" : "text-silver hover:bg-slate/30 hover:text-paper",
+              "group flex h-[52px] items-center gap-3.5 rounded-[10px] border px-4 text-[15px] font-medium transition-colors",
+              isActive
+                ? "border-coral/25 bg-[linear-gradient(90deg,rgb(239_131_84/0.26)_0%,rgb(23_28_36/0.95)_42%)] text-paper shadow-[inset_2px_0_0_rgb(239_131_84/0.85),0_0_22px_-8px_rgb(239_131_84/0.55)]"
+                : "border-transparent text-[#d3d5da] hover:bg-white/[0.04] hover:text-paper",
               focusRing,
             )
           }
         >
-          <Icon className="size-[18px]" aria-hidden />
-          {label}
+          {({ isActive }) => (
+            <>
+              <Icon className={cn("size-[22px] stroke-[1.6]", isActive ? "text-coral-400" : "text-[#c4c5cb]")} aria-hidden />
+              {label}
+            </>
+          )}
         </NavLink>
       ))}
     </nav>
   );
 }
 
-export function AppShell({ user, planTier, credits, children, wide }: ShellProps) {
+export function AppShell({ user, planTier, credits, children, wide, bare }: ShellProps) {
   const usage = useUsage(planTier, credits);
   const navigate = useNavigate();
   const location = useLocation();
@@ -165,7 +179,7 @@ export function AppShell({ user, planTier, credits, children, wide }: ShellProps
   const search = (value: string) => navigate(`/videos${value.trim() ? `?q=${encodeURIComponent(value.trim())}` : ""}`);
 
   return (
-    <div className="vd-root min-h-screen">
+    <div className="vd-root min-h-screen" style={{ background: SHELL_BG }}>
       <a
         href="#main"
         className="sr-only z-[200] rounded-lg bg-coral px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -174,8 +188,11 @@ export function AppShell({ user, planTier, credits, children, wide }: ShellProps
       </a>
 
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-slate/35 bg-ink px-4 py-5 lg:flex">
-        <div className="px-2 pb-7">
+      <aside
+        className="fixed inset-y-0 left-0 z-30 hidden w-[212px] flex-col border-r border-[#0f151d] px-3 py-6 lg:flex"
+        style={{ background: SIDEBAR_BG }}
+      >
+        <div className="px-4 pb-10">
           <Logo href="/home" />
         </div>
         <SidebarNav />
@@ -188,7 +205,10 @@ export function AppShell({ user, planTier, credits, children, wide }: ShellProps
       {drawer && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDrawer(false)} aria-hidden />
-          <div className="absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col bg-ink px-4 py-5 shadow-[var(--shadow-lift)]">
+          <div
+            className="absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col px-3 py-5 shadow-[var(--shadow-lift)]"
+            style={{ background: SIDEBAR_BG }}
+          >
             <div className="flex items-center justify-between px-2 pb-6">
               <Logo href="/home" />
               <IconButton label="Close menu" onClick={() => setDrawer(false)}>
@@ -203,9 +223,16 @@ export function AppShell({ user, planTier, credits, children, wide }: ShellProps
         </div>
       )}
 
-      <div className="lg:pl-[248px]">
+      <div className="relative lg:pl-[212px]">
         {/* Top bar */}
-        <header className="sticky top-0 z-20 border-b border-slate/30 bg-ink-900/85 backdrop-blur-md">
+        <header
+          className={cn(
+            "sticky top-0 z-20",
+            bare
+              ? "bg-[#060c11]/85 backdrop-blur-md lg:absolute lg:inset-x-0 lg:bg-transparent lg:backdrop-blur-none"
+              : "border-b border-[#10161e] bg-[#060c11]/85 backdrop-blur-md",
+          )}
+        >
           <div className={cn("mx-auto flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8", !wide && "max-w-[1400px]")}>
             <IconButton label="Open menu" className="lg:hidden" onClick={() => setDrawer(true)}>
               <MenuIcon className="size-5" aria-hidden />
@@ -219,7 +246,7 @@ export function AppShell({ user, planTier, credits, children, wide }: ShellProps
               onSubmit={search}
               label="Search videos, templates, assets"
               placeholder="Search videos, templates, assets..."
-              className="hidden w-full max-w-[460px] sm:block"
+              className={cn("hidden w-full max-w-[460px] sm:block", bare && "sm:hidden")}
             />
             <div className="ml-auto flex items-center gap-1.5">
               {mock && (
