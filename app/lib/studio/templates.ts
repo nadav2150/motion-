@@ -1,9 +1,14 @@
 // Curated Studio templates. A template is a prompt + format + duration +
 // style notes; it fills the Home prompt card or generates right away.
-// previewVideoUrl / posterUrl are filled once scripts/make-showcase renders
-// them with the pipeline itself (storyboards/showcase/...).
+// previewVideoUrl / posterUrl point at example videos made with the pipeline
+// itself (scripts/make-showcase.ts → storyboards/showcase/<id>.{mp4,jpg}).
+// Bump SHOWCASE_VERSION after re-uploading so CDN caches refresh.
 
 import type { StudioTemplate, TemplateCategory } from "./types";
+
+const SHOWCASE_BASE = "https://deipymnoqsmbonljghkq.supabase.co/storage/v1/object/public/storyboards/showcase/";
+const SHOWCASE_VERSION = 2;
+const SHOWCASE = (id: string, ext: "mp4" | "jpg") => `${SHOWCASE_BASE}${id}.${ext}?v=${SHOWCASE_VERSION}`;
 
 export const TEMPLATE_CATEGORIES: { id: TemplateCategory; label: string }[] = [
   { id: "product", label: "Product" },
@@ -27,8 +32,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A launch promo for [your product]. Open on a dramatic hero reveal of the product, then three quick feature beats (one benefit each, with a bold headline and a supporting line), and close on the product name, tagline and a clear call to action.",
     styleNotes:
       "Dark, high-contrast stage with one accent color. Product shot slides in with a masked reveal and a slow push-in. Features as kinetic type cards with numbered labels; hard cuts on the beat. Final lockup holds for at least 2 seconds.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("product-promo", "mp4"),
+    posterUrl: SHOWCASE("product-promo", "jpg"),
   },
   {
     id: "app-showcase",
@@ -41,8 +46,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "Showcase the [app name] app: a phone frame floats in, the screen walks through the main flow (onboarding → core action → result), each step called out with a short headline. End on the app icon, name and 'Download now'.",
     styleNotes:
       "Clean light background with soft depth, the device slightly rotated in 3D and drifting. UI screens transition with vertical scroll-like pushes. Callouts draw in with SVG connector lines. Accent color taken from the brand.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("app-showcase", "mp4"),
+    posterUrl: SHOWCASE("app-showcase", "jpg"),
   },
   {
     id: "brand-story",
@@ -55,8 +60,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "Tell the story of [brand]: the problem we saw, why we started, what we believe, and the promise we make to customers. Emotional, human, confident. End on the logo and the mission line.",
     styleNotes:
       "Editorial serif headlines with generous negative space, slow parallax layers, film-grain texture, warm palette. Words reveal line by line through clip-path masks. No flashy transitions — cross-dissolves and match cuts.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("brand-story", "mp4"),
+    posterUrl: SHOWCASE("brand-story", "jpg"),
   },
   {
     id: "social-media-ad",
@@ -83,8 +88,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A teaser for [event name] on [date] in [city/venue]. Build anticipation with a countdown feel, flash the headline speakers or highlights, reveal the date and venue, and end on 'Get your ticket'.",
     styleNotes:
       "Night palette with neon accent, glitchy RGB-split text hits on the beat, light streaks and a particle field used once for the big date reveal. Numbers tick with a slot-machine roll.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("event-teaser", "mp4"),
+    posterUrl: SHOWCASE("event-teaser", "jpg"),
   },
   {
     id: "minimal-product",
@@ -111,8 +116,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "Announce the new [feature] in [product]. Show the old pain in one beat, reveal the feature with a UI close-up, show two concrete outcomes, and end with 'Available today'.",
     styleNotes:
       "Product-UI aesthetic: crisp grids, cursor moves with eased paths, zoom-ins on UI details, highlight boxes that draw around the key element. Brand accent for the 'new' badge.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("feature-announcement", "mp4"),
+    posterUrl: SHOWCASE("feature-announcement", "jpg"),
   },
   {
     id: "instagram-reel",
@@ -139,8 +144,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "An animated logo reveal for [brand]: abstract shapes in the brand colors assemble into the logo, then the tagline appears underneath.",
     styleNotes:
       "SVG stroke draw-on into fill, shape morphs, a subtle light sweep across the finished logo, one bass-hit moment. Hold the final lockup at least 3 seconds.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("logo-reveal", "mp4"),
+    posterUrl: SHOWCASE("logo-reveal", "jpg"),
   },
   {
     id: "youtube-intro",

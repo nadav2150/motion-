@@ -10,13 +10,13 @@ import type {
   StudioJobView,
   StudioRevision,
   StudioStage,
-  StudioTemplate,
   StudioVideoCard,
   UserAsset,
 } from "../../lib/studio/types";
 import { FORMAT_PRESETS, STAGE_LABELS } from "../../lib/studio/types";
 import { ApiError, type UsageInfo, type VideoFilter } from "./api";
-import { FALLBACK_TEMPLATES, photo, type PhotoKey } from "./showcase";
+import { photo, type PhotoKey } from "./showcase";
+import { listTemplates as listCatalogTemplates } from "../../lib/studio/templates";
 
 const now = () => Date.now();
 const iso = (msAgo: number) => new Date(now() - msAgo).toISOString();
@@ -443,8 +443,8 @@ export async function handleMock<T>(method: string, path: string, body?: unknown
   }
 
   if (M === "GET" && p === "/api/studio/templates") {
-    const cat = url.searchParams.get("category");
-    return { items: FALLBACK_TEMPLATES.filter((t: StudioTemplate) => !cat || t.category === cat) } as T;
+    // Same catalog the server serves (pure data), including showcase videos.
+    return { items: listCatalogTemplates(url.searchParams.get("category")) } as T;
   }
 
   if (M === "GET" && p === "/api/voices") {
