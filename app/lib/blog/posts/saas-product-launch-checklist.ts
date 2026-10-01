@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "A SaaS product launch checklist by phase, from six weeks out to post-launch, plus a copy-paste launch strategy template, launch tiers, channels and assets.",
   excerpt:
     "A phase-by-phase product launch checklist for SaaS teams, with a launch plan template, a simple tiering system for major and minor releases, and the assets every launch needs.",
-  publishAt: "2026-10-19T06:00:00Z",
+  publishAt: "2026-10-01T06:05:00Z",
   readingMinutes: 8,
   keyword: "product launch checklist",
   blocks: [

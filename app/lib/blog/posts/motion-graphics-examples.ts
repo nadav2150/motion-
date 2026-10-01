@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "Motion graphics examples for SaaS videos, organised by technique: zooms, focus pulls, parallax, kinetic type, UI build-ons, cursor moves, transitions and more.",
   excerpt:
     "Nine motion graphics techniques that make product UI feel alive in launch videos and demos, with when to use each, how to do it well, and the mistakes to avoid.",
-  publishAt: "2026-10-15T06:00:00Z",
+  publishAt: "2026-10-01T06:04:00Z",
   readingMinutes: 9,
   keyword: "motion graphics examples",
   blocks: [

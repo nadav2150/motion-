@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "12 real SaaS changelog examples from Linear, Stripe, GitHub, Vercel and more, the patterns that make them work, and a free changelog entry template to copy.",
   excerpt:
     "What makes a public changelog worth reading, 12 real SaaS changelog examples with the pattern each one does well, and a changelog entry template you can copy.",
-  publishAt: "2026-10-05T06:00:00Z",
+  publishAt: "2026-10-01T06:01:00Z",
   readingMinutes: 8,
   keyword: "changelog examples",
   blocks: [

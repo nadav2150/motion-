@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "How to use a landing page video well: hero vs below the fold, length, autoplay and captions, poster frames, page speed, accessibility, plus 5 real examples.",
   excerpt:
     "Where to put a landing page video, how long to make it, how to autoplay it without hurting page speed or accessibility, and five real landing pages that use video well.",
-  publishAt: "2026-10-08T06:00:00Z",
+  publishAt: "2026-10-01T06:02:00Z",
   readingMinutes: 9,
   keyword: "landing page video",
   blocks: [

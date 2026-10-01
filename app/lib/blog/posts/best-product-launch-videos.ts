@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "The best product launch videos, from Dollar Shave Club to Slack and the iPhone: what each one did well, the patterns they share, and a SaaS launch template.",
   excerpt:
     "Four widely studied product launch videos, the lesson each one teaches, and a simple structure you can use for your own SaaS launch video.",
-  publishAt: "2026-10-29T06:00:00Z",
+  publishAt: "2026-10-01T06:08:00Z",
   readingMinutes: 8,
   keyword: "best product launch videos",
   blocks: [

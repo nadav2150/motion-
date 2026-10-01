@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "Explainer video examples for SaaS: five formats compared, how to pick one, a 60–90 second script template with word counts, and a worked example script.",
   excerpt:
     "Five explainer video formats SaaS teams actually use, how to choose between them, and a 60–90 second script template with word counts per section.",
-  publishAt: "2026-10-26T06:00:00Z",
+  publishAt: "2026-10-01T06:07:00Z",
   readingMinutes: 9,
   keyword: "explainer video examples",
   blocks: [
