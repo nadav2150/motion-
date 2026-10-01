@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router";
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   Captions,
   Check,
   Download,
@@ -14,8 +15,11 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  SendHorizontal,
+  Palette,
+  Sparkles,
+  Zap,
   Type,
+  Megaphone,
   X,
 } from "lucide-react";
 import type { StudioJobView, StudioRevision, StudioStage } from "../../lib/studio/types";
@@ -32,6 +36,14 @@ import { handlePaymentRequired, openUpsell } from "../ui/upsell";
 import { refreshUsage } from "../ui/usage-store";
 import { PLANS } from "../../lib/billing/catalog";
 import { track } from "../../lib/analytics";
+
+// One-tap starting points for the edit prompt (they fill the box, not send).
+const EDIT_SUGGESTIONS = [
+  { icon: Zap, label: "Faster pacing", text: "Make the pacing faster and tighten the opening" },
+  { icon: Type, label: "Bigger text", text: "Make the text bigger and easier to read" },
+  { icon: Palette, label: "New colors", text: "Change the color palette to something bolder" },
+  { icon: Megaphone, label: "Stronger CTA", text: "Add a stronger call to action at the end" },
+];
 
 const TERMINAL: StudioStage[] = ["preview_ready", "done", "failed"];
 
@@ -255,7 +267,7 @@ export function VideoScreen({
   const [instruction, setInstruction] = useState("");
   const [sending, setSending] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const editRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
   const lastRevCount = useRef(0);
   const jobRef = useRef<StudioJobView | null>(null);
   jobRef.current = job;
@@ -507,7 +519,7 @@ export function VideoScreen({
         <div className="min-w-0">
           {/* Media is capped so its height fits the viewport, leaving the edit
               prompt bar on screen without scrolling. */}
-          <div className="mx-auto w-full" style={{ maxWidth: "max(320px, calc((100dvh - 480px) * 16 / 9))" }}>
+          <div className="mx-auto w-full" style={{ maxWidth: "max(320px, calc((100dvh - 540px) * 16 / 9))" }}>
             {!job ? (
               <Skeleton className="aspect-video w-full rounded-2xl" />
             ) : failed && !rev ? (
@@ -566,38 +578,74 @@ export function VideoScreen({
             )}
           </div>
 
-          {/* Edit prompt bar: sticky so it stays visible above the mobile nav */}
+          {/* Edit prompt bar: same look as the home composer; sticky so it
+              stays visible above the mobile nav */}
           <form
-            className="sticky bottom-[84px] z-20 mt-4 flex items-center gap-2 rounded-2xl border border-slate/50 bg-ink p-2 pl-4 shadow-[var(--shadow-soft)] lg:bottom-4"
+            className="sticky bottom-[84px] z-20 mt-4 rounded-[22px] bg-[linear-gradient(115deg,rgb(239_131_84/0.55)_0%,rgb(171_133_119/0.35)_45%,rgb(246_153_93/0.9)_100%)] p-[1.5px] shadow-[0_0_44px_-12px_rgb(239_131_84/0.6),0_24px_60px_-20px_rgb(0_0_0/0.8)] lg:bottom-4"
             onSubmit={(e) => {
               e.preventDefault();
               void sendEdit();
             }}
           >
-            <label htmlFor="edit-input" className="sr-only">
-              Describe a change
-            </label>
-            <input
-              id="edit-input"
-              ref={editRef}
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-              disabled={!rev}
-              maxLength={2000}
-              placeholder={rev ? "Describe a change… e.g. make the opening faster" : "You can edit once the first version is ready"}
-              className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-paper placeholder:text-silver/60 focus-visible:outline-none disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              aria-label="Send edit"
-              disabled={!instruction.trim() || sending || busy || !rev}
-              className={cn(
-                "flex size-10 shrink-0 items-center justify-center rounded-xl bg-coral text-white transition-colors hover:bg-coral-400 disabled:opacity-40",
-                focusRing,
-              )}
-            >
-              {sending ? <Loader2 className="size-4 vd-spin" aria-hidden /> : <SendHorizontal className="size-4" aria-hidden />}
-            </button>
+            <div className="rounded-[21px] bg-[#0e131a]/[0.97] px-4 pb-3 pt-3.5 sm:px-5">
+              <div className="flex items-start gap-3">
+                <Sparkles className="mt-[3px] size-5 shrink-0 fill-coral-400 text-coral" aria-hidden />
+                <label htmlFor="edit-input" className="sr-only">
+                  Describe a change
+                </label>
+                <textarea
+                  id="edit-input"
+                  ref={editRef}
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendEdit();
+                    }
+                  }}
+                  disabled={!rev}
+                  rows={1}
+                  maxLength={2000}
+                  placeholder={rev ? "Describe a change..." : "You can edit once the first version is ready"}
+                  className="block min-h-[28px] w-full resize-none border-0 bg-transparent p-0 text-[16px] leading-[1.6] text-paper placeholder:text-[#a3a8b0] focus-visible:outline-none disabled:opacity-60"
+                />
+              </div>
+              <div className="mt-3 flex items-center gap-2.5">
+                <div className="hidden min-w-0 flex-1 flex-wrap items-center gap-2 sm:flex" aria-label="Suggested edits">
+                  {EDIT_SUGGESTIONS.map(({ icon: Icon, label, text }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={!rev}
+                      onClick={() => {
+                        setInstruction(text);
+                        editRef.current?.focus();
+                      }}
+                      className={cn(
+                        "inline-flex h-[38px] items-center gap-2 rounded-[12px] border border-[#262c35] bg-[#11171f] px-3.5 text-[14px] font-medium text-[#e6e7ea] transition-colors hover:border-[#3a414c] hover:bg-[#161d26] disabled:opacity-50",
+                        focusRing,
+                      )}
+                    >
+                      <Icon className="size-4" aria-hidden />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="submit"
+                  disabled={!instruction.trim() || sending || busy || !rev}
+                  className={cn(
+                    "ml-auto inline-flex h-[44px] min-w-[140px] items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(180deg,#fca37d_0%,#f6874f_100%)] px-5 text-[16px] font-semibold text-[#2a1207] shadow-[0_10px_30px_-10px_rgb(246_135_79/0.9)] transition-[filter,opacity] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60",
+                    focusRing,
+                  )}
+                >
+                  {sending ? <Loader2 className="size-5 vd-spin" aria-hidden /> : null}
+                  Apply edit
+                  {!sending && <ArrowRight className="size-[18px]" aria-hidden />}
+                </button>
+              </div>
+            </div>
           </form>
           {busy && rev && <p className="mt-2 text-xs text-silver">You can send another edit when this version is ready.</p>}
         </div>
