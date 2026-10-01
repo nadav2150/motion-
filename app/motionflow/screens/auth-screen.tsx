@@ -271,20 +271,9 @@ const AuthField = ({
   </div>
 );
 
-/* Coral play mark from the auth mockup: a back triangle plus a lighter
-   front one for the folded-ribbon look. */
+/* Videly mark. */
 const PlayMark = () => (
-  <svg width={42} height={42} viewBox="0 0 42 42" aria-hidden>
-    <defs>
-      <linearGradient id="auth-mark" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stopColor="#f7a074" />
-        <stop offset="1" stopColor="#e2683c" />
-      </linearGradient>
-    </defs>
-    <path d="M6 7.5c0-2.6 2.8-4.2 5-2.9l24 13.6c2.3 1.3 2.3 4.6 0 5.9L11 37.7c-2.2 1.3-5-.3-5-2.9z" fill="url(#auth-mark)" />
-    <path d="M14 15.2c0-1.5 1.6-2.4 2.9-1.7l11.4 6.6c1.3.8 1.3 2.6 0 3.4l-11.4 6.6c-1.3.7-2.9-.2-2.9-1.7z" fill="#14171d" />
-    <path d="M6 22.5 22 21 6 35z" fill="#c95a32" opacity="0.55" />
-  </svg>
+  <img src="/logo-mark.png" width={42} height={42} alt="" aria-hidden className="block shrink-0" draggable={false} />
 );
 
 /* Field icons (lucide-style strokes, 20px). */
