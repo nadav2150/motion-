@@ -13,7 +13,7 @@ const NAV = [
   { href: "/#features", label: "Features" },
   { href: "/#templates", label: "Templates" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/#how-it-works", label: "Resources" },
+  { href: "/blog", label: "Blog" },
 ];
 
 // `tone="landing"` is the transparent, near-black variant drawn over the
@@ -121,6 +121,7 @@ const FOOTER_COLS: { title: string; links: { href: string; label: string }[] }[]
       { href: "/#features", label: "Features" },
       { href: "/#templates", label: "Templates" },
       { href: "/pricing", label: "Pricing" },
+      { href: "/blog", label: "Blog" },
       { href: "/register", label: "Get started" },
     ],
   },

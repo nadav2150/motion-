@@ -9,6 +9,7 @@
 // to know when to recrawl.
 
 import { SITE_URL } from "../lib/seo";
+import { publishedPosts } from "../lib/blog";
 
 type SitemapEntry = {
   path: string;
@@ -46,9 +47,24 @@ const ENTRIES: SitemapEntry[] = [
 const BUILD_TIME = new Date().toISOString();
 
 export function loader() {
-  const urls = ENTRIES.map((e) => `  <url>
+  // Blog posts are evaluated per request, so a scheduled post joins the
+  // sitemap the moment its publishAt passes (within the 1h cache below).
+  const posts = publishedPosts();
+  const rows = [
+    ...ENTRIES.map((e) => ({ ...e, lastmod: BUILD_TIME })),
+    ...(posts.length
+      ? [{ path: "/blog", changefreq: "weekly" as const, priority: "0.7", lastmod: posts[0].publishAt }]
+      : []),
+    ...posts.map((p) => ({
+      path: `/blog/${p.slug}`,
+      changefreq: "monthly" as const,
+      priority: "0.6",
+      lastmod: p.updatedAt ?? p.publishAt,
+    })),
+  ];
+  const urls = rows.map((e) => `  <url>
     <loc>${SITE_URL}${e.path}</loc>
-    <lastmod>${BUILD_TIME}</lastmod>
+    <lastmod>${e.lastmod}</lastmod>
     <changefreq>${e.changefreq}</changefreq>
     <priority>${e.priority}</priority>
   </url>`).join("\n");
