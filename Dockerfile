@@ -62,17 +62,20 @@ RUN apt-get update \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json* ./
+# Playwright image ships with a non-root `pwuser`; Chromium refuses to run as
+# root anyway. Files are created owned by pwuser instead of a final
+# `chown -R /app`, which rewrote every file (all of node_modules) into a new
+# layer on each deploy, so even a one-line change re-pushed the whole tree.
+# Now the dependency layer stays cached and a code change pushes only build/.
+RUN chown pwuser:pwuser /app
+USER pwuser
+
+COPY --chown=pwuser:pwuser package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --from=build /app/build ./build
+COPY --chown=pwuser:pwuser --from=build /app/build ./build
 
 EXPOSE 8080
-
-# Playwright image ships with a non-root `pwuser`. Chown app dir so the
-# user can read it; Chromium itself refuses to run as root anyway.
-RUN chown -R pwuser:pwuser /app
-USER pwuser
 
 # Worker secrets reach the container only when an instance starts, and
 # `wrangler deploy` replaces running instances only when the image changes.
