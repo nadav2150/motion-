@@ -397,7 +397,7 @@ export function StudioHomeScreen({
       <section aria-labelledby="home-hero-title" className="relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
         <div className="pointer-events-none absolute right-0 top-0 hidden h-[358px] w-[min(836px,62%)] md:block" aria-hidden>
           <img
-            src="/home/hero-art.webp"
+            src="/images/home-hero-art.webp"
             alt=""
             width={836}
             height={358}
