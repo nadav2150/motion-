@@ -1,32 +1,24 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import type { ReactNode } from "react";
+import { Link } from "react-router";
 import {
-  IconArrowRight,
-  IconCheck,
-  IconClose,
-  IconLogo,
-  IconPlus,
-  IconSparkle,
-} from "../primitives";
+  ArrowRight,
+  CalendarDays,
+  Check,
+  CircleCheck,
+  Loader2,
+  Lock,
+  Mail,
+  Plus,
+  ShieldCheck,
+  Star,
+  User,
+  UserRound,
+  X,
+} from "lucide-react";
 import { PACKS, PLANS } from "../../lib/billing/catalog";
-
-// Container-width based mobile detection — same pattern as landing.tsx /
-// pricing.tsx. We watch the scroll container so the layout reacts to its
-// actual size, not the viewport.
-function useIsMobile(ref: RefObject<HTMLDivElement | null>, threshold = 720) {
-  const [m, setM] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const apply = (w: number) => setM(w < threshold);
-    apply(el.clientWidth);
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
-      ro.observe(el);
-      return () => ro.disconnect();
-    }
-  }, [ref, threshold]);
-  return m;
-}
+import { Logo, LogoMark } from "../ui/Logo";
+import { focusRing } from "../ui/Button";
+import { cn } from "../ui/format";
 
 export type CheckoutTier = "starter" | "pro" | "studio";
 export type CheckoutPack = "small" | "medium" | "large";
@@ -48,7 +40,7 @@ const TIER_MONTHLY_CREDITS: Record<CheckoutTier, number> = {
   pro: PLANS.pro.monthlyCredits,
   studio: PLANS.studio.monthlyCredits,
 };
-// What each plan includes — surfaced in the "What's included" section above
+// What each plan includes — surfaced in the "What's included" card above
 // the account form. Mirrors PLANS[].perks in app/motionflow/screens/pricing.tsx;
 // keep in sync when feature lists change.
 const TIER_PERKS: Record<CheckoutTier, string[]> = {
@@ -73,11 +65,6 @@ const TIER_PERKS: Record<CheckoutTier, string[]> = {
     "Programmatic API access",
     "10 concurrent jobs",
   ],
-};
-const TIER_ACCENT: Record<CheckoutTier, string> = {
-  starter: "#7AA2FF",
-  pro: "#A78BFA",
-  studio: "#67E8F9",
 };
 // Optional credit-pack add-on. Mirrors the PACKS table in pricing.tsx and
 // the Polar credit-pack catalog (POLAR_<ENV>_PRODUCT_PACK_* in polar.ts). Keep
@@ -139,706 +126,304 @@ export function CheckoutScreen({
   const packPrice = pack ? PACK_PRICE_USD[pack] : 0;
   const dueTodayRaw = (planChange ? planChange.estimateUsd : monthlyUsd) + packPrice;
   const dueToday = Number.isInteger(dueTodayRaw) ? dueTodayRaw : dueTodayRaw.toFixed(2);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const m = useIsMobile(scrollRef, 720);
+  const credits = TIER_MONTHLY_CREDITS[tier].toLocaleString();
+  const perks = [`${credits} credits per month`, ...TIER_PERKS[tier]];
+  const shortName = TIER_LABEL[tier].replace("Videly ", "");
 
   return (
-    <div
-      ref={scrollRef}
-      style={{
-        width: "100%",
-        minHeight: "100%",
-        overflow: "auto",
-        background: "var(--bg-0)",
-        color: "var(--ink-0)",
-        fontFamily: "'Geist', system-ui, sans-serif",
-        position: "relative",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: -200,
-          left: "20%",
-          width: 700,
-          height: 700,
-          borderRadius: "50%",
-          pointerEvents: "none",
-          zIndex: 0,
-          background: "radial-gradient(circle, rgba(122,162,255,0.15), transparent 60%)",
-          filter: "blur(60px)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          top: 100,
-          right: "10%",
-          width: 500,
-          height: 500,
-          borderRadius: "50%",
-          pointerEvents: "none",
-          zIndex: 0,
-          background: "radial-gradient(circle, rgba(167,139,250,0.12), transparent 60%)",
-          filter: "blur(60px)",
-        }}
-      />
+    <div className="vd-root relative min-h-screen overflow-x-hidden">
+      <Glow />
 
-      <header
-        style={{
-          position: "relative",
-          zIndex: 2,
-          padding: m ? "14px 16px" : "20px 40px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottom: "1px solid var(--line)",
-          gap: m ? 8 : 0,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: m ? 8 : 12 }}>
-          <IconLogo size={m ? 22 : 26} />
-          <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.01em" }}>Videly</span>
-        </div>
+      <header className="relative z-10 flex items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3.5 sm:px-10 sm:py-5">
+        <Logo size={30} textClassName="text-[17px]" />
 
-        {/* Step indicator: full version on desktop, compact 1/3 chip on
-            mobile so the header still fits at 390px. */}
-        {m ? (
-          <div
-            className="mf-mono"
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.10em",
-              color: "var(--ink-3)",
-              padding: "5px 9px",
-              borderRadius: 999,
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid var(--line)",
-            }}
-          >
-            1 / 3 · ACCOUNT
-          </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "var(--ink-3)" }}>
-            <CoStep n={1} active label="Account" />
-            <CoSep />
-            <CoStep n={2} label="Payment" />
-            <CoSep />
-            <CoStep n={3} label="Done" />
-          </div>
-        )}
+        {/* Full step indicator on desktop, compact chip on phones. */}
+        <span className="rounded-full border border-slate/50 bg-ink/60 px-2.5 py-1 font-mono text-[10px] tracking-[0.1em] text-silver md:hidden">
+          1 / 3 · ACCOUNT
+        </span>
+        <ol className="hidden items-center gap-3.5 md:flex">
+          <CoStep n={1} label="Account" active />
+          <CoSep />
+          <CoStep n={2} label="Payment" />
+          <CoSep />
+          <CoStep n={3} label="Done" />
+        </ol>
 
         <button
+          type="button"
           onClick={onBack}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--ink-2)",
-            fontFamily: "inherit",
-            fontSize: 13,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: m ? "6px 6px" : "6px 10px",
-            borderRadius: 6,
-          }}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-silver transition-colors hover:text-paper sm:px-2.5",
+            focusRing,
+          )}
         >
-          <IconClose size={12} /> {m ? "" : "Cancel"}
+          <X className="size-4" aria-hidden />
+          <span className="hidden sm:inline">Cancel</span>
+          <span className="sr-only sm:hidden">Cancel</span>
         </button>
       </header>
 
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: m ? "28px 16px 56px" : "40px 40px 80px",
-          display: "grid",
-          gridTemplateColumns: m ? "1fr" : "1.15fr 1fr",
-          gap: m ? 24 : 40,
-          alignItems: "start",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: m ? 20 : 28 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: m ? 24 : 34, fontWeight: 500, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
+      <main className="relative z-10 mx-auto grid max-w-[1200px] items-start gap-6 px-4 pb-14 pt-7 sm:px-10 sm:pb-20 sm:pt-12 lg:grid-cols-[1.15fr_1fr] lg:gap-10">
+        <div className="flex flex-col gap-6 sm:gap-8">
+          <div className="lg:pl-9">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-silver">
+              Upgrade to Videly
+            </div>
+            <h1 className="mt-2 text-[30px] font-bold leading-[1.08] tracking-[-0.03em] text-paper sm:text-[44px]">
               Complete your{" "}
-              <span
-                style={{
-                  background: "linear-gradient(90deg, #7AA2FF, #A78BFA, #67E8F9)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
+              <span className="bg-gradient-to-r from-coral-600 via-coral to-[#FF9F5A] bg-clip-text text-transparent">
                 upgrade
               </span>
             </h1>
-            <p style={{ margin: "10px 0 0", fontSize: 14, color: "var(--ink-2)", lineHeight: 1.5 }}>
-              Unlimited renders, premium engine, 4K export — start in seconds. Cancel anytime.
+            <p className="mt-2.5 text-[15px] leading-relaxed text-silver sm:text-[17px]">
+              Unlimited renders, premium engine, 4K export — start creating in seconds.
             </p>
           </div>
 
-          <CoSection title={`01 · What's included in ${TIER_LABEL[tier]}`}>
-            <div
-              style={{
-                padding: "20px 22px",
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.025)",
-                border: "1px solid var(--line)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 14,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      background: TIER_ACCENT[tier],
-                      boxShadow: `0 0 14px ${TIER_ACCENT[tier]}80`,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: TIER_ACCENT[tier],
-                      letterSpacing: "-0.005em",
-                    }}
-                  >
-                    {TIER_MONTHLY_CREDITS[tier].toLocaleString()} credits / month
+          <section className="rounded-2xl border border-slate/40 bg-ink-800/60 p-5 shadow-soft backdrop-blur-sm sm:p-7">
+            <div className="flex items-center gap-3.5">
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-coral/30 bg-coral/10 text-coral">
+                <Star className="size-4 fill-current" aria-hidden />
+              </span>
+              <h2 className="text-[11.5px] font-semibold uppercase tracking-[0.18em] text-silver">
+                What's included in {TIER_LABEL[tier]}
+              </h2>
+              <span className="hidden h-px flex-1 bg-white/[0.07] sm:block" />
+            </div>
+            <ul className="mt-5 grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
+              {perks.map((perk) => (
+                <li key={perk} className="flex items-center gap-3 text-[14.5px] text-paper/90">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full border border-coral/45 bg-coral/10 text-coral">
+                    <Check className="size-3.5" strokeWidth={2.75} aria-hidden />
                   </span>
-                </div>
-                <span
-                  className="mf-mono"
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: "0.08em",
-                    color: "var(--ink-4)",
-                  }}
-                >
-                  CANCEL ANYTIME
+                  {perk}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section>
+            <div className="flex items-center gap-2.5">
+              <User className="size-4 text-coral" aria-hidden />
+              <h2 className="text-[11.5px] font-semibold uppercase tracking-[0.18em] text-silver">Your account</h2>
+            </div>
+            <p className="mt-1.5 text-sm text-silver">Your upgrade applies to this Videly account.</p>
+
+            <div className="mt-4 grid gap-4">
+              <CoField label="Email address" icon={<Mail className="size-4" aria-hidden />}>
+                <CoInput type="email" placeholder="you@example.com" defaultValue={email} autoComplete="email" readOnly />
+              </CoField>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <CoField label="First name" icon={<UserRound className="size-4" aria-hidden />}>
+                  <CoInput placeholder="First name" defaultValue={firstName} autoComplete="given-name" />
+                </CoField>
+                <CoField label="Last name" icon={<UserRound className="size-4" aria-hidden />}>
+                  <CoInput placeholder="Last name" defaultValue={lastName} autoComplete="family-name" />
+                </CoField>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3 rounded-xl border border-slate/40 bg-ink/40 px-4 py-3 text-[13px] leading-snug text-silver">
+              <Lock className="size-4 shrink-0 text-silver" aria-hidden />
+              Payment details are collected securely by our payment processor once you continue.
+            </div>
+          </section>
+        </div>
+
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-8">
+          <div className="relative overflow-hidden rounded-3xl border border-coral/35 bg-gradient-to-b from-ink-800/95 to-ink-900/95 p-5 shadow-[0_30px_80px_-30px_rgb(239_131_84/0.45)] backdrop-blur-sm sm:p-8">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full bg-coral/15 blur-[80px]"
+            />
+
+            <div className="relative">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.18em] text-silver">
+                  Order summary
+                </span>
+                <span className="rounded-lg border border-coral/60 bg-coral/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-coral">
+                  {shortName} plan
                 </span>
               </div>
 
-              <ul
-                style={{
-                  margin: 0,
-                  padding: 0,
-                  listStyle: "none",
-                  display: "grid",
-                  gridTemplateColumns: m ? "1fr" : "1fr 1fr",
-                  gap: m ? "8px 14px" : "9px 18px",
-                }}
-              >
-                {TIER_PERKS[tier].map((perk) => (
-                  <li
-                    key={perk}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 9,
-                      fontSize: 12.5,
-                      color: "var(--ink-1)",
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: 4,
-                        flexShrink: 0,
-                        marginTop: 1,
-                        background: `${TIER_ACCENT[tier]}1F`,
-                        border: `1px solid ${TIER_ACCENT[tier]}55`,
-                        color: TIER_ACCENT[tier],
-                        display: "grid",
-                        placeItems: "center",
-                      }}
-                    >
-                      <IconCheck size={10} stroke={2.5} />
-                    </span>
-                    {perk}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </CoSection>
-
-          <CoSection title="02 · Account">
-            <CoField label="Email">
-              <CoInput placeholder="you@example.com" type="email" defaultValue={email ?? ""} />
-            </CoField>
-            <div style={{ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: 10 }}>
-              <CoField label="First name">
-                <CoInput placeholder="First name" defaultValue={firstName ?? ""} />
-              </CoField>
-              <CoField label="Last name">
-                <CoInput placeholder="Last name" defaultValue={lastName ?? ""} />
-              </CoField>
-            </div>
-            <div
-              style={{
-                marginTop: 14,
-                padding: "12px 14px",
-                borderRadius: 10,
-                background: "rgba(122,162,255,0.05)",
-                border: "1px solid rgba(122,162,255,0.18)",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: 12,
-                color: "var(--ink-2)",
-                lineHeight: 1.45,
-              }}
-            >
-              <CoLockIcon />
-              Payment details are collected securely by our payment processor once you continue.
-            </div>
-          </CoSection>
-
-        </div>
-
-        <aside
-          style={{
-            // On mobile the aside is part of the natural document flow so
-            // the summary lands beneath the account form, not floating.
-            position: m ? "relative" : "sticky",
-            top: m ? 0 : 30,
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              padding: "26px 26px 22px",
-              borderRadius: 16,
-              background: "linear-gradient(180deg, #0E1018 0%, #08090E 100%)",
-              border: "1px solid rgba(122,162,255,0.20)",
-              boxShadow:
-                "0 20px 60px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(122,162,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: -60,
-                right: -60,
-                width: 280,
-                height: 280,
-                borderRadius: "50%",
-                pointerEvents: "none",
-                background: "radial-gradient(circle, rgba(122,162,255,0.18), transparent 60%)",
-                filter: "blur(30px)",
-              }}
-            />
-
-            <div style={{ position: "relative" }}>
-              <div className="mf-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "#7AA2FF", marginBottom: 14 }}>
-                ORDER SUMMARY
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 14,
-                  paddingBottom: 18,
-                  borderBottom: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 12,
-                    flexShrink: 0,
-                    background: "linear-gradient(135deg, #7AA2FF, #A78BFA)",
-                    display: "grid",
-                    placeItems: "center",
-                    color: "#0B0C10",
-                    boxShadow: "0 6px 20px -4px rgba(122,162,255,0.45)",
-                  }}
-                >
-                  <IconSparkle size={18} stroke={2} />
+              <div className="mt-6 flex items-start gap-3 border-b border-white/[0.07] pb-6 sm:gap-4">
+                <span className="shrink-0 rounded-2xl shadow-[0_10px_30px_-8px_rgb(239_131_84/0.6)]">
+                  <LogoMark size={64} className="size-12 sm:size-16" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[17px] font-semibold tracking-[-0.01em] text-paper">{TIER_LABEL[tier]}</div>
+                  <div className="mt-1 text-sm font-semibold text-coral sm:text-[15px]">{credits} credits/month</div>
+                  <div className="mt-1 text-[12.5px] text-silver sm:text-[13px]">Billed monthly · Cancel anytime</div>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 500, color: "white", letterSpacing: "-0.01em" }}>
-                    {TIER_LABEL[tier]}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#A6F0BD", marginTop: 3, fontWeight: 500 }}>
-                    {TIER_MONTHLY_CREDITS[tier].toLocaleString()} credits/month
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
-                    Billed monthly · cancel anytime
-                  </div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 15, fontWeight: 500, color: "white" }}>
-                    ${monthlyUsd}
-                    <span style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 400 }}>/month</span>
-                  </div>
+                <div className="shrink-0 text-right text-xl font-bold tracking-[-0.02em] text-paper sm:text-2xl">
+                  ${monthlyUsd}
+                  <span className="block text-xs font-normal text-silver sm:ml-1 sm:inline sm:text-sm">/month</span>
                 </div>
               </div>
 
               {pack && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 14,
-                    paddingTop: 14,
-                    paddingBottom: 18,
-                    borderBottom: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      flexShrink: 0,
-                      background: "rgba(166,240,189,0.10)",
-                      border: "1px solid rgba(166,240,189,0.28)",
-                      display: "grid",
-                      placeItems: "center",
-                      color: "#A6F0BD",
-                    }}
-                  >
-                    <IconPlus size={14} stroke={2.5} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: "white", letterSpacing: "-0.005em" }}>
-                      {PACK_LABEL[pack]}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#A6F0BD", marginTop: 3, fontWeight: 500 }}>
+                <div className="flex items-start gap-4 border-b border-white/[0.07] py-5">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-coral/35 bg-coral/10 text-coral">
+                    <Plus className="size-4" strokeWidth={2.5} aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[15px] font-semibold text-paper">{PACK_LABEL[pack]}</div>
+                    <div className="mt-0.5 text-[13px] font-semibold text-coral">
                       +{PACK_CREDITS[pack].toLocaleString()} credits
                     </div>
-                    <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
-                      One-time · never expires
-                    </div>
+                    <div className="mt-0.5 text-[12.5px] text-silver">One-time · never expires</div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: "white" }}>
-                      ${PACK_PRICE_USD[pack]}
-                      <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 400, marginLeft: 2 }}>
-                        once
-                      </span>
-                    </div>
+                  <div className="shrink-0 text-right text-[17px] font-semibold text-paper">
+                    ${PACK_PRICE_USD[pack]}
+                    <span className="ml-1 text-xs font-normal text-silver">once</span>
                   </div>
                 </div>
               )}
 
-              <div style={{ paddingTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                  }}
-                >
-                  <span style={{ fontSize: 14, color: "white", fontWeight: 500 }}>
+              <div className="pt-6">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-xl font-semibold text-paper sm:text-[22px]">
                     {planChange ? "Due today (estimate)" : "Due today"}
                   </span>
-                  <span
-                    style={{
-                      fontSize: 22,
-                      color: "white",
-                      fontWeight: 500,
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
+                  <span className="text-[28px] font-bold tracking-[-0.02em] text-paper sm:text-[32px]">
                     ${dueToday}
-                    <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 400, marginLeft: 4 }}>USD</span>
+                    <span className="ml-1.5 text-base font-normal text-silver">USD</span>
                   </span>
                 </div>
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    color: "var(--ink-3)",
-                    lineHeight: 1.45,
-                  }}
-                >
+                <p className="mt-3 text-[13.5px] leading-relaxed text-silver">
                   {planChange
                     ? planChange.direction === "up"
                       ? `Switching from ${planChange.fromLabel}: you're charged the prorated difference now, and your credits for the new plan are added right away. Tax may apply.`
                       : `Switching from ${planChange.fromLabel} takes effect now. Your current credits stay, and your next bill is $${monthlyUsd}/month.`
                     : "Local sales tax and any promo codes are applied at the secure checkout based on your billing location."}
-                </div>
-                <div
-                  className="mf-mono"
-                  style={{ fontSize: 10, color: "var(--ink-4)", letterSpacing: "0.06em", marginTop: 2 }}
-                >
-                  RENEWS MONTHLY · CANCEL ANYTIME
+                </p>
+                <div className="mt-5 flex items-center gap-3 rounded-xl border border-slate/40 bg-ink/40 px-4 py-3 text-[13px] text-silver">
+                  <CalendarDays className="size-4 shrink-0" aria-hidden />
+                  Renews monthly · Cancel anytime
                 </div>
               </div>
-            </div>
-          </div>
 
-          <button
-            disabled={submitting}
-            onClick={() => onComplete?.({ monthlyUsd, pack })}
-            style={{
-              width: "100%",
-              height: 52,
-              borderRadius: 12,
-              border: "1px solid rgba(167,139,250,0.50)",
-              background: "linear-gradient(135deg, #7AA2FF 0%, #A78BFA 55%, #67E8F9 100%)",
-              backgroundSize: "200% 100%",
-              color: "#0B0C10",
-              fontSize: 14.5,
-              fontWeight: 600,
-              fontFamily: "inherit",
-              letterSpacing: "-0.005em",
-              cursor: submitting ? "wait" : "pointer",
-              opacity: submitting ? 0.6 : 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              boxShadow: "0 14px 36px -8px rgba(122,162,255,0.45), inset 0 1px 0 rgba(255,255,255,0.25)",
-              transition: "transform 160ms, background-position 600ms",
-            }}
-            onMouseEnter={(e) => {
-              if (submitting) return;
-              e.currentTarget.style.transform = "translateY(-1px)";
-              e.currentTarget.style.backgroundPosition = "100% 0";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.backgroundPosition = "0% 0";
-            }}
-          >
-            <span>
-              {planChange
-                ? submitting
-                  ? "Switching your plan…"
-                  : `Switch to ${TIER_LABEL[tier].replace("Videly ", "")} · $${dueToday}`
-                : submitting
-                  ? "Opening secure checkout…"
-                  : `Continue to secure checkout · $${dueToday}`}
-            </span>
-            <IconArrowRight size={14} />
-          </button>
-          {error && (
-            <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: "#FCA5A5", lineHeight: 1.45 }}>
-              {error}
-            </div>
-          )}
-
-          <div
-            style={{
-              padding: "14px 18px",
-              borderRadius: 12,
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid var(--line)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 9,
-            }}
-          >
-            {[
-              { i: <IconCheck size={11} />, t: "Cancel anytime — no questions" },
-              { i: <IconCheck size={11} />, t: "30-day money-back guarantee" },
-              { i: <CoLockIcon />, t: "Secure checkout · SSL encrypted" },
-            ].map((it, i) => (
-              <div
-                key={i}
-                style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12, color: "var(--ink-2)" }}
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => onComplete?.({ monthlyUsd, pack })}
+                className={cn(
+                  "mt-6 flex h-14 w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-coral-400 via-coral to-coral-600 px-4 text-[15px] font-semibold sm:text-base text-white shadow-[0_16px_40px_-12px_rgb(239_131_84/0.75),inset_0_1px_0_rgb(255_255_255/0.25)] transition-[filter,transform] hover:-translate-y-px hover:brightness-110 disabled:cursor-wait disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:brightness-100",
+                  focusRing,
+                )}
               >
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 5,
-                    background: "rgba(166,240,189,0.10)",
-                    border: "1px solid rgba(166,240,189,0.30)",
-                    color: "#A6F0BD",
-                    display: "grid",
-                    placeItems: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  {it.i}
+                {submitting && <Loader2 className="size-4 vd-spin" aria-hidden />}
+                <span>
+                  {planChange
+                    ? submitting
+                      ? "Switching your plan…"
+                      : `Switch to ${shortName} · $${dueToday}`
+                    : submitting
+                      ? "Opening secure checkout…"
+                      : `Continue to secure checkout · $${dueToday}`}
                 </span>
-                {it.t}
-              </div>
-            ))}
+                {!submitting && <ArrowRight className="size-[18px]" aria-hidden />}
+              </button>
+              {error && (
+                <div role="alert" className="mt-3 text-[13px] leading-snug text-danger">
+                  {error}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div style={{ fontSize: 11, color: "var(--ink-4)", textAlign: "center", lineHeight: 1.5, paddingTop: 6 }}>
-            By starting your subscription, you agree to our{" "}
-            <span style={{ color: "var(--ink-2)", cursor: "pointer" }}>Terms</span> and{" "}
-            <span style={{ color: "var(--ink-2)", cursor: "pointer" }}>Privacy Policy</span>.
+          <div className="grid grid-cols-3 rounded-2xl border border-slate/40 bg-ink-800/60 py-4 backdrop-blur-sm">
+            <Trust icon={<CircleCheck className="size-6" aria-hidden />} title="Cancel anytime" sub="No questions asked" />
+            <Trust icon={<ShieldCheck className="size-6" aria-hidden />} title="30-day guarantee" sub="Money-back guarantee" divided />
+            <Trust icon={<Lock className="size-6" aria-hidden />} title="Secure checkout" sub="SSL encrypted" divided />
           </div>
+
+          <p className="text-center text-[12.5px] leading-relaxed text-silver">
+            By starting your subscription, you agree to our{" "}
+            <Link to="/terms" className="font-medium text-paper underline underline-offset-2 hover:text-coral">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link to="/privacy" className="font-medium text-paper underline underline-offset-2 hover:text-coral">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </aside>
-      </div>
+      </main>
     </div>
   );
 }
 
-function CoStep({ n, label, active, done }: { n: number; label: string; active?: boolean; done?: boolean }) {
+// Ambient glows, same recipe as the pricing page so the hand-off feels continuous.
+function Glow() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-      <span
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: "50%",
-          display: "grid",
-          placeItems: "center",
-          fontSize: 10.5,
-          fontWeight: 600,
-          fontFamily: "Geist Mono, monospace",
-          background: active
-            ? "linear-gradient(135deg, #7AA2FF, #A78BFA)"
-            : done
-            ? "rgba(166,240,189,0.15)"
-            : "rgba(255,255,255,0.04)",
-          color: active ? "#0B0C10" : done ? "#A6F0BD" : "var(--ink-3)",
-          border: done ? "1px solid rgba(166,240,189,0.35)" : active ? "none" : "1px solid var(--line)",
-          boxShadow: active ? "0 4px 14px rgba(122,162,255,0.45)" : "none",
-        }}
-      >
-        {done ? "✓" : n}
-      </span>
-      <span
-        style={{
-          fontSize: 12.5,
-          color: active ? "white" : done ? "var(--ink-2)" : "var(--ink-3)",
-          fontWeight: active ? 500 : 400,
-        }}
-      >
-        {label}
-      </span>
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -left-48 top-24 size-[620px] rounded-full bg-slate/25 blur-[120px]" />
+      <div className="absolute -right-40 top-10 size-[600px] rounded-full bg-coral/10 blur-[130px]" />
+      <div className="absolute -bottom-40 left-1/3 h-[380px] w-[800px] rounded-full bg-slate/20 blur-[140px]" />
     </div>
+  );
+}
+
+function CoStep({ n, label, active }: { n: number; label: string; active?: boolean }) {
+  return (
+    <li className="flex items-center gap-2" aria-current={active ? "step" : undefined}>
+      <span
+        className={cn(
+          "grid size-7 place-items-center rounded-full font-mono text-xs font-semibold",
+          active
+            ? "bg-coral text-white shadow-[0_4px_16px_-2px_rgb(239_131_84/0.6)]"
+            : "border border-slate/60 text-silver",
+        )}
+      >
+        {n}
+      </span>
+      <span className={cn("text-[13.5px]", active ? "font-semibold text-paper" : "text-silver")}>{label}</span>
+    </li>
   );
 }
 
 function CoSep() {
-  return <div style={{ width: 20, height: 1, background: "var(--line)" }} />;
+  return <li aria-hidden className="h-px w-5 bg-slate/60" />;
 }
 
-function CoSection({ title, children }: { title: string; children: ReactNode }) {
+function CoField({ label, icon, children }: { label: string; icon: ReactNode; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div className="mf-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--ink-3)" }}>
-        {title.toUpperCase()}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function CoField({
-  label,
-  children,
-  right,
-}: {
-  label: string;
-  children: ReactNode;
-  right?: ReactNode;
-}) {
-  return (
-    <label style={{ display: "block" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span
-          style={{
-            fontSize: 11.5,
-            color: "var(--ink-2)",
-            fontWeight: 500,
-            letterSpacing: "-0.005em",
-          }}
-        >
-          {label}
-        </span>
-        {right}
-      </div>
-      {children}
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-paper/90">{label}</span>
+      <span className="relative block">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-silver">{icon}</span>
+        {children}
+      </span>
     </label>
   );
 }
 
-function CoInput({
-  placeholder,
-  type = "text",
-  defaultValue,
-  mono,
-}: {
+function CoInput(props: {
   placeholder?: string;
   type?: string;
   defaultValue?: string;
-  mono?: boolean;
+  autoComplete?: string;
+  readOnly?: boolean;
 }) {
   return (
     <input
-      type={type}
-      placeholder={placeholder}
-      defaultValue={defaultValue}
-      style={{
-        width: "100%",
-        boxSizing: "border-box",
-        padding: "11px 14px",
-        borderRadius: 9,
-        background: "rgba(0,0,0,0.25)",
-        border: "1px solid var(--line)",
-        color: "white",
-        fontSize: 13.5,
-        fontFamily: mono ? "Geist Mono, monospace" : "inherit",
-        letterSpacing: mono ? "0.02em" : "normal",
-        outline: "none",
-        transition: "border-color 160ms, background 160ms",
-      }}
-      onFocus={(e) => {
-        e.currentTarget.style.borderColor = "rgba(122,162,255,0.45)";
-        e.currentTarget.style.background = "rgba(0,0,0,0.35)";
-      }}
-      onBlur={(e) => {
-        e.currentTarget.style.borderColor = "var(--line)";
-        e.currentTarget.style.background = "rgba(0,0,0,0.25)";
-      }}
+      {...props}
+      type={props.type ?? "text"}
+      defaultValue={props.defaultValue ?? ""}
+      className="h-12 w-full rounded-xl border border-slate/50 bg-ink-950/50 pl-11 pr-4 text-[14.5px] text-paper outline-none transition-[border-color,box-shadow,background-color] placeholder:text-silver/60 hover:border-slate focus:border-coral/60 focus:bg-ink-950/70 focus:shadow-[0_0_0_4px_rgb(239_131_84/0.14)] read-only:text-paper/80"
     />
   );
 }
 
-function CoLockIcon() {
+function Trust({ icon, title, sub, divided }: { icon: ReactNode; title: string; sub: string; divided?: boolean }) {
   return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="4" y="11" width="16" height="10" rx="2" />
-      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-    </svg>
+    <div className={cn("flex flex-col items-center px-2 text-center", divided && "border-l border-white/[0.07]")}>
+      <span className="text-coral">{icon}</span>
+      <span className="mt-2 text-[13px] font-semibold text-paper sm:text-sm">{title}</span>
+      <span className="mt-0.5 text-[11.5px] text-silver sm:text-[12.5px]">{sub}</span>
+    </div>
   );
 }
-
