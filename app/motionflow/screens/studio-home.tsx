@@ -24,6 +24,7 @@ import {
   Upload,
   LayoutTemplate,
   Loader2,
+  Lock,
   Sparkles,
 } from "lucide-react";
 import { FaYoutube } from "react-icons/fa6";
@@ -45,6 +46,10 @@ import { FALLBACK_TEMPLATES } from "../ui/showcase";
 import { LANGUAGES } from "../ui/languages";
 import { readPrefs } from "../ui/prefs";
 import { useOpenTemplate } from "../ui/use-open-template";
+import { handlePaymentRequired, openUpsell } from "../ui/upsell";
+import { getPlanFeatures } from "../../lib/billing/plan-features";
+import { PLANS, cheapestTierWith } from "../../lib/billing/catalog";
+import { track } from "../../lib/analytics";
 
 const FORMAT_OPTIONS: { value: StudioFormat; label: string }[] = [
   { value: "16:9", label: "16:9" },
@@ -113,7 +118,12 @@ export function StudioHomeScreen({
   const [inline, setInline] = useState<Inline>(null);
   const [inlineValue, setInlineValue] = useState("");
   const [inlineError, setInlineError] = useState<string | null>(null);
-  const [duration, setDuration] = useState<number>(30);
+  // Plan limits shown up front instead of the server silently clamping them.
+  const features = getPlanFeatures(planTier);
+  const maxDuration = features.maxStudioDuration;
+  const fitDuration = (d: number) =>
+    d <= maxDuration ? d : Math.max(...DURATION_OPTIONS.filter((o) => o <= maxDuration), DURATION_OPTIONS[0]);
+  const [duration, setDuration] = useState<number>(() => fitDuration(30));
   const [format, setFormat] = useState<StudioFormat>("16:9");
   const [voiceId, setVoiceId] = useState<string>("off");
   const [language, setLanguage] = useState("en");
@@ -139,7 +149,7 @@ export function StudioHomeScreen({
   // Per-device defaults from Settings → Preferences.
   useEffect(() => {
     const p = readPrefs();
-    if ((DURATION_OPTIONS as readonly number[]).includes(p.defaultDuration)) setDuration(p.defaultDuration);
+    if ((DURATION_OPTIONS as readonly number[]).includes(p.defaultDuration)) setDuration(fitDuration(p.defaultDuration));
     setLanguage(p.language);
   }, []);
 
@@ -186,7 +196,7 @@ export function StudioHomeScreen({
           setTemplate(t);
           setPrompt(t.prompt);
           setFormat(t.format);
-          if ((DURATION_OPTIONS as readonly number[]).includes(t.duration)) setDuration(t.duration);
+          if ((DURATION_OPTIONS as readonly number[]).includes(t.duration)) setDuration(fitDuration(t.duration));
           promptRef.current?.focus();
         })
         .catch(() => {});
@@ -320,6 +330,7 @@ export function StudioHomeScreen({
       navigate(`/videos/${id}`);
     } catch (e) {
       if (e instanceof ApiError && e.isPaymentRequired) {
+        handlePaymentRequired(e, "home_generate");
         const needed = Number(e.body.needed ?? 0);
         const balance = Number(e.body.balance ?? 0);
         setError({
@@ -454,6 +465,18 @@ export function StudioHomeScreen({
                 className="block min-h-[30px] w-full resize-none border-0 bg-transparent p-0 text-[18px] leading-[1.6] text-paper placeholder:text-[#a3a8b0] focus-visible:outline-none"
               />
             </div>
+            {features.maxScriptChars != null && prompt.length > features.maxScriptChars * 0.8 && (
+              <p className={cn("mt-2 text-right text-[12.5px]", prompt.length > features.maxScriptChars ? "text-danger" : "text-silver")}>
+                {formatNumber(prompt.length)} / {formatNumber(features.maxScriptChars)} characters ·{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-coral hover:text-coral-400"
+                  onClick={() => openUpsell("prompt_length", { surface: "home_prompt" })}
+                >
+                  Unlimited with {PLANS.starter.label}
+                </button>
+              </p>
+            )}
 
             {inline && (
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-start">
@@ -628,11 +651,16 @@ export function StudioHomeScreen({
                       </>
                     }
                     items={voiceOptions.map((o) => ({
-                      label: o.label,
-                      icon: o.value === voiceId ? <Check /> : <span />,
+                      label: !features.audio && o.value !== "off" ? `${o.label} · ${PLANS.starter.label}` : o.label,
+                      icon: o.value === voiceId ? <Check /> : !features.audio && o.value !== "off" ? <Lock /> : <span />,
                       onSelect: () => {
                         sample?.pause();
                         setSampling(false);
+                        if (!features.audio && o.value !== "off") {
+                          track("locked_feature_clicked", { feature: "voiceover", surface: "home" });
+                          openUpsell("voiceover", { surface: "home_voice" });
+                          return;
+                        }
                         setVoiceId(o.value);
                       },
                     }))}
@@ -655,7 +683,16 @@ export function StudioHomeScreen({
                   }
                   items={[
                     { label: `Language: ${languageLabel}`, icon: <Languages />, onSelect: () => setShowLanguage(true) },
-                    { label: music ? "Music: on" : "Music: off", icon: <Music />, onSelect: () => setMusic((m) => !m) },
+                    features.audio
+                      ? { label: music ? "Music: on" : "Music: off", icon: <Music />, onSelect: () => setMusic((m) => !m) }
+                      : {
+                          label: `Music · ${PLANS.starter.label}`,
+                          icon: <Lock />,
+                          onSelect: () => {
+                            track("locked_feature_clicked", { feature: "music", surface: "home" });
+                            openUpsell("voiceover", { surface: "home_music" });
+                          },
+                        },
                     {
                       label: useBrandKit ? "Brand kit: on" : "Brand kit: off",
                       icon: <Palette />,
@@ -704,10 +741,21 @@ export function StudioHomeScreen({
                 <Select
                   label="Duration"
                   value={String(duration)}
-                  onChange={(v) => setDuration(Number(v))}
+                  onChange={(v) => {
+                    const d = Number(v);
+                    if (d > maxDuration) {
+                      track("locked_feature_clicked", { feature: "duration", seconds: d, surface: "home" });
+                      openUpsell("duration", { seconds: d, surface: "home_duration" });
+                      return;
+                    }
+                    setDuration(d);
+                  }}
                   icon={<Clock className="size-[18px]" aria-hidden />}
-                  options={DURATION_OPTIONS.map((d) => ({ value: String(d), label: `${d}s` }))}
-                  className="w-[118px]"
+                  options={DURATION_OPTIONS.map((d) => {
+                    const need = d > maxDuration ? cheapestTierWith("maxStudioDuration", d) : null;
+                    return { value: String(d), label: need ? `${d}s · ${PLANS[need].label}` : `${d}s` };
+                  })}
+                  className={maxDuration < 60 ? "w-[158px]" : "w-[118px]"}
                   selectClassName={cn(pillSelect, "pl-10")}
                 />
                 <button
@@ -730,9 +778,13 @@ export function StudioHomeScreen({
               <div role="alert" className="mt-4 rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-paper">
                 {error.message}{" "}
                 {error.payment && (
-                  <Link to="/pricing" className="font-semibold text-coral underline-offset-2 hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => openUpsell("insufficient_credits", { surface: "home_generate_inline" })}
+                    className="font-semibold text-coral underline-offset-2 hover:underline"
+                  >
                     Get more credits
-                  </Link>
+                  </button>
                 )}
               </div>
             )}

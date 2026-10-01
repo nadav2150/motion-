@@ -5,6 +5,7 @@
 
 import { Polar } from "@polar-sh/sdk";
 import type { PlanTier } from "./plan-features";
+import { PACKS, PLANS } from "./catalog";
 
 let cached: Polar | null = null;
 
@@ -68,17 +69,17 @@ export type CatalogEntry = SubscriptionCatalogEntry | CreditPackCatalogEntry;
 export function buildCatalog(): Record<string, CatalogEntry> {
   const map: Record<string, CatalogEntry> = {};
   const subs: Array<[string | undefined, PlanTier, number]> = [
-    [readPolarEnvVar("PRODUCT_STARTER"), "starter", 8_000],
-    [readPolarEnvVar("PRODUCT_PRO"),     "pro",     20_000],
-    [readPolarEnvVar("PRODUCT_STUDIO"),  "studio",  60_000],
+    [readPolarEnvVar("PRODUCT_STARTER"), "starter", PLANS.starter.monthlyCredits],
+    [readPolarEnvVar("PRODUCT_PRO"),     "pro",     PLANS.pro.monthlyCredits],
+    [readPolarEnvVar("PRODUCT_STUDIO"),  "studio",  PLANS.studio.monthlyCredits],
   ];
   for (const [id, planTier, monthlyGrant] of subs) {
     if (id) map[id] = { kind: "subscription", planTier, monthlyGrant };
   }
   const packs: Array<[string | undefined, "small" | "medium" | "large", number]> = [
-    [readPolarEnvVar("PRODUCT_PACK_SMALL"),  "small",  5_000],
-    [readPolarEnvVar("PRODUCT_PACK_MEDIUM"), "medium", 25_000],
-    [readPolarEnvVar("PRODUCT_PACK_LARGE"),  "large",  75_000],
+    [readPolarEnvVar("PRODUCT_PACK_SMALL"),  "small",  PACKS.small.credits],
+    [readPolarEnvVar("PRODUCT_PACK_MEDIUM"), "medium", PACKS.medium.credits],
+    [readPolarEnvVar("PRODUCT_PACK_LARGE"),  "large",  PACKS.large.credits],
   ];
   for (const [id, packSize, credits] of packs) {
     if (id) map[id] = { kind: "credit_pack", packSize, credits };

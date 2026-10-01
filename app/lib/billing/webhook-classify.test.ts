@@ -16,9 +16,14 @@ test("classifyOrder: subscription create is skipped (handled by subscription.cre
     .toBe("skip");
 });
 
-test("classifyOrder: subscription update bill is skipped", () => {
+test("classifyOrder: subscription update bill is a plan change", () => {
   expect(classifyOrder({ subscription_id: "sub_1", billing_reason: "subscription_update" }))
-    .toBe("skip");
+    .toBe("plan_change");
+});
+
+test("classifyOrder: pack-only order (no subscription) is still a credit pack", () => {
+  expect(classifyOrder({ subscription_id: undefined, billing_reason: "purchase" }))
+    .toBe("credit_pack");
 });
 
 test("extractUserIdHint prefers metadata.userId, then customer.externalId", () => {

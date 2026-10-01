@@ -259,20 +259,15 @@ export async function adjustBalance(args: {
   reason: string;
   meta?: Record<string, unknown>;
   idempotencyKey: string;
-}): Promise<void> {
-  if (args.amount <= 0) return;
+}): Promise<boolean> {
+  if (args.amount <= 0) return false;
   const db = getSupabase();
 
-  // RPC bumps balance + decrements credits_reserved for refunds.
-  const { error: rpcErr } = await db.rpc("adjust_credits", {
-    p_user_id: args.userId,
-    p_delta_balance: args.kind === "refund" ? args.amount : args.amount,
-    p_delta_reserved: args.kind === "refund" ? -args.amount : 0,
-  });
-  if (rpcErr) {
-    throw new Error(`adjustBalance RPC failed: ${rpcErr.message}`);
-  }
-
+  // Claim the idempotency key BEFORE touching the balance. The unique index on
+  // credit_ledger.idempotency_key makes a replay (Dodo sending .active and
+  // .renewed for one period, a webhook retry, a double refund) fail here with
+  // 23505, so the balance is bumped at most once per key. Returns whether the
+  // credits were applied by this call.
   const { error: ledgerErr } = await db.from("credit_ledger").insert({
     user_id: args.userId,
     job_id: args.jobId ?? null,
@@ -282,9 +277,23 @@ export async function adjustBalance(args: {
     meta: args.meta ?? null,
     idempotency_key: args.idempotencyKey,
   });
-  if (ledgerErr && ledgerErr.code !== "23505") {
+  if (ledgerErr) {
+    if (ledgerErr.code === "23505") return false;
     throw new Error(`adjustBalance ledger insert failed: ${ledgerErr.message}`);
   }
+
+  // RPC bumps balance + decrements credits_reserved for refunds.
+  const { error: rpcErr } = await db.rpc("adjust_credits", {
+    p_user_id: args.userId,
+    p_delta_balance: args.amount,
+    p_delta_reserved: args.kind === "refund" ? -args.amount : 0,
+  });
+  if (rpcErr) {
+    // Release the key so a retry can apply the credits.
+    await db.from("credit_ledger").delete().eq("idempotency_key", args.idempotencyKey);
+    throw new Error(`adjustBalance RPC failed: ${rpcErr.message}`);
+  }
+  return true;
 }
 
 type SettlementRow = { kind: string; reason: string; delta: number };

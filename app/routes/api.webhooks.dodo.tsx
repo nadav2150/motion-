@@ -30,6 +30,9 @@ import { getSupabase } from "../lib/supabase";
 import { adjustBalance } from "../lib/billing/credits";
 import { flushPostHog } from "../lib/posthog";
 import { applyPlanAndGrant, identifyPlan, logBillingAfter, webhookLog } from "../lib/billing/webhook-apply";
+import { applyPlanChange, recentPlanChange } from "../lib/billing/plan-change.server";
+import { tierOf } from "../lib/billing/catalog";
+import { getPostHog } from "../lib/posthog";
 
 const log = (level: "info" | "warn" | "error", msg: string, fields: Record<string, unknown> = {}) =>
   webhookLog("dodo", level, msg, fields);
@@ -205,14 +208,39 @@ async function handleSubscriptionPeriod(type: string, data: AnyData): Promise<vo
     await db.from("user_billing").update({ provider_customer_id: customerId }).eq("user_id", userId);
   }
 
-  await applyPlanAndGrant(
-    "dodo",
-    userId,
-    entry.planTier,
-    entry.monthlyGrant,
-    periodEnd,
-    `dodo_sub_period:${subscriptionId}:${periodStart ?? "initial"}`,
-  );
+  // An upgrade restarts the Dodo billing period, which can also emit a period
+  // event for the new tier. Within the plan-change window that event belongs
+  // to the change: grant the proration-matched amount once, not a full month.
+  const change = await recentPlanChange(subscriptionId, entry.planTier);
+  if (change) {
+    await applyPlanChange({
+      provider: "dodo",
+      userId,
+      subscriptionId,
+      toTier: entry.planTier,
+      monthlyGrant: entry.monthlyGrant,
+      periodEnd,
+      fallback: { fromTier: entry.planTier, periodStart, periodEnd, key: `dodo_plan_change:${subscriptionId}:${periodStart ?? "initial"}` },
+    });
+    // Mark the restarted period as granted so a later replay of this event
+    // cannot add the full month on top.
+    await getSupabase().from("credit_ledger").insert({
+      user_id: userId,
+      delta: 0,
+      kind: "grant",
+      reason: `monthly_grant:${entry.planTier}:covered_by_plan_change`,
+      idempotency_key: `dodo_sub_period:${subscriptionId}:${periodStart ?? "initial"}`,
+    });
+  } else {
+    await applyPlanAndGrant(
+      "dodo",
+      userId,
+      entry.planTier,
+      entry.monthlyGrant,
+      periodEnd,
+      `dodo_sub_period:${subscriptionId}:${periodStart ?? "initial"}`,
+    );
+  }
   identifyPlan("dodo", userId, {
     plan_tier: entry.planTier,
     monthly_grant: entry.monthlyGrant,
@@ -223,8 +251,9 @@ async function handleSubscriptionPeriod(type: string, data: AnyData): Promise<vo
   log("info", `${type} applied`, { sub: subscriptionId, user_id: userId, plan_tier: entry.planTier });
 }
 
-// Upgrade/downgrade: switch the tier and its monthly grant going forward. The
-// next renewal grants the new amount; no mid-period top-up.
+// Upgrade/downgrade (from POST /api/billing/change-plan or the Dodo
+// dashboard): switch the tier and its monthly grant, and on an upgrade grant
+// the proration-matched credits once (see lib/billing/plan-change.server.ts).
 async function handlePlanChanged(data: AnyData): Promise<void> {
   const subscriptionId = data.subscription_id as string;
   const productId = data.product_id as string | undefined;
@@ -235,16 +264,47 @@ async function handlePlanChanged(data: AnyData): Promise<void> {
     return;
   }
   const db = getSupabase();
+  const { data: before } = await db
+    .from("subscriptions")
+    .select("plan_tier, current_period_start, current_period_end")
+    .eq("provider_subscription_id", subscriptionId)
+    .maybeSingle();
+  const periodStart = toIso(data.previous_billing_date);
+  const periodEnd = toIso(data.next_billing_date);
   await db.from("subscriptions").update({
     provider_product_id: productId!,
     plan_tier: entry.planTier,
     status: normalizeDodoStatus(data.status),
-    current_period_end: toIso(data.next_billing_date),
+    ...(periodStart ? { current_period_start: periodStart } : {}),
+    current_period_end: periodEnd,
   }).eq("provider_subscription_id", subscriptionId);
-  await db.from("user_billing").update({
-    plan_tier: entry.planTier,
-    monthly_grant: entry.monthlyGrant,
-  }).eq("user_id", userId);
+
+  await applyPlanChange({
+    provider: "dodo",
+    userId,
+    subscriptionId,
+    toTier: entry.planTier,
+    monthlyGrant: entry.monthlyGrant,
+    periodEnd,
+    fallback: {
+      fromTier: tierOf(before?.plan_tier as string | null),
+      periodStart: (before?.current_period_start as string | null) ?? null,
+      periodEnd: (before?.current_period_end as string | null) ?? null,
+      key: `dodo_plan_change:${subscriptionId}:${periodStart ?? productId}`,
+    },
+  });
+  // If the upgrade restarted the period, the restarted period is covered by
+  // the plan-change grant; claim its key so a later .renewed/.active for the
+  // same period start cannot add a full month on top.
+  if (periodStart && periodStart !== (before?.current_period_start ?? null)) {
+    await db.from("credit_ledger").insert({
+      user_id: userId,
+      delta: 0,
+      kind: "grant",
+      reason: `monthly_grant:${entry.planTier}:covered_by_plan_change`,
+      idempotency_key: `dodo_sub_period:${subscriptionId}:${periodStart}`,
+    });
+  }
   identifyPlan("dodo", userId, { plan_tier: entry.planTier, monthly_grant: entry.monthlyGrant });
   log("info", "plan_changed applied", { sub: subscriptionId, user_id: userId, plan_tier: entry.planTier });
 }
@@ -352,7 +412,21 @@ async function handlePaymentSucceeded(data: AnyData): Promise<void> {
       reason: `credit_pack:${entry.packSize}`,
       idempotencyKey: `purchase:${paymentId}:${productId}`,
     });
-    log("info", "payment.succeeded credit pack granted", { payment: paymentId, user_id: userId, credits });
+    log("info", "payment.succeeded credit pack granted", {
+      payment: paymentId,
+      user_id: userId,
+      credits,
+      pack_only: !data.subscription_id,
+    });
+    try {
+      getPostHog().capture({
+        distinctId: userId,
+        event: "credit_pack_purchased",
+        properties: { provider: "dodo", pack: entry.packSize, credits, pack_only: !data.subscription_id, source: data?.metadata?.source },
+      });
+    } catch {
+      // best-effort
+    }
     await logBillingAfter("dodo", userId, "credit_pack purchase", {
       payment_id: paymentId,
       pack: entry.packSize,

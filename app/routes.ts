@@ -94,6 +94,7 @@ export default [
 
   route("api/billing/checkout", "routes/api.billing.checkout.tsx"),
   route("api/billing/cancel-subscription", "routes/api.billing.cancel-subscription.tsx"),
+  route("api/billing/change-plan", "routes/api.billing.change-plan.tsx"),
   route("api/webhooks/polar", "routes/api.webhooks.polar.tsx"),
   route("api/webhooks/dodo", "routes/api.webhooks.dodo.tsx"),
   route("sitemap.xml", "routes/sitemap.tsx"),

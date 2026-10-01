@@ -7,6 +7,7 @@ import {
 } from "../motionflow/screens/pricing";
 import { getUserFromRequest } from "../lib/auth";
 import { buildMeta } from "../lib/seo";
+import { findActiveSubscription } from "../lib/billing/subscription";
 
 export function meta(_: Route.MetaArgs) {
   return buildMeta({
@@ -17,21 +18,28 @@ export function meta(_: Route.MetaArgs) {
   });
 }
 
-type LoaderData = { isAuthed: boolean };
+type LoaderData = { isAuthed: boolean; currentTier: string | null };
 
-// Soft auth check — never redirects, only adapts the header CTA.
+// Soft auth check — never redirects, only adapts the header CTA. currentTier
+// lets a subscriber's pick become an in-place switch (/checkout handles it).
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getUserFromRequest(request);
-  return data({ isAuthed: user !== null } satisfies LoaderData);
+  const sub = user ? await findActiveSubscription(user.id).catch(() => null) : null;
+  return data({ isAuthed: user !== null, currentTier: sub?.planTier ?? null } satisfies LoaderData);
 }
 
 export default function PricingRoute() {
   const navigate = useNavigate();
-  const { isAuthed } = useLoaderData() as LoaderData;
+  const { isAuthed, currentTier } = useLoaderData() as LoaderData;
 
   const handleSelectTier = (tier: PricingTierKey, pack: PackKey) => {
     if (tier === "free") {
-      navigate(isAuthed ? "/home" : "/register");
+      // Subscribers manage (or cancel) their plan in Settings.
+      navigate(currentTier ? "/settings?tab=plans" : isAuthed ? "/home" : "/register");
+      return;
+    }
+    if (currentTier === tier && pack === "none") {
+      navigate("/settings?tab=plans");
       return;
     }
     // Checkout route reads plan/pack from the query string — see

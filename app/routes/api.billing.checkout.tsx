@@ -5,6 +5,14 @@
 //
 // BILLING_PROVIDER=dodo routes the same request to a Dodo Payments checkout
 // session instead (see dodoCheckout below and lib/billing/dodo.ts).
+//
+// Body: { tier?, pack?, source? }
+//   - tier (+ optional pack): a new subscription. Refused with 409
+//     already_subscribed when the user already has a live subscription — a
+//     plan switch goes through POST /api/billing/change-plan instead, so nobody
+//     ends up paying for two subscriptions.
+//   - pack alone: a one-time credit top-up, for free and paying users alike.
+//   - source: which upsell surface sent the buyer (analytics only).
 
 import type { Route } from "./+types/api.billing.checkout";
 import { requireUserApi } from "../lib/auth";
@@ -24,6 +32,9 @@ import {
   isDodoConfigured,
 } from "../lib/billing/dodo";
 import { billingProvider } from "../lib/billing/provider";
+import { isPack, isTier, type PackSize, type PaidTier } from "../lib/billing/catalog";
+import { findActiveSubscription } from "../lib/billing/subscription";
+import { getPostHog } from "../lib/posthog";
 import type { AuthUser } from "../lib/auth";
 
 const POLAR_ENV = (process.env.POLAR_ENV ?? "sandbox").toLowerCase();
@@ -31,13 +42,50 @@ const POLAR_ENV = (process.env.POLAR_ENV ?? "sandbox").toLowerCase();
 // don't leak internals from videly.io while keeping sandbox/dev debuggable.
 const EXPOSE_ERRORS = POLAR_ENV !== "production";
 
-type Body = { tier?: string; pack?: string | null };
+type Body = { tier?: string | null; pack?: string | null; source?: string | null };
 
-function isTier(v: unknown): v is "starter" | "pro" | "studio" {
-  return v === "starter" || v === "pro" || v === "studio";
+// What is being bought. tier=null means a pack-only top-up.
+type Order = { tier: PaidTier | null; pack: PackSize | null; source: string | null };
+
+function cleanSource(v: unknown): string | null {
+  return typeof v === "string" && /^[a-z0-9_:-]{1,40}$/i.test(v) ? v : null;
 }
-function isPack(v: unknown): v is "small" | "medium" | "large" {
-  return v === "small" || v === "medium" || v === "large";
+
+function successUrl(origin: string, order: Order): string {
+  const params = new URLSearchParams();
+  if (order.tier) params.set("upgraded", order.tier);
+  else if (order.pack) params.set("purchased", `pack_${order.pack}`);
+  if (order.tier && order.pack) params.set("pack", order.pack);
+  if (order.source) params.set("source", order.source);
+  return `${origin}/home?${params.toString()}`;
+}
+
+function metadataFor(user: AuthUser, order: Order): Record<string, string> {
+  // Polar rejects empty-string metadata values (each value must be a non-empty
+  // string or a number/bool), so only attach keys that are set.
+  const metadata: Record<string, string> = { userId: user.id };
+  if (order.tier) metadata.planTier = order.tier;
+  if (order.pack) metadata.packKey = order.pack;
+  if (order.source) metadata.source = order.source;
+  return metadata;
+}
+
+function trackSession(user: AuthUser, order: Order, provider: string): void {
+  try {
+    getPostHog().capture({
+      distinctId: user.id,
+      event: "checkout_session_created",
+      properties: {
+        provider,
+        kind: order.tier ? "subscription" : "pack",
+        tier: order.tier,
+        pack: order.pack,
+        source: order.source,
+      },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -48,13 +96,36 @@ export async function action({ request }: Route.ActionArgs) {
   const { user, headers } = await requireUserApi(request);
 
   const body = (await request.json().catch(() => ({}))) as Body;
-  const tier = body.tier;
-  if (!isTier(tier)) {
+  const tier = body.tier ?? null;
+  const pack = body.pack ?? null;
+  if (tier !== null && !isTier(tier)) {
     return Response.json({ error: `Invalid tier "${tier}"` }, { status: 400, headers });
+  }
+  if (pack !== null && !isPack(pack)) {
+    return Response.json({ error: `Invalid pack "${pack}"` }, { status: 400, headers });
+  }
+  if (tier === null && pack === null) {
+    return Response.json({ error: "Choose a plan or a credit pack" }, { status: 400, headers });
+  }
+  const order: Order = { tier, pack, source: cleanSource(body.source) };
+
+  if (order.tier) {
+    try {
+      const existing = await findActiveSubscription(user.id);
+      if (existing) {
+        return Response.json(
+          { error: "already_subscribed", currentTier: existing.planTier, changePlanAvailable: !existing.cancelAtPeriodEnd },
+          { status: 409, headers },
+        );
+      }
+    } catch (err) {
+      console.error(`[checkout] ${err instanceof Error ? err.message : String(err)} user=${user.id}`);
+      return Response.json({ error: "Failed to load subscription" }, { status: 500, headers });
+    }
   }
 
   if (billingProvider() === "dodo") {
-    return dodoCheckout(request, user, headers, tier, body.pack);
+    return dodoCheckout(request, user, headers, order);
   }
 
   // Fail fast with a precise message when the access token isn't wired. This is
@@ -69,33 +140,37 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  const tierProduct = productIdForTier(tier);
-  if (!tierProduct) {
-    return Response.json(
-      { error: `No Polar product configured for tier "${tier}". Set ${productEnvVarName(`PRODUCT_${tier.toUpperCase()}`)}.` },
-      { status: 500, headers },
-    );
+  const products: string[] = [];
+  if (order.tier) {
+    const tierProduct = productIdForTier(order.tier);
+    if (!tierProduct) {
+      return Response.json(
+        { error: `No Polar product configured for tier "${order.tier}". Set ${productEnvVarName(`PRODUCT_${order.tier.toUpperCase()}`)}.` },
+        { status: 500, headers },
+      );
+    }
+    products.push(tierProduct);
   }
-
-  const products: string[] = [tierProduct];
-  const pack = body.pack;
-  if (isPack(pack)) {
-    const packProduct = productIdForPack(pack);
+  if (order.pack) {
+    const packProduct = productIdForPack(order.pack);
     if (packProduct) products.push(packProduct);
-    else console.warn(`[checkout] no Polar product for pack "${pack}" — continuing subscription only`);
+    else if (!order.tier) {
+      return Response.json(
+        { error: `No Polar product configured for pack "${order.pack}". Set ${productEnvVarName(`PRODUCT_PACK_${order.pack.toUpperCase()}`)}.` },
+        { status: 500, headers },
+      );
+    } else {
+      console.warn(`[checkout] no Polar product for pack "${order.pack}" — continuing subscription only`);
+      order.pack = null;
+    }
   }
 
   const origin = new URL(request.url).origin;
-
-  // Polar rejects empty-string metadata values (each value must be a non-empty
-  // string or a number/bool). Only attach packKey when a pack was chosen —
-  // sending packKey:"" fails validation on plan-only checkouts.
-  const metadata: Record<string, string> = { userId: user.id, planTier: tier };
-  if (isPack(pack)) metadata.packKey = pack;
+  const metadata = metadataFor(user, order);
 
   console.log(
-    `[checkout] creating session user=${user.id} tier=${tier} pack=${isPack(pack) ? pack : "none"} ` +
-      `env=${POLAR_ENV} products=${products.join(",")}`,
+    `[checkout] creating session user=${user.id} tier=${order.tier ?? "none"} pack=${order.pack ?? "none"} ` +
+      `source=${order.source ?? "none"} env=${POLAR_ENV} products=${products.join(",")}`,
   );
 
   try {
@@ -103,9 +178,10 @@ export async function action({ request }: Route.ActionArgs) {
       products,
       externalCustomerId: user.id,
       metadata,
-      successUrl: `${origin}/home?upgraded=${tier}`,
+      successUrl: successUrl(origin, order),
     });
     console.log(`[checkout] session created user=${user.id} checkout_id=${checkout.id} url=${checkout.url}`);
+    trackSession(user, order, "polar");
     return Response.json({ url: checkout.url }, { headers });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -123,12 +199,26 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
+// Same-origin page the buyer came from, so cancelling a pack top-up returns
+// them to where they were instead of the pricing page.
+function cancelUrlFor(request: Request, origin: string): string {
+  const ref = request.headers.get("referer");
+  if (ref) {
+    try {
+      const u = new URL(ref);
+      if (u.origin === origin && !u.pathname.startsWith("/checkout")) return u.toString();
+    } catch {
+      // ignore malformed referer
+    }
+  }
+  return `${origin}/pricing`;
+}
+
 async function dodoCheckout(
   request: Request,
   user: AuthUser,
   headers: Headers,
-  tier: "starter" | "pro" | "studio",
-  pack: string | null | undefined,
+  order: Order,
 ): Promise<Response> {
   const env = dodoEnv();
   const exposeErrors = env !== "live_mode";
@@ -142,30 +232,36 @@ async function dodoCheckout(
     );
   }
 
-  const tierProduct = dodoProductIdForTier(tier);
-  if (!tierProduct) {
-    return Response.json(
-      { error: `No Dodo product configured for tier "${tier}". Set ${dodoEnvVarName(`PRODUCT_${tier.toUpperCase()}`)}.` },
-      { status: 500, headers },
-    );
+  const productIds: string[] = [];
+  if (order.tier) {
+    const tierProduct = dodoProductIdForTier(order.tier);
+    if (!tierProduct) {
+      return Response.json(
+        { error: `No Dodo product configured for tier "${order.tier}". Set ${dodoEnvVarName(`PRODUCT_${order.tier.toUpperCase()}`)}.` },
+        { status: 500, headers },
+      );
+    }
+    productIds.push(tierProduct);
   }
-
-  const productIds: string[] = [tierProduct];
-  const metadata: Record<string, string> = { userId: user.id, planTier: tier };
-  if (isPack(pack)) {
-    const packProduct = dodoProductIdForPack(pack);
-    if (packProduct) {
-      productIds.push(packProduct);
-      metadata.packKey = pack;
+  if (order.pack) {
+    const packProduct = dodoProductIdForPack(order.pack);
+    if (packProduct) productIds.push(packProduct);
+    else if (!order.tier) {
+      return Response.json(
+        { error: `No Dodo product configured for pack "${order.pack}". Set ${dodoEnvVarName(`PRODUCT_PACK_${order.pack.toUpperCase()}`)}.` },
+        { status: 500, headers },
+      );
     } else {
-      console.warn(`[checkout] no Dodo product for pack "${pack}" — continuing subscription only`);
+      console.warn(`[checkout] no Dodo product for pack "${order.pack}" — continuing subscription only`);
+      order.pack = null;
     }
   }
 
   const origin = new URL(request.url).origin;
+  const metadata = metadataFor(user, order);
   console.log(
-    `[checkout] creating Dodo session user=${user.id} tier=${tier} pack=${metadata.packKey ?? "none"} ` +
-      `env=${env} products=${productIds.join(",")}`,
+    `[checkout] creating Dodo session user=${user.id} tier=${order.tier ?? "none"} pack=${order.pack ?? "none"} ` +
+      `source=${order.source ?? "none"} env=${env} products=${productIds.join(",")}`,
   );
 
   try {
@@ -173,11 +269,12 @@ async function dodoCheckout(
       productIds,
       email: user.email,
       metadata,
-      returnUrl: `${origin}/home?upgraded=${tier}`,
-      cancelUrl: `${origin}/pricing`,
+      returnUrl: successUrl(origin, order),
+      cancelUrl: order.tier ? `${origin}/pricing` : cancelUrlFor(request, origin),
     });
     if (!session.checkout_url) throw new Error(`session ${session.session_id} has no checkout_url`);
     console.log(`[checkout] Dodo session created user=${user.id} session_id=${session.session_id}`);
+    trackSession(user, order, "dodo");
     return Response.json({ url: session.checkout_url }, { headers });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

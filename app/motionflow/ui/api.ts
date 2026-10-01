@@ -24,6 +24,24 @@ export type UsageInfo = {
   planName: string;
   creditsBalance: number;
   creditsMonthly: number;
+  // Added for the upsell UI; optional so loader fallbacks and mocks still fit.
+  creditsReserved?: number;
+  nextVideoCost?: number;
+  lowCredit?: boolean;
+  features?: {
+    watermark: boolean;
+    export4k: boolean;
+    audio: boolean;
+    maxStudioDuration: number;
+    maxScriptChars: number | null;
+  };
+  subscription?: {
+    tier: string;
+    provider: "polar" | "dodo";
+    cancelAtPeriodEnd: boolean;
+    periodEnd: string | null;
+    remainingFraction: number;
+  } | null;
 };
 
 export type VoiceOption = {

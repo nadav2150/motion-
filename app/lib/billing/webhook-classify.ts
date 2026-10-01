@@ -5,15 +5,17 @@ export type OrderShape = {
   billing_reason?: string | null;
 };
 
-export type OrderClass = "credit_pack" | "renewal" | "skip";
+export type OrderClass = "credit_pack" | "renewal" | "plan_change" | "skip";
 
 // Decide what an order.paid event means for the ledger.
 // - no subscription_id      → one-time credit pack purchase
 // - subscription_cycle      → renewal (grant the next monthly batch)
+// - subscription_update     → plan change proration invoice (upgrade grant)
 // - subscription_create/... → skip (subscription.created already granted)
 export function classifyOrder(order: OrderShape): OrderClass {
   if (!order.subscription_id) return "credit_pack";
   if (order.billing_reason === "subscription_cycle") return "renewal";
+  if (order.billing_reason === "subscription_update") return "plan_change";
   return "skip";
 }
 

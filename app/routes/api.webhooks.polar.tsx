@@ -17,6 +17,9 @@ import { getSupabase } from "../lib/supabase";
 import { adjustBalance } from "../lib/billing/credits";
 import { flushPostHog } from "../lib/posthog";
 import type { PlanTier } from "../lib/billing/plan-features";
+import { applyPlanChange } from "../lib/billing/plan-change.server";
+import { tierOf } from "../lib/billing/catalog";
+import { getPostHog } from "../lib/posthog";
 import {
   applyPlanAndGrant as sharedApplyPlanAndGrant,
   identifyPlan as sharedIdentifyPlan,
@@ -212,23 +215,40 @@ async function handleSubscriptionUpdated(data: AnyData): Promise<void> {
   const db = getSupabase();
   const { data: current } = await db
     .from("subscriptions")
-    .select("user_id, plan_tier")
+    .select("user_id, plan_tier, provider_product_id")
     .eq("provider_subscription_id", subscriptionId)
     .maybeSingle();
+
+  // In-place plan change (subscriptions.update productId): record the new
+  // product + tier. The upgrade grant itself rides on order.paid
+  // (billing_reason=subscription_update); a downgrade grants nothing.
+  const productId = data.productId as string | undefined;
+  const entry = productId ? lookupProduct(productId) : null;
+  const newPlan = current && entry?.kind === "subscription" && productId !== current.provider_product_id
+    ? entry
+    : null;
 
   await db.from("subscriptions").update({
     status,
     current_period_start: periodStart,
     current_period_end: periodEnd,
     cancel_at_period_end: cancelFlag,
+    ...(newPlan ? { provider_product_id: productId!, plan_tier: newPlan.planTier } : {}),
   }).eq("provider_subscription_id", subscriptionId);
 
   if (!current) {
     log("info", "subscription.updated for untracked sub", { sub: subscriptionId, status });
     return;
   }
+  if (newPlan) {
+    await db.from("user_billing").update({
+      plan_tier: newPlan.planTier,
+      monthly_grant: newPlan.monthlyGrant,
+    }).eq("user_id", current.user_id as string);
+    log("info", "subscription.updated product change", { sub: subscriptionId, from: current.plan_tier, to: newPlan.planTier });
+  }
   identifyPlan(current.user_id as string, {
-    plan_tier: current.plan_tier,
+    plan_tier: newPlan ? newPlan.planTier : current.plan_tier,
     provider_subscription_id: subscriptionId,
     subscription_status: status,
     cancel_at_period_end: cancelFlag,
@@ -298,6 +318,38 @@ async function handleOrderPaid(data: AnyData): Promise<void> {
     return;
   }
 
+  if (cls === "plan_change") {
+    const subscriptionId = data.subscriptionId as string;
+    const { data: sub } = await db
+      .from("subscriptions")
+      .select("plan_tier, provider_product_id, current_period_start, current_period_end")
+      .eq("provider_subscription_id", subscriptionId)
+      .maybeSingle();
+    const productId = (data.subscription?.productId ?? sub?.provider_product_id ?? data.productId) as string | undefined;
+    const entry = productId ? lookupProduct(productId) : null;
+    if (!entry || entry.kind !== "subscription") {
+      log("warn", "plan change order skipped — product not in catalog", { order: orderId, product_id: productId });
+      return;
+    }
+    await applyPlanChange({
+      provider: "polar",
+      userId,
+      subscriptionId,
+      toTier: entry.planTier,
+      monthlyGrant: entry.monthlyGrant,
+      periodEnd: toIso(data.subscription?.currentPeriodEnd),
+      // Without an app-recorded change, subscription.updated has usually
+      // already switched the row's tier, so "from" may equal "to" → grant 0.
+      fallback: {
+        fromTier: tierOf(sub?.plan_tier as string | null),
+        periodStart: (sub?.current_period_start as string | null) ?? null,
+        periodEnd: (sub?.current_period_end as string | null) ?? null,
+        key: `polar_plan_change:${subscriptionId}:${orderId}`,
+      },
+    });
+    return;
+  }
+
   // credit_pack
   const productId = data.productId as string | undefined;
   const entry = productId ? lookupProduct(productId) : null;
@@ -329,6 +381,15 @@ async function handleOrderPaid(data: AnyData): Promise<void> {
     last_credit_purchase_at: new Date().toISOString(),
   });
   log("info", "order.paid credit pack granted", { order: orderId, user_id: userId, credits: entry.credits });
+  try {
+    getPostHog().capture({
+      distinctId: userId,
+      event: "credit_pack_purchased",
+      properties: { provider: "polar", pack: entry.packSize, credits: entry.credits, pack_only: true, source: data?.metadata?.source },
+    });
+  } catch {
+    // best-effort
+  }
   await logBillingAfter(userId, "credit_pack purchase", {
     order_id: orderId,
     pack: entry.packSize,
