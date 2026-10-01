@@ -44,6 +44,7 @@ import { cn, formatNumber, formatTime } from "../ui/format";
 import { FALLBACK_TEMPLATES } from "../ui/showcase";
 import { LANGUAGES } from "../ui/languages";
 import { readPrefs } from "../ui/prefs";
+import { useOpenTemplate } from "../ui/use-open-template";
 
 const FORMAT_OPTIONS: { value: StudioFormat; label: string }[] = [
   { value: "16:9", label: "16:9" },
@@ -128,6 +129,7 @@ export function StudioHomeScreen({
   const [showLanguage, setShowLanguage] = useState(false);
   // Templates showcase: example videos made with Videly; each plays on hover.
   const [featured, setFeatured] = useState<StudioTemplate[] | null>(null);
+  const { open: openTemplate, openingId } = useOpenTemplate();
 
   const hasVideoRef = sources.some((s) => VIDEO_KINDS.has(s.kind));
   const canGenerate = (prompt.trim().length > 0 || hasVideoRef) && pending.length === 0 && !submitting;
@@ -759,7 +761,7 @@ export function StudioHomeScreen({
           <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6" aria-label="Featured templates">
             {featured.map((t) => (
               <li key={t.id}>
-                <TemplateCard template={t} />
+                <TemplateCard template={t} onOpen={() => void openTemplate(t.id)} busy={openingId === t.id} />
               </li>
             ))}
           </ul>
@@ -770,9 +772,10 @@ export function StudioHomeScreen({
 }
 
 // A featured template: poster at rest, its example video plays (muted) while
-// hovered or focused. The video only loads on first hover. Clicking prefills
-// the prompt card with the template (/home?template=<id>).
-function TemplateCard({ template: t }: { template: StudioTemplate }) {
+// hovered or focused. The video only loads on first hover. Clicking copies the
+// example into the account and opens it in the editor (useOpenTemplate); the
+// href (/home?template=<id>) is the no-JS / new-tab fallback.
+function TemplateCard({ template: t, onOpen, busy }: { template: StudioTemplate; onOpen: () => void; busy: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [active, setActive] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -800,12 +803,16 @@ function TemplateCard({ template: t }: { template: StudioTemplate }) {
   return (
     <Link
       to={`/home?template=${encodeURIComponent(t.id)}`}
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      onClick={(e) => {
+        e.preventDefault();
+        onOpen();
+      }}
+      aria-busy={busy || undefined}
       onMouseEnter={start}
       onMouseLeave={() => setActive(false)}
       onFocus={start}
       onBlur={() => setActive(false)}
-      aria-label={`Use the ${t.name} template — ${t.tagline}`}
+      aria-label={`Open the ${t.name} template in the editor — ${t.tagline}`}
       className={cn("group block rounded-[12px]", focusRing)}
     >
       <span className="relative block aspect-video overflow-hidden rounded-[12px] border border-[#1c232c] bg-[#0c1219] transition-[border-color,box-shadow] group-hover:border-[#f4ab7e] group-hover:shadow-[0_0_0_1px_#f4ab7e,0_0_22px_-4px_rgb(239_131_84/0.75)]">
@@ -831,6 +838,12 @@ function TemplateCard({ template: t }: { template: StudioTemplate }) {
             aria-hidden
           />
         )}
+        {busy && (
+          <span className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 text-[13px] font-medium text-white">
+            <Loader2 className="size-4 vd-spin text-coral" aria-hidden />
+            Opening editor…
+          </span>
+        )}
         <span className="absolute bottom-2 right-2 rounded-md bg-black/65 px-1.5 py-0.5 text-[12px] font-medium tabular-nums text-white">
           {formatTime(t.duration)}
         </span>
@@ -838,7 +851,7 @@ function TemplateCard({ template: t }: { template: StudioTemplate }) {
       <span className="mt-2.5 flex items-baseline justify-between gap-2 px-0.5">
         <span className="truncate text-[14px] font-semibold text-paper">{t.name}</span>
         <span className="shrink-0 text-[12.5px] text-coral-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          Use →
+          Edit →
         </span>
       </span>
       <span className="mt-0.5 block truncate px-0.5 text-[12.5px] text-silver">{t.tagline}</span>

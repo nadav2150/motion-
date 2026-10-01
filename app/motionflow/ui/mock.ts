@@ -352,6 +352,19 @@ export async function handleMock<T>(method: string, path: string, body?: unknown
     }
   }
 
+  if (M === "POST" && (m = p.match(/^\/api\/studio\/templates\/([^/]+)\/use$/))) {
+    const src = state.jobs.find((j) => j.view.revisions.length > 0)!;
+    const id = `mock-template-${state.seq++}`;
+    const copy: MockJob = JSON.parse(JSON.stringify(src));
+    copy.view.id = id;
+    copy.card.id = id;
+    copy.view.title = copy.card.title = decodeURIComponent(m[1]!).replace(/-/g, " ");
+    copy.view.createdAt = copy.view.updatedAt = new Date().toISOString();
+    copy.view.revisions = copy.view.revisions.map((r) => ({ ...r, documentUrl: `/api/jobs/${id}/document?rev=${r.revision}` }));
+    state.jobs.unshift(copy);
+    return { id } as T;
+  }
+
   if (M === "POST" && (m = p.match(/^\/api\/studio\/videos\/([^/]+)\/duplicate$/))) {
     const src = find(decodeURIComponent(m[1]!));
     const id = `mock-copy-${state.seq++}`;

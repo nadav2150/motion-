@@ -62,6 +62,7 @@ export default [
   route("api/studio/videos/:id", "routes/api.studio.videos.$id.tsx"),
   route("api/studio/videos/:id/duplicate", "routes/api.studio.videos.$id.duplicate.tsx"),
   route("api/studio/templates", "routes/api.studio.templates.tsx"),
+  route("api/studio/templates/:id/use", "routes/api.studio.templates.$id.use.tsx"),
   route("api/studio-libs/*", "routes/api.studio-libs.$.tsx"),
   // Cron keep-alive from src/worker.ts while Studio tasks are pending.
   route("api/internal/worker-ping", "routes/api.internal.worker-ping.tsx"),

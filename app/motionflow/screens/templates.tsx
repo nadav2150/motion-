@@ -9,6 +9,7 @@ import { AppShell, type ShellUser } from "../ui/AppShell";
 import { Tabs } from "../ui/controls";
 import { EmptyState, PageHeader, Skeleton } from "../ui/Card";
 import { TemplateCard } from "../ui/TemplateCard";
+import { useOpenTemplate } from "../ui/use-open-template";
 import { FALLBACK_TEMPLATES, TEMPLATE_CATEGORY_LABELS } from "../ui/showcase";
 
 type Cat = TemplateCategory | "all";
@@ -23,6 +24,7 @@ export function TemplatesScreen({ user, planTier, credits }: { user: ShellUser; 
   const cat = (TEMPLATE_TABS.some((t) => t.key === params.get("category")) ? params.get("category") : "all") as Cat;
   const q = (params.get("q") ?? "").toLowerCase();
   const [all, setAll] = useState<StudioTemplate[] | null>(null);
+  const { open, openingId } = useOpenTemplate();
 
   useEffect(() => {
     let alive = true;
@@ -68,7 +70,14 @@ export function TemplatesScreen({ user, planTier, credits }: { user: ShellUser; 
       ) : (
         <div className="grid grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {items.map((t, i) => (
-            <TemplateCard key={t.id} t={t} href={`/home?template=${encodeURIComponent(t.id)}`} eager={i < 3} />
+            <TemplateCard
+              key={t.id}
+              t={t}
+              href={`/home?template=${encodeURIComponent(t.id)}`}
+              eager={i < 3}
+              onOpen={() => void open(t.id)}
+              busy={openingId === t.id}
+            />
           ))}
         </div>
       )}

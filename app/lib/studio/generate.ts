@@ -1288,7 +1288,11 @@ async function renderRevisionInternal(
 // ─── Duplicate ─────────────────────────────────────────────────────────────
 
 /** New job owned by the same user with a copy of the current revision (no credits). */
-export async function duplicateStudioJob(row: StudioJobRow, userId: string): Promise<string> {
+export async function duplicateStudioJob(
+  row: StudioJobRow,
+  userId: string,
+  opts: { title?: string } = {},
+): Promise<string> {
   const db = getSupabase();
   const current = row.current_revision ?? 0;
   const rev = current > 0 ? await getRevision(row.id, current) : null;
@@ -1302,7 +1306,7 @@ export async function duplicateStudioJob(row: StudioJobRow, userId: string): Pro
       progress: rev ? 0.75 : 0,
       script: row.script ?? row.prompt ?? "",
       prompt: row.prompt,
-      title: `${row.title ?? "Untitled video"} (copy)`.slice(0, 120),
+      title: (opts.title ?? `${row.title ?? "Untitled video"} (copy)`).slice(0, 120),
       format: row.format,
       width: row.width,
       height: row.height,

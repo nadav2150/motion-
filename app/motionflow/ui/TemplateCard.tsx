@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Link } from "react-router";
 import type { StudioTemplate } from "../../lib/studio/types";
 import { cn, formatClock } from "./format";
@@ -11,11 +12,16 @@ export function TemplateCard({
   href,
   className,
   eager,
+  onOpen,
+  busy,
 }: {
   t: StudioTemplate;
   href: string;
   className?: string;
   eager?: boolean;
+  // Open the template in the editor instead of following href.
+  onOpen?: () => void;
+  busy?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -41,6 +47,12 @@ export function TemplateCard({
     <Link
       to={href}
       className={cn("group block min-w-0 rounded-2xl", focusRing, className)}
+      onClick={(e) => {
+        if (!onOpen) return;
+        e.preventDefault();
+        onOpen();
+      }}
+      aria-busy={busy || undefined}
       onMouseEnter={start}
       onMouseLeave={stop}
       onFocus={start}
@@ -74,6 +86,12 @@ export function TemplateCard({
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" aria-hidden />
+        {busy && (
+          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 text-[13px] font-medium text-white">
+            <Loader2 className="size-4 vd-spin text-coral" aria-hidden />
+            Opening editor…
+          </div>
+        )}
         <span className="absolute bottom-2.5 right-2.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
           {formatClock(t.duration)}
         </span>
