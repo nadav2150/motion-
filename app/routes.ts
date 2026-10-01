@@ -32,6 +32,10 @@ export default [
   route("loom-alternative",              "routes/loom-alternative.tsx"),
   route("synthesia-alternative",         "routes/synthesia-alternative.tsx"),
 
+  // Blog. Posts live in app/lib/blog/posts and appear at their publishAt.
+  route("blog",       "routes/blog.tsx"),
+  route("blog/:slug", "routes/blog.$slug.tsx"),
+
   // SEO — competitor comparison pages
   route("vs/loom",      "routes/vs.loom.tsx"),
   route("vs/synthesia", "routes/vs.synthesia.tsx"),
