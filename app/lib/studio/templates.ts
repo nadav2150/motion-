@@ -7,7 +7,7 @@
 import type { StudioTemplate, TemplateCategory } from "./types";
 
 const SHOWCASE_BASE = "https://deipymnoqsmbonljghkq.supabase.co/storage/v1/object/public/storyboards/showcase/";
-const SHOWCASE_VERSION = 2;
+const SHOWCASE_VERSION = 3;
 const SHOWCASE = (id: string, ext: "mp4" | "jpg") => `${SHOWCASE_BASE}${id}.${ext}?v=${SHOWCASE_VERSION}`;
 
 export const TEMPLATE_CATEGORIES: { id: TemplateCategory; label: string }[] = [
@@ -74,8 +74,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A vertical ad for [product/offer]. Hook in the first second with a bold question or claim, show the benefit in two punchy beats, add social proof, and finish with a strong call to action.",
     styleNotes:
       "Huge type (fills the width), fast cuts every 0.6–1s, bright saturated brand colors, sticker-like shapes that pop with elastic easing. Keep text out of the bottom 20% (platform UI).",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("social-media-ad", "mp4"),
+    posterUrl: SHOWCASE("social-media-ad", "jpg"),
   },
   {
     id: "event-teaser",
@@ -102,8 +102,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A minimal, premium-feeling spot for [product]. One object, one idea: introduce it, reveal one defining detail, and close on the name.",
     styleNotes:
       "Off-white or deep charcoal background, one thin sans-serif, wide letter-spacing, very slow eases (power2.inOut, 1.5–2s moves), hairline rules that draw in, long holds. Restraint is the point.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("minimal-product", "mp4"),
+    posterUrl: SHOWCASE("minimal-product", "jpg"),
   },
   {
     id: "feature-announcement",
@@ -130,8 +130,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A vertical reel sharing 3 quick tips about [topic]. Hook title, then tip 1, 2 and 3 each with a big number and a one-line explanation, then 'Follow for more'.",
     styleNotes:
       "Big numerals that morph from one to the next, words that pop in with staggered scale, a progress bar across the top, bright two-color palette. Every tip holds long enough to read aloud.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("instagram-reel", "mp4"),
+    posterUrl: SHOWCASE("instagram-reel", "jpg"),
   },
   {
     id: "logo-reveal",
@@ -158,8 +158,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A punchy intro for the YouTube channel [channel name] about [topic]. Energetic title card, 2–3 flashes of what the channel covers, then the channel name and 'Subscribe'.",
     styleNotes:
       "Bold condensed type, quick zoom-punches, split-screen panels, a tape/sticker texture layer. Beat-synced cuts at ~120 BPM.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("youtube-intro", "mp4"),
+    posterUrl: SHOWCASE("youtube-intro", "jpg"),
   },
   {
     id: "youtube-chapter-explainer",
@@ -172,8 +172,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "Explain [concept] in plain language for a YouTube video chapter: the question, a simple analogy, a step-by-step diagram of how it works, and a one-sentence takeaway.",
     styleNotes:
       "Chalkboard-meets-infographic: diagrams build piece by piece with SVG line drawing, labels slide in next to what they name, the camera pans across a large canvas between steps.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("youtube-chapter-explainer", "mp4"),
+    posterUrl: SHOWCASE("youtube-chapter-explainer", "jpg"),
   },
   {
     id: "sale-ad",
@@ -186,8 +186,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "An ad for a limited-time sale at [store]: the offer (e.g. 30% off), what's included, a countdown-style urgency beat, the promo code, and 'Shop now'.",
     styleNotes:
       "Loud and graphic: giant percentage numerals, diagonal stripes, rapid color swaps between two brand colors, elastic pops. The promo code sits in a ticket shape and holds for 2 seconds.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("sale-ad", "mp4"),
+    posterUrl: SHOWCASE("sale-ad", "jpg"),
   },
   {
     id: "testimonial-ad",
@@ -200,8 +200,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "Turn this customer quote into an ad for [product]: \"[quote]\" — [name, role]. Show the quote building word by word, then the result they got, then the product and a CTA.",
     styleNotes:
       "Large quotation marks as a graphic device, words highlighted with a marker-swipe as they are spoken, star rating that fills in, calm confident pacing.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("testimonial-ad", "mp4"),
+    posterUrl: SHOWCASE("testimonial-ad", "jpg"),
   },
   {
     id: "product-comparison",
@@ -214,8 +214,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "A before/after video for [product]: the frustrating 'before' on one side, the effortless 'after' on the other, three side-by-side comparisons, and the product name with a CTA.",
     styleNotes:
       "A vertical divider that wipes across to reveal 'after'; desaturated grey for before, full brand color for after; counters that tick up to the improvement numbers.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("product-comparison", "mp4"),
+    posterUrl: SHOWCASE("product-comparison", "jpg"),
   },
   {
     id: "webinar-promo",
@@ -228,8 +228,8 @@ export const STUDIO_TEMPLATES: readonly StudioTemplate[] = [
       "Promote a free webinar: the title [title], what attendees will learn (3 points), the speaker [name, role], the date and time, and 'Register free'.",
     styleNotes:
       "Professional and calm: a grid layout that re-arranges with Flip-style transitions, speaker photo in a circular mask, a calendar tile that flips to the date.",
-    previewVideoUrl: null,
-    posterUrl: null,
+    previewVideoUrl: SHOWCASE("webinar-promo", "mp4"),
+    posterUrl: SHOWCASE("webinar-promo", "jpg"),
   },
 ];
 

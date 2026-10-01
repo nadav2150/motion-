@@ -1,34 +1,35 @@
-// Render the template showcase with the real pipeline.
+// Make template showcase videos with the real pipeline.
 //
-//   STUDIO_QUEUE=prod npx tsx scripts/make-showcase.ts --email you@example.com product-promo app-showcase ...
-//   ... --email you@example.com product-promo=<jobId> ...   resume an existing job (no new charge)
+//   # terminal 1 — a local worker on the dev queue (renders are fast locally)
+//   DOTENV_CONFIG_PATH=../../.env npx tsx -r dotenv/config scripts/studio-worker.ts
+//   # terminal 2
+//   DOTENV_CONFIG_PATH=../../.env npx tsx scripts/make-showcase.ts --email you@example.com social-media-ad sale-ad ...
+//   ... <template-id>=<jobId>   resume an existing job instead of creating one (no new charge)
 //
 // For each template: create a Studio job from the template's prompt / format /
-// duration (charged to that user's credits, like any video), let the worker
-// on STUDIO_QUEUE generate it, export a 1080p MP4 (no voiceover, no
-// subtitles), then copy the MP4 + thumbnail to storyboards/showcase/<id>.{mp4,jpg}
-// so the URLs stay stable. Prints the URLs to paste into
-// app/lib/studio/templates.ts (previewVideoUrl / posterUrl).
-//
-// STUDIO_QUEUE=prod hands the work to the production container (same fonts
-// and Chromium as real renders); without it a local `npm run worker` must be
-// running on the dev queue.
+// duration (charged to that user's credits, like any video, on STUDIO_QUEUE),
+// wait for the worker to generate it and render the MP4 (generation ends with
+// an automatic export), re-encode it for the web (H.264 CRF 26, faststart —
+// the bucket rejects files over 50 MB and these autoplay), grab a poster frame,
+// upload both to storyboards/showcase/<id>.{mp4,jpg}, then archive the job so
+// it doesn't sit in that user's library. Bump SHOWCASE_VERSION in
+// app/lib/studio/templates.ts and set previewVideoUrl/posterUrl afterwards.
+// Needs ffmpeg/ffprobe on PATH.
 import "dotenv/config";
-import { getOrCreateBilling, reserveCredits } from "../app/lib/billing/credits";
-import { getPlanFeatures } from "../app/lib/billing/plan-features";
-import { STORYBOARDS_BUCKET, uploadBuffer } from "../app/lib/storage";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { reconcileJob } from "../app/lib/billing/credits";
+import { uploadBuffer } from "../app/lib/storage";
 import { getSupabase } from "../app/lib/supabase";
-import { getRevision, getStudioJob, jobDuration, setStage, stageOf, updateRevision } from "../app/lib/studio/db";
-import { claimForOperation } from "../app/lib/studio/edit";
-import { estimateStudioRender } from "../app/lib/studio/estimate";
-import { parseExportOptions } from "../app/lib/studio/format";
+import { getRevision, getStudioJob, stageOf } from "../app/lib/studio/db";
 import { createStudioJob } from "../app/lib/studio/generate";
-import { enqueueClaimedOperation, studioQueue } from "../app/lib/studio/queue";
+import { studioQueue } from "../app/lib/studio/queue";
 import { getTemplate } from "../app/lib/studio/templates";
 
 const POLL_MS = 15_000;
-const GENERATE_TIMEOUT_MS = 40 * 60_000;
-const RENDER_TIMEOUT_MS = 30 * 60_000;
+const TIMEOUT_MS = 60 * 60_000;
 
 const args = process.argv.slice(2);
 const emailIdx = args.indexOf("--email");
@@ -37,7 +38,7 @@ const specs = args.filter((a, i) => !a.startsWith("--") && i !== emailIdx + 1);
 const ids = specs.map((s) => s.split("=")[0]!);
 const resumeJob = new Map(specs.filter((s) => s.includes("=")).map((s) => s.split("=") as [string, string]));
 if (!email || ids.length === 0) {
-  console.error("usage: STUDIO_QUEUE=prod npx tsx scripts/make-showcase.ts --email <account> <template-id>...");
+  console.error("usage: npx tsx scripts/make-showcase.ts --email <account> <template-id>[=<jobId>]...");
   process.exit(1);
 }
 
@@ -56,24 +57,29 @@ async function userIdFor(addr: string): Promise<string> {
   throw new Error(`No user with email ${addr}`);
 }
 
-async function waitFor<T>(what: string, timeoutMs: number, check: () => Promise<T | null>): Promise<T> {
-  const until = Date.now() + timeoutMs;
-  while (Date.now() < until) {
-    const v = await check();
-    if (v) return v;
-    await sleep(POLL_MS);
+async function publish(templateId: string, videoUrl: string): Promise<{ previewVideoUrl: string; posterUrl: string }> {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), `showcase-${templateId}-`));
+  try {
+    const res = await fetch(videoUrl);
+    if (!res.ok) throw new Error(`download ${videoUrl} → ${res.status}`);
+    const src = path.join(tmp, "src.mp4");
+    await fs.writeFile(src, Buffer.from(await res.arrayBuffer()));
+    const web = path.join(tmp, "web.mp4");
+    const poster = path.join(tmp, "poster.jpg");
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-i", src, "-c:v", "libx264", "-crf", "26", "-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", web]);
+    const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", src]).toString().trim());
+    // A third of the way in skips intro fades; check posters by eye — a
+    // mid-transition frame (scrambled text) makes a bad thumbnail.
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(duration / 3), "-i", src, "-frames:v", "1", "-q:v", "3", poster]);
+    const v = await uploadBuffer({ storagePath: `showcase/${templateId}.mp4`, body: await fs.readFile(web), contentType: "video/mp4" });
+    const p = await uploadBuffer({ storagePath: `showcase/${templateId}.jpg`, body: await fs.readFile(poster), contentType: "image/jpeg" });
+    return { previewVideoUrl: v.publicUrl, posterUrl: p.publicUrl };
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
   }
-  throw new Error(`timed out waiting for ${what}`);
 }
 
-async function copyToShowcase(srcUrl: string, dest: string, contentType: string): Promise<string> {
-  const res = await fetch(srcUrl);
-  if (!res.ok) throw new Error(`download ${srcUrl} → ${res.status}`);
-  const up = await uploadBuffer({ storagePath: dest, body: Buffer.from(await res.arrayBuffer()), contentType });
-  return up.publicUrl;
-}
-
-async function makeOne(templateId: string, userId: string): Promise<{ id: string; previewVideoUrl: string; posterUrl: string }> {
+async function makeOne(templateId: string, userId: string) {
   const t = getTemplate(templateId);
   if (!t) throw new Error(`unknown template ${templateId}`);
 
@@ -82,66 +88,49 @@ async function makeOne(templateId: string, userId: string): Promise<{ id: string
     log(templateId, `resuming job ${jobId}`);
   } else {
     const created = await createStudioJob(
-    {
-      prompt: t.prompt,
-      format: t.format,
-      targetDuration: t.duration,
-      language: "en",
-      voiceId: null,
-      musicEnabled: true,
-      sources: [],
-      useBrandKit: false,
-      templateId: t.id,
-    },
-    { id: userId },
+      {
+        prompt: t.prompt,
+        format: t.format,
+        targetDuration: t.duration,
+        language: "en",
+        voiceId: null,
+        musicEnabled: true,
+        sources: [],
+        useBrandKit: false,
+        templateId: t.id,
+      },
+      { id: userId },
     );
     jobId = created.id;
     log(templateId, `job ${jobId} queued on "${studioQueue()}" (≈${created.estimate} credits)`);
   }
 
-  const generated = await waitFor(`${templateId} generation`, GENERATE_TIMEOUT_MS, async () => {
+  // Generation finishes with an automatic export; wait for the MP4.
+  const until = Date.now() + TIMEOUT_MS;
+  let lastStage = "";
+  let videoUrl: string | null = null;
+  while (Date.now() < until) {
     const row = await getStudioJob(jobId);
     if (!row) throw new Error(`job ${jobId} vanished`);
     const stage = stageOf(row);
+    if (stage !== lastStage) log(templateId, `stage ${stage}`);
+    lastStage = stage;
     if (stage === "failed") throw new Error(`generation failed: ${row.error ?? "unknown"}`);
-    // A finished generation rests at preview_ready (done only after an export).
-    return (stage === "preview_ready" || stage === "done") && (row.current_revision ?? 0) > 0 ? row : null;
-  });
-  const revision = generated.current_revision!;
-  log(templateId, `generated revision ${revision}`);
-
-  // Same steps as POST /api/jobs/:id/render.
-  const features = getPlanFeatures((await getOrCreateBilling(userId)).plan_tier);
-  const parsed = parseExportOptions(
-    { revision, resolution: "1080p", quality: "high", includeSubtitles: false, includeVoiceover: false, watermark: false },
-    features,
-  );
-  if ("error" in parsed) throw new Error(`export options rejected: ${parsed.error}`);
-  const restore = await claimForOperation(generated, "rendering");
-  const amount = estimateStudioRender(jobDuration(generated) ?? t.duration, parsed.resolution);
-  const reserve = await reserveCredits(userId, amount, jobId, `reserve:render:${jobId}:${crypto.randomUUID()}`);
-  if (!reserve.ok) {
-    await setStage(jobId, restore);
-    throw new Error(`not enough credits to render (${reserve.required} needed)`);
+    const rev = (row.current_revision ?? 0) > 0 ? await getRevision(jobId, row.current_revision!) : null;
+    if (rev?.render_status === "ready" && rev.video_url) {
+      videoUrl = rev.video_url;
+      break;
+    }
+    if (rev?.render_status === "failed" && stage === "preview_ready") throw new Error(`export failed: ${rev.render_error ?? "unknown"}`);
+    await sleep(POLL_MS);
   }
-  await updateRevision(jobId, revision, { render_status: "queued", render_error: null, render_options: { ...parsed, revision } });
-  const queued = await enqueueClaimedOperation(jobId, "render", { options: { ...parsed, revision }, restoreStage: restore });
-  if (!queued.ok) throw new Error(`render enqueue failed: ${queued.error}`);
-  log(templateId, `render queued`);
+  if (!videoUrl) throw new Error("timed out waiting for the MP4");
 
-  const rendered = await waitFor(`${templateId} render`, RENDER_TIMEOUT_MS, async () => {
-    const rev = await getRevision(jobId, revision);
-    if (rev?.render_status === "failed") throw new Error(`render failed: ${rev.render_error ?? "unknown"}`);
-    return rev?.render_status === "ready" && rev.video_url ? rev : null;
-  });
-
-  const thumbUrl = rendered.thumb_path
-    ? getSupabase().storage.from(STORYBOARDS_BUCKET).getPublicUrl(rendered.thumb_path).data.publicUrl
-    : null;
-  const previewVideoUrl = await copyToShowcase(rendered.video_url!, `showcase/${templateId}.mp4`, "video/mp4");
-  const posterUrl = thumbUrl ? await copyToShowcase(thumbUrl, `showcase/${templateId}.jpg`, "image/jpeg") : "";
-  log(templateId, `published ${previewVideoUrl}`);
-  return { id: templateId, previewVideoUrl, posterUrl };
+  const urls = await publish(templateId, videoUrl);
+  await getSupabase().from("jobs").update({ deleted_at: new Date().toISOString() }).eq("id", jobId);
+  await reconcileJob(jobId).catch(() => {});
+  log(templateId, `published ${urls.previewVideoUrl} (job archived)`);
+  return { id: templateId, ...urls };
 }
 
 const userId = await userIdFor(email);
