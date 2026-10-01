@@ -10,7 +10,7 @@
 // Audio (voiceover + music) is never in the document; the parent plays it in
 // <audio> elements kept in sync with videly:time.
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Maximize, Minimize, Pause, Play, Repeat, Volume2, VolumeX, AlertTriangle } from "lucide-react";
 import type { StudioAudio } from "../../lib/studio/types";
 import { api } from "./api";
@@ -183,6 +183,8 @@ export function PreviewPlayer({
   audio,
   poster,
   className,
+  variant = "default",
+  extra,
 }: {
   ctl: PreviewController;
   jobId: string;
@@ -192,7 +194,13 @@ export function PreviewPlayer({
   audio: StudioAudio;
   poster?: string | null;
   className?: string;
+  // "banner": fills a wide container edge to edge (cover, not letterbox) with
+  // a single-row control bar, as on the home page's Recent Videos.
+  variant?: "default" | "banner";
+  // Extra control rendered at the end of the bar (banner variant).
+  extra?: ReactNode;
 }) {
+  const banner = variant === "banner";
   const stageRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [source, setSource] = useState<{ src?: string; srcdoc?: string } | null>(null);
@@ -226,7 +234,8 @@ export function PreviewPlayer({
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
-  const scale = box.w && box.h ? Math.min(box.w / width, box.h / height) : 0;
+  const fit = banner && !fullscreen ? Math.max : Math.min;
+  const scale = box.w && box.h ? fit(box.w / width, box.h / height) : 0;
   const left = (box.w - width * scale) / 2;
   const top = (box.h - height * scale) / 2;
   const pct = ctl.duration > 0 ? (ctl.time / ctl.duration) * 100 : 0;
@@ -263,7 +272,7 @@ export function PreviewPlayer({
       ref={stageRef}
       className={cn(
         "group/player relative w-full overflow-hidden bg-black",
-        fullscreen ? "h-full" : "aspect-video rounded-2xl border border-slate/40",
+        fullscreen ? "h-full" : banner ? "h-full rounded-[14px] border border-[#1c232c]" : "aspect-video rounded-2xl border border-slate/40",
         className,
       )}
       onMouseEnter={() => setHover(true)}
@@ -271,7 +280,12 @@ export function PreviewPlayer({
       onKeyDown={onKey}
     >
       {poster && !ctl.ready && (
-        <img src={poster} alt="" className="absolute inset-0 size-full object-contain opacity-60" aria-hidden />
+        <img
+          src={poster}
+          alt=""
+          className={cn("absolute inset-0 size-full", banner ? "object-cover" : "object-contain opacity-60")}
+          aria-hidden
+        />
       )}
       {source && scale > 0 && (
         <iframe
@@ -315,13 +329,79 @@ export function PreviewPlayer({
         disabled={!ctl.ready}
         className={cn("absolute inset-0 z-[1] cursor-pointer disabled:cursor-default", "focus-visible:outline-none")}
       >
-        {ctl.ready && !ctl.playing && ctl.time < 0.05 && (
+        {banner && ctl.ready && !ctl.playing && (
+          <span className="absolute left-1/2 top-1/2 flex size-[76px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white/85 bg-black/30 backdrop-blur-sm transition-transform group-hover/player:scale-105">
+            <Play className="size-8 translate-x-0.5 fill-white text-white" aria-hidden />
+          </span>
+        )}
+        {!banner && ctl.ready && !ctl.playing && ctl.time < 0.05 && (
           <span className="absolute left-1/2 top-1/2 flex size-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-coral shadow-[0_10px_40px_-8px_rgb(239_131_84/0.9)] sm:size-20">
             <Play className="size-7 translate-x-0.5 fill-white text-white sm:size-8" aria-hidden />
           </span>
         )}
       </button>
 
+      {banner && !fullscreen ? (
+        <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 pb-3 pt-10 text-white sm:gap-3 sm:px-5">
+          <button
+            type="button"
+            onClick={ctl.toggle}
+            disabled={!ctl.ready}
+            aria-label={ctl.playing ? "Pause" : "Play"}
+            className={cn("flex size-9 items-center justify-center rounded-lg hover:bg-white/15", focusRing)}
+          >
+            {ctl.playing ? <Pause className="size-5 fill-current" aria-hidden /> : <Play className="size-5 fill-current" aria-hidden />}
+          </button>
+          <span className="shrink-0 text-[14px] font-medium tabular-nums text-white/90">
+            {formatTime(ctl.time)} / {formatTime(ctl.duration)}
+          </span>
+          <input
+            type="range"
+            aria-label="Seek"
+            min={0}
+            max={ctl.duration || 0}
+            step={0.01}
+            value={ctl.time}
+            disabled={!ctl.ready}
+            onChange={(e) => ctl.seek(Number(e.target.value))}
+            aria-valuetext={`${formatTime(ctl.time)} of ${formatTime(ctl.duration)}`}
+            className="vd-range mx-2 block h-4 min-w-0 flex-1"
+            style={{ ["--vd-fill" as string]: `${pct}%` }}
+          />
+          <button
+            type="button"
+            onClick={() => ctl.setMuted(!ctl.muted)}
+            aria-label={ctl.muted ? "Unmute" : "Mute"}
+            className={cn("flex size-9 items-center justify-center rounded-lg hover:bg-white/15", focusRing)}
+          >
+            {ctl.muted || ctl.volume === 0 ? <VolumeX className="size-5" aria-hidden /> : <Volume2 className="size-5" aria-hidden />}
+          </button>
+          <input
+            type="range"
+            aria-label="Volume"
+            min={0}
+            max={1}
+            step={0.05}
+            value={ctl.muted ? 0 : ctl.volume}
+            onChange={(e) => {
+              ctl.setVolume(Number(e.target.value));
+              ctl.setMuted(false);
+            }}
+            className="vd-range hidden h-4 w-24 sm:block"
+            style={{ ["--vd-fill" as string]: `${(ctl.muted ? 0 : ctl.volume) * 100}%` }}
+          />
+          <button
+            type="button"
+            onClick={toggleFs}
+            aria-label="Full screen"
+            className={cn("flex size-9 items-center justify-center rounded-lg hover:bg-white/15", focusRing)}
+          >
+            <Maximize className="size-5" aria-hidden />
+          </button>
+          {extra}
+        </div>
+      ) : (
+      <>
       {/* Controls */}
       <div
         className={cn(
@@ -402,6 +482,9 @@ export function PreviewPlayer({
           </div>
         </div>
       </div>
+
+      </>
+      )}
 
       {audio.voiceover?.url && <audio ref={ctl.voRef} src={audio.voiceover.url} preload="auto" />}
       {audio.music?.url && <audio ref={ctl.musicRef} src={audio.music.url} preload="auto" />}
