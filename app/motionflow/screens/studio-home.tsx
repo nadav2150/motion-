@@ -22,8 +22,6 @@ import {
   Play,
   Plus,
   Upload,
-  Volume2,
-  VolumeX,
   LayoutTemplate,
   Loader2,
   Sparkles,
@@ -43,7 +41,7 @@ import { Chip, Select, Toggle } from "../ui/controls";
 import { Menu } from "../ui/Menu";
 import { toast } from "../ui/Toast";
 import { cn, formatNumber, formatTime } from "../ui/format";
-import { FALLBACK_TEMPLATES, TEMPLATE_CATEGORY_LABELS } from "../ui/showcase";
+import { FALLBACK_TEMPLATES } from "../ui/showcase";
 import { LANGUAGES } from "../ui/languages";
 import { readPrefs } from "../ui/prefs";
 
@@ -128,10 +126,8 @@ export function StudioHomeScreen({
   const [sample, setSample] = useState<HTMLAudioElement | null>(null);
   const [sampling, setSampling] = useState(false);
   const [showLanguage, setShowLanguage] = useState(false);
-  // Templates showcase: the selected template's example video plays in the banner.
+  // Templates showcase: example videos made with Videly; each plays on hover.
   const [featured, setFeatured] = useState<StudioTemplate[] | null>(null);
-  const [featuredId, setFeaturedId] = useState<string | null>(null);
-  const [bannerMuted, setBannerMuted] = useState(true);
 
   const hasVideoRef = sources.some((s) => VIDEO_KINDS.has(s.kind));
   const canGenerate = (prompt.trim().length > 0 || hasVideoRef) && pending.length === 0 && !submitting;
@@ -166,7 +162,6 @@ export function StudioHomeScreen({
       alive = false;
     };
   }, []);
-  const featuredSel = featured?.find((t) => t.id === featuredId) ?? featured?.[0] ?? null;
 
   // The prompt grows with its content, including text set by a template.
   useEffect(() => {
@@ -755,105 +750,98 @@ export function StudioHomeScreen({
         </div>
 
         {featured === null ? (
-          <>
-            <div className="vd-skeleton h-[clamp(220px,24vw,440px)] rounded-[14px]" aria-hidden />
-            <div className="mt-4 grid grid-cols-3 gap-4 sm:grid-cols-6">
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="vd-skeleton aspect-[163/84] rounded-[10px]" aria-hidden />
-              ))}
-            </div>
-          </>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="vd-skeleton aspect-video rounded-[12px]" aria-hidden />
+            ))}
+          </div>
         ) : (
-          featuredSel && (
-            <>
-              <div className="relative h-[clamp(220px,24vw,440px)] overflow-hidden rounded-[14px] border border-[#1c232c] bg-black">
-                {featuredSel.previewVideoUrl ? (
-                  <video
-                    key={featuredSel.id}
-                    src={featuredSel.previewVideoUrl}
-                    poster={featuredSel.posterUrl ?? undefined}
-                    autoPlay
-                    muted={bannerMuted}
-                    loop
-                    playsInline
-                    preload="metadata"
-                    className="absolute inset-0 size-full object-cover"
-                    aria-label={`${featuredSel.name} — example video made with Videly`}
-                  />
-                ) : featuredSel.posterUrl ? (
-                  <img src={featuredSel.posterUrl} alt="" className="absolute inset-0 size-full object-cover" aria-hidden />
-                ) : (
-                  <span className="absolute inset-0 bg-[linear-gradient(135deg,#1b2430,#0c1219)]" aria-hidden />
-                )}
-                <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-4 sm:p-5">
-                  <div className="min-w-0 rounded-[14px] border border-white/10 bg-black/60 px-4 py-3 backdrop-blur-md">
-                    <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-coral-400">
-                      {TEMPLATE_CATEGORY_LABELS[featuredSel.category]} · {featuredSel.format} · {featuredSel.duration}s
-                    </p>
-                    <p className="mt-1 text-[22px] font-semibold tracking-[-0.01em] text-white">{featuredSel.name}</p>
-                    <p className="text-[15px] text-white/75">{featuredSel.tagline}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {featuredSel.previewVideoUrl && (
-                      <IconButton
-                        label={bannerMuted ? "Unmute preview" : "Mute preview"}
-                        className="text-white hover:bg-white/15"
-                        onClick={() => setBannerMuted((m) => !m)}
-                      >
-                        {bannerMuted ? <VolumeX className="size-5" aria-hidden /> : <Volume2 className="size-5" aria-hidden />}
-                      </IconButton>
-                    )}
-                    <Link
-                      to={`/home?template=${encodeURIComponent(featuredSel.id)}`}
-                      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                      className={cn(
-                        "inline-flex h-11 items-center gap-2 rounded-[12px] bg-[linear-gradient(180deg,#fca37d_0%,#f6874f_100%)] px-5 text-[15px] font-semibold text-[#2a1207] shadow-[0_10px_30px_-10px_rgb(246_135_79/0.9)] hover:brightness-105",
-                        focusRing,
-                      )}
-                    >
-                      Use this template
-                      <ArrowRight className="size-4" aria-hidden />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-
-              <ul className="mt-4 grid grid-cols-3 gap-4 sm:grid-cols-6" aria-label="Featured templates">
-                {featured.map((t) => {
-                  const isSel = t.id === featuredSel.id;
-                  return (
-                    <li key={t.id}>
-                      <button
-                        type="button"
-                        onClick={() => setFeaturedId(t.id)}
-                        aria-pressed={isSel}
-                        aria-label={`${t.name} — ${t.tagline}`}
-                        className={cn(
-                          "group relative block aspect-[163/84] w-full overflow-hidden rounded-[10px] border bg-[#0c1219] text-left transition-shadow",
-                          isSel
-                            ? "border-[#f4ab7e] shadow-[0_0_0_1px_#f4ab7e,0_0_20px_-4px_rgb(239_131_84/0.8)]"
-                            : "border-[#1c232c] hover:border-[#3a414c]",
-                          focusRing,
-                        )}
-                      >
-                        {t.posterUrl ? (
-                          <img src={t.posterUrl} alt="" className="absolute inset-0 size-full object-cover" loading="lazy" />
-                        ) : (
-                          <span className="absolute inset-0 bg-[linear-gradient(135deg,#1b2430,#0c1219)]" />
-                        )}
-                        <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/80 to-transparent px-2.5 pb-1.5 pt-6">
-                          <span className="truncate text-[13px] font-medium text-white">{t.name}</span>
-                          <span className="shrink-0 text-[13px] font-medium tabular-nums text-white/90">{formatTime(t.duration)}</span>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          )
+          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6" aria-label="Featured templates">
+            {featured.map((t) => (
+              <li key={t.id}>
+                <TemplateCard template={t} />
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </AppShell>
+  );
+}
+
+// A featured template: poster at rest, its example video plays (muted) while
+// hovered or focused. The video only loads on first hover. Clicking prefills
+// the prompt card with the template (/home?template=<id>).
+function TemplateCard({ template: t }: { template: StudioTemplate }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [active, setActive] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (active) {
+      // Autoplay policy needs muted set on the element before play().
+      v.muted = true;
+      v.play().catch(() => v.addEventListener("canplay", () => void v.play().catch(() => {}), { once: true }));
+    } else {
+      v.pause();
+      v.currentTime = 0;
+      setPlaying(false);
+    }
+  }, [active, loaded]);
+
+  const start = () => {
+    setLoaded(true);
+    setActive(true);
+  };
+
+  return (
+    <Link
+      to={`/home?template=${encodeURIComponent(t.id)}`}
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      onMouseEnter={start}
+      onMouseLeave={() => setActive(false)}
+      onFocus={start}
+      onBlur={() => setActive(false)}
+      aria-label={`Use the ${t.name} template — ${t.tagline}`}
+      className={cn("group block rounded-[12px]", focusRing)}
+    >
+      <span className="relative block aspect-video overflow-hidden rounded-[12px] border border-[#1c232c] bg-[#0c1219] transition-[border-color,box-shadow] group-hover:border-[#f4ab7e] group-hover:shadow-[0_0_0_1px_#f4ab7e,0_0_22px_-4px_rgb(239_131_84/0.75)]">
+        {t.posterUrl ? (
+          <img src={t.posterUrl} alt="" className="absolute inset-0 size-full object-cover" loading="lazy" />
+        ) : (
+          <span className="absolute inset-0 bg-[linear-gradient(135deg,#1b2430,#0c1219)]" />
+        )}
+        {t.previewVideoUrl && loaded && (
+          <video
+            ref={videoRef}
+            src={t.previewVideoUrl}
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="auto"
+            onPlaying={() => setPlaying(true)}
+            className={cn(
+              "absolute inset-0 size-full object-cover transition-opacity duration-200",
+              active && playing ? "opacity-100" : "opacity-0",
+            )}
+            aria-hidden
+          />
+        )}
+        <span className="absolute bottom-2 right-2 rounded-md bg-black/65 px-1.5 py-0.5 text-[12px] font-medium tabular-nums text-white">
+          {formatTime(t.duration)}
+        </span>
+      </span>
+      <span className="mt-2.5 flex items-baseline justify-between gap-2 px-0.5">
+        <span className="truncate text-[14px] font-semibold text-paper">{t.name}</span>
+        <span className="shrink-0 text-[12.5px] text-coral-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          Use →
+        </span>
+      </span>
+      <span className="mt-0.5 block truncate px-0.5 text-[12.5px] text-silver">{t.tagline}</span>
+    </Link>
   );
 }
