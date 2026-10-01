@@ -22,6 +22,7 @@ export function TemplateCard({
   const start = () => {
     const v = videoRef.current;
     if (!v) return;
+    v.muted = true; // autoplay policy: must be muted before play()
     v.play()
       .then(() => setPlaying(true))
       .catch(() => {});
@@ -33,6 +34,9 @@ export function TemplateCard({
     v.currentTime = 0;
     setPlaying(false);
   };
+  // 9:16 and 1:1 previews are shown whole on a blurred copy of the poster
+  // instead of being center-cropped into the 16:9 tile.
+  const fit = t.format === "16:9" ? "object-cover" : "object-contain";
   return (
     <Link
       to={href}
@@ -44,13 +48,16 @@ export function TemplateCard({
       aria-label={`${t.name} template — ${t.tagline}, ${t.duration} seconds, ${t.format}`}
     >
       <div className="relative aspect-video overflow-hidden rounded-2xl border border-slate/40 bg-ink-800">
+        {t.posterUrl && t.format !== "16:9" && (
+          <img src={t.posterUrl} alt="" loading="lazy" aria-hidden className="absolute inset-0 size-full scale-110 object-cover opacity-60 blur-xl" />
+        )}
         {t.posterUrl ? (
           <img
             src={t.posterUrl}
             alt=""
             loading={eager ? "eager" : "lazy"}
             decoding="async"
-            className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+            className={cn("absolute inset-0 size-full transition-transform duration-500 group-hover:scale-[1.04]", fit)}
           />
         ) : (
           <div className="absolute inset-0 bg-[linear-gradient(135deg,#4f5d75,#2d3142)]" />
@@ -63,7 +70,7 @@ export function TemplateCard({
             loop
             playsInline
             preload="none"
-            className={cn("absolute inset-0 size-full object-cover transition-opacity", playing ? "opacity-100" : "opacity-0")}
+            className={cn("absolute inset-0 size-full transition-opacity", fit, playing ? "opacity-100" : "opacity-0")}
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" aria-hidden />
