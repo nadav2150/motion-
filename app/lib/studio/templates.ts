@@ -238,6 +238,32 @@ export function listTemplates(category?: string | null): StudioTemplate[] {
   return STUDIO_TEMPLATES.filter((t) => t.category === category);
 }
 
+// The job each showcase video came from (scripts/make-showcase.ts). "Use
+// template" duplicates it into the user's account so the template opens in
+// the editor as an editable video. Server-only: the API never exposes these
+// ids, and duplicating reads the row directly (the sources are archived).
+const TEMPLATE_SOURCE_JOBS: Record<string, string> = {
+  "product-promo": "c090cc6e-0115-41ee-9260-ba58eea702a8",
+  "app-showcase": "f539a412-fb7f-4787-805b-433a57f621b2",
+  "feature-announcement": "6ec6cdf3-2fa1-4545-88e5-1f7b315ca7be",
+  "brand-story": "a5d7da3e-071c-45c5-aab0-5c1ec3718d58",
+  "event-teaser": "3d63fa70-3de2-4767-a097-c9e8f72a0a45",
+  "logo-reveal": "644c9637-9926-4894-a973-1852a6a51f69",
+  "minimal-product": "9597b1b1-461d-4d86-99b7-a2f8d3cbff5e",
+  "instagram-reel": "063d53e5-a75b-4467-b285-ffc8a1020a03",
+  "webinar-promo": "52c65219-a4d1-4427-9460-d28424da5c78",
+  "testimonial-ad": "d811c177-08be-4870-932e-3873b57c0238",
+  "youtube-intro": "4d3c7869-3ab8-4472-a696-3c8ecf072ec8",
+  "sale-ad": "f06bfc03-7d88-481d-af90-3c50cf4cee57",
+  "product-comparison": "7fb5ed8d-6403-4a29-9083-40393911be9d",
+  "social-media-ad": "49372e73-eb50-4e8d-9801-bb6808956d28",
+  "youtube-chapter-explainer": "bb057ab0-1651-4416-aaab-eaa2b3272a0a",
+};
+
+export function templateSourceJob(id: string): string | null {
+  return TEMPLATE_SOURCE_JOBS[id] ?? null;
+}
+
 export function getTemplate(id: string | null | undefined): StudioTemplate | null {
   if (!id) return null;
   return STUDIO_TEMPLATES.find((t) => t.id === id) ?? null;

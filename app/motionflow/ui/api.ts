@@ -186,6 +186,10 @@ export const api = {
 
   duplicateVideo: (id: string) => request<{ id: string }>("POST", `/api/studio/videos/${encodeURIComponent(id)}/duplicate`),
 
+  // Copies a template's example video into the account → open it in the editor.
+  useTemplate: (templateId: string) =>
+    request<{ id: string }>("POST", `/api/studio/templates/${encodeURIComponent(templateId)}/use`),
+
   editJob: (id: string, instruction: string, revision?: number) =>
     request<{ revision: number }>("POST", `/api/jobs/${encodeURIComponent(id)}/edit`, { instruction, revision }),
 
