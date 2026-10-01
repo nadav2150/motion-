@@ -17,6 +17,8 @@ import {
   usePostHogIdentify,
   usePostHogPageviews,
 } from "./lib/use-posthog-pageviews";
+import { captureAttribution } from "./lib/attribution";
+import { useEffect } from "react";
 import "./app.css";
 
 // Module-load init is safe: bootstrapPostHog() short-circuits when window is
@@ -153,6 +155,7 @@ export default function App() {
   const { user, impersonating } = useLoaderData<typeof loader>();
   usePostHogPageviews();
   usePostHogIdentify(user);
+  useEffect(captureAttribution, []);
   return (
     <>
       {impersonating && <ImpersonationBanner email={impersonating.email} />}

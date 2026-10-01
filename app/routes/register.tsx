@@ -3,6 +3,7 @@ import type { Route } from "./+types/register";
 import { RegisterScreen } from "../motionflow/screens/register";
 import { AuthError, registerWithEmail, setSessionCookies } from "../lib/auth";
 import { getOrCreateBilling, grantCredits } from "../lib/billing/credits";
+import { readAttribution } from "../lib/attribution";
 import { buildMeta } from "../lib/seo";
 
 // Free plan's monthly grant. Sized to exactly cover one worst-case 2-scene
@@ -34,7 +35,7 @@ export async function action({ request }: Route.ActionArgs) {
   const name = String(form.get("name") ?? "").trim() || undefined;
 
   try {
-    const { userId, ...session } = await registerWithEmail(email, password, name);
+    const { userId, ...session } = await registerWithEmail(email, password, name, readAttribution(request));
 
     // Grant the Free plan's starter credits. Idempotency key prevents
     // double-granting if the form is resubmitted. Failure here must not

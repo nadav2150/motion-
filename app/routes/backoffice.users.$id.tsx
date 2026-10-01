@@ -3,8 +3,9 @@
 
 import { data, Form, Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/backoffice.users.$id";
-import { requireAdminOrRedirect } from "../lib/admin";
+import { loadUserMarketing, requireAdminOrRedirect } from "../lib/admin";
 import { getSupabase } from "../lib/supabase";
+import type { Attribution } from "../lib/attribution";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Backoffice — User" }, { name: "robots", content: "noindex" }];
@@ -18,6 +19,7 @@ type Detail = {
     created_at: string | null;
     last_sign_in_at: string | null;
     email_confirmed_at: string | null;
+    attribution: Attribution | null;
   } | null;
   billing: {
     plan_tier: string;
@@ -48,7 +50,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   if (!detail || !(detail as Detail).identity) {
     throw new Response("User not found", { status: 404, headers });
   }
-  return data({ detail: detail as Detail, userId } satisfies LoaderData, { headers });
+  const d = detail as Detail;
+  const marketing = await loadUserMarketing([userId]);
+  d.identity!.attribution = marketing[userId]?.attribution ?? null;
+  return data({ detail: d, userId } satisfies LoaderData, { headers });
 }
 
 function fmt(iso: string | null | undefined): string {
@@ -86,6 +91,22 @@ export default function BackofficeUserDetail() {
             <Row k="Joined" v={fmt(id.created_at)} />
             <Row k="Last sign-in" v={fmt(id.last_sign_in_at)} />
             <Row k="Email confirmed" v={fmt(id.email_confirmed_at)} />
+          </Card>
+
+          <Card title="Attribution">
+            {id.attribution ? (
+              <>
+                <Row k="Ref" v={id.attribution.ref ?? "—"} />
+                <Row k="UTM source" v={id.attribution.utm_source ?? "—"} />
+                <Row k="UTM medium" v={id.attribution.utm_medium ?? "—"} />
+                <Row k="UTM campaign" v={id.attribution.utm_campaign ?? "—"} />
+                <Row k="UTM term" v={id.attribution.utm_term ?? "—"} />
+                <Row k="UTM content" v={id.attribution.utm_content ?? "—"} />
+                <Row k="Referrer" v={id.attribution.referrer ?? "—"} />
+                <Row k="Landing page" v={id.attribution.landing_path ?? "—"} />
+                <Row k="First seen" v={fmt(id.attribution.first_seen_at)} />
+              </>
+            ) : <p style={S.muted}>Not recorded (direct visit, or signed up before tracking).</p>}
           </Card>
 
           <Card title="Billing">
@@ -188,7 +209,7 @@ const S: Record<string, React.CSSProperties> = {
   cardTitle: { fontSize: 13, fontWeight: 700, color: "#8A8F98", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 12px" },
   kv: { display: "flex", justifyContent: "space-between", gap: 16, padding: "5px 0", fontSize: 14 },
   k: { color: "#8A8F98" },
-  v: { color: "#E6E8EC", textAlign: "right" },
+  v: { color: "#E6E8EC", textAlign: "right", overflowWrap: "anywhere" },
   muted: { color: "#8A8F98", fontSize: 14, margin: 0 },
   tag: { background: "#16191F", border: "1px solid #262A33", borderRadius: 999, padding: "2px 10px", fontSize: 12, textTransform: "capitalize" },
   subRow: { display: "flex", gap: 12, alignItems: "center", padding: "6px 0", fontSize: 14 },
