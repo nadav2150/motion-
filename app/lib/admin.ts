@@ -9,7 +9,7 @@ import { getSupabase } from "./supabase";
 
 // Dedicated backoffice login, always allowed in addition to ADMIN_EMAILS. The
 // matching auth user already exists, so nobody else can register this address.
-const BUILTIN_ADMINS = ["admin@videliy.io"];
+const BUILTIN_ADMINS = ["admin@videly.io"];
 
 /** Parsed, lowercased allowlist from the ADMIN_EMAILS env var + built-ins. */
 function adminEmails(): Set<string> {
