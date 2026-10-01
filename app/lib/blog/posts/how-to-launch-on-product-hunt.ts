@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "A step-by-step Product Hunt launch guide: preparing the listing, gallery and video, timing, asking for support the right way, launch-day routine and follow-up.",
   excerpt:
     "Everything to prepare for a Product Hunt launch, from tagline and gallery to the first comment, plus how to run launch day and follow up afterwards.",
-  publishAt: "2026-10-22T06:00:00Z",
+  publishAt: "2026-10-01T06:06:00Z",
   readingMinutes: 9,
   keyword: "product hunt launch",
   blocks: [

@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "How to make a product demo video step by step: a copy-paste demo script template, length guidance for each use case, and recording vs motion-designed options.",
   excerpt:
     "A practical process for planning, scripting and producing a software demo video, with a copy-paste script template and length guidance for landing pages, sales and app stores.",
-  publishAt: "2026-10-12T06:00:00Z",
+  publishAt: "2026-10-01T06:03:00Z",
   readingMinutes: 10,
   keyword: "how to make a product demo video",
   blocks: [

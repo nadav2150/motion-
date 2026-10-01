@@ -8,7 +8,7 @@ export const post: BlogPost = {
     "A practical B2B video marketing plan for SaaS: the seven videos to make across the funnel, where each lives, formats per channel, and how to measure them.",
   excerpt:
     "The seven SaaS marketing videos that cover the whole funnel, where each one lives, how to produce them on a small team, and what to measure.",
-  publishAt: "2026-11-02T06:00:00Z",
+  publishAt: "2026-10-01T06:09:00Z",
   readingMinutes: 8,
   keyword: "b2b video marketing",
   blocks: [
