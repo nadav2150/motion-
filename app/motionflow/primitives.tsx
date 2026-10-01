@@ -145,7 +145,7 @@ export const IconLogOut = (p: IconProps) => (
 );
 
 export const IconLogo = ({ size = 24 }: { size?: number }) => (
-  <img src="/logo.svg" width={size} height={size} alt="Videly" style={{ display: "block" }} />
+  <img src="/logo-mark.png" width={size} height={size} alt="Videly" style={{ display: "block" }} />
 );
 
 /* ───────── Surfaces & Buttons ───────── */
