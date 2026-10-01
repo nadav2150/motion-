@@ -9,7 +9,7 @@ import { getSupabase } from "./supabase";
 
 // Dedicated backoffice login, always allowed in addition to ADMIN_EMAILS. The
 // matching auth user already exists, so nobody else can register this address.
-const BUILTIN_ADMINS = ["admin@videliy.io"];
+const BUILTIN_ADMINS = ["admin@videly.io"];
 
 /** Parsed, lowercased allowlist from the ADMIN_EMAILS env var + built-ins. */
 function adminEmails(): Set<string> {
@@ -43,7 +43,9 @@ export async function requireAdminOrRedirect(
   if (!user || !isAdmin(user.email)) {
     const url = new URL(request.url);
     const next = encodeURIComponent(url.pathname + url.search);
-    headers.set("Location", `/signin?next=${next}`);
+    // A signed-in non-admin must see the form (switch=1), or /signin would
+    // bounce them straight back here and loop forever.
+    headers.set("Location", `/signin?next=${next}${user ? "&switch=1" : ""}`);
     throw new Response(null, { status: 302, headers });
   }
 

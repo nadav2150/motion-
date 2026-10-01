@@ -34,9 +34,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   // requested destination (or /home). Uses getUserWithRefresh so an expired
   // access token with a valid refresh token doesn't force the user to sign
   // in again unnecessarily.
+  // `switch=1` (sent by the backoffice guard) means "signed in, but as the
+  // wrong account" — show the form so they can sign in as someone else.
+  const url = new URL(request.url);
+  if (url.searchParams.has("switch")) return null;
   const { user, refreshed } = await getUserWithRefresh(request);
   if (user) {
-    const url = new URL(request.url);
     const headers = new Headers();
     if (refreshed) setSessionCookies(headers, refreshed);
     headers.set("Location", safeNext(url.searchParams.get("next")));
