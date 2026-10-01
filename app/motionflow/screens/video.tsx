@@ -505,66 +505,70 @@ export function VideoScreen({
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">
-          {!job ? (
-            <Skeleton className="aspect-video w-full rounded-2xl" />
-          ) : failed && !rev ? (
-            <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl border border-danger/40 bg-ink p-6 text-center">
-              <AlertTriangle className="size-8 text-coral" aria-hidden />
-              <h2 className="mt-3 text-lg font-semibold">This video didn't come out right</h2>
-              <p className="mt-1.5 max-w-md text-sm text-silver">{job.error ?? "Something went wrong while generating."}</p>
-              <Button className="mt-5" icon={<RefreshCw className="size-4" aria-hidden />} onClick={() => void regenerate()}>
-                Try again
-              </Button>
-            </div>
-          ) : !showPlayer ? (
-            <ProgressPanel job={job} />
-          ) : (
-            <>
-              {busy && (
-                <div
-                  role="status"
-                  className="mb-3 flex items-center gap-3 rounded-xl border border-coral/40 bg-coral/10 px-4 py-2.5 text-sm"
-                >
-                  <Loader2 className="size-4 shrink-0 vd-spin text-coral" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-paper">
-                    Generating version {revs.length + 1} · {job.stageLabel}
-                  </span>
-                  <span className="font-semibold tabular-nums text-coral">{Math.round(job.progress * 100)}%</span>
-                </div>
-              )}
-              {failed && (
-                <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm">
-                  <AlertTriangle className="size-4 text-coral" aria-hidden />
-                  <span className="flex-1">{job.error ?? "The last change failed."}</span>
-                  <button type="button" onClick={() => void regenerate()} className="font-semibold text-coral hover:underline">
-                    Try again
-                  </button>
-                </div>
-              )}
-              <PreviewPlayer
-                ctl={ctl}
-                jobId={job.id}
-                revision={rev!.revision}
-                width={job.width}
-                height={job.height}
-                audio={job.audio}
-                poster={rev!.thumbUrl}
-              />
-              <TimelineStrip
-                jobId={job.id}
-                rev={rev!.revision}
-                time={ctl.time}
-                duration={ctl.duration}
-                onSeek={ctl.seek}
-                hasVoice={!!job.audio.voiceover || !!job.voiceId}
-                hasMusic={!!job.audio.music || job.musicEnabled}
-              />
-            </>
-          )}
+          {/* Media is capped so its height fits the viewport, leaving the edit
+              prompt bar on screen without scrolling. */}
+          <div className="mx-auto w-full" style={{ maxWidth: "max(320px, calc((100dvh - 480px) * 16 / 9))" }}>
+            {!job ? (
+              <Skeleton className="aspect-video w-full rounded-2xl" />
+            ) : failed && !rev ? (
+              <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl border border-danger/40 bg-ink p-6 text-center">
+                <AlertTriangle className="size-8 text-coral" aria-hidden />
+                <h2 className="mt-3 text-lg font-semibold">This video didn't come out right</h2>
+                <p className="mt-1.5 max-w-md text-sm text-silver">{job.error ?? "Something went wrong while generating."}</p>
+                <Button className="mt-5" icon={<RefreshCw className="size-4" aria-hidden />} onClick={() => void regenerate()}>
+                  Try again
+                </Button>
+              </div>
+            ) : !showPlayer ? (
+              <ProgressPanel job={job} />
+            ) : (
+              <>
+                {busy && (
+                  <div
+                    role="status"
+                    className="mb-3 flex items-center gap-3 rounded-xl border border-coral/40 bg-coral/10 px-4 py-2.5 text-sm"
+                  >
+                    <Loader2 className="size-4 shrink-0 vd-spin text-coral" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate text-paper">
+                      Generating version {revs.length + 1} · {job.stageLabel}
+                    </span>
+                    <span className="font-semibold tabular-nums text-coral">{Math.round(job.progress * 100)}%</span>
+                  </div>
+                )}
+                {failed && (
+                  <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm">
+                    <AlertTriangle className="size-4 text-coral" aria-hidden />
+                    <span className="flex-1">{job.error ?? "The last change failed."}</span>
+                    <button type="button" onClick={() => void regenerate()} className="font-semibold text-coral hover:underline">
+                      Try again
+                    </button>
+                  </div>
+                )}
+                <PreviewPlayer
+                  ctl={ctl}
+                  jobId={job.id}
+                  revision={rev!.revision}
+                  width={job.width}
+                  height={job.height}
+                  audio={job.audio}
+                  poster={rev!.thumbUrl}
+                />
+                <TimelineStrip
+                  jobId={job.id}
+                  rev={rev!.revision}
+                  time={ctl.time}
+                  duration={ctl.duration}
+                  onSeek={ctl.seek}
+                  hasVoice={!!job.audio.voiceover || !!job.voiceId}
+                  hasMusic={!!job.audio.music || job.musicEnabled}
+                />
+              </>
+            )}
+          </div>
 
-          {/* Edit prompt bar */}
+          {/* Edit prompt bar: sticky so it stays visible above the mobile nav */}
           <form
-            className="mt-4 flex items-center gap-2 rounded-2xl border border-slate/50 bg-ink p-2 pl-4 shadow-[var(--shadow-soft)]"
+            className="sticky bottom-[84px] z-20 mt-4 flex items-center gap-2 rounded-2xl border border-slate/50 bg-ink p-2 pl-4 shadow-[var(--shadow-soft)] lg:bottom-4"
             onSubmit={(e) => {
               e.preventDefault();
               void sendEdit();
@@ -580,7 +584,7 @@ export function VideoScreen({
               onChange={(e) => setInstruction(e.target.value)}
               disabled={!rev}
               maxLength={2000}
-              placeholder={rev ? "Make the opening faster and add a stronger call to action" : "You can edit once the first version is ready"}
+              placeholder={rev ? "Describe a change… e.g. make the opening faster" : "You can edit once the first version is ready"}
               className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-paper placeholder:text-silver/60 focus-visible:outline-none disabled:opacity-60"
             />
             <button
