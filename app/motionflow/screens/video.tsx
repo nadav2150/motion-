@@ -279,6 +279,31 @@ export function VideoScreen({
 
   const ctl = usePreviewController(job?.duration ?? 30);
 
+  // Size the player to the space actually left on screen: below its top edge,
+  // minus the timeline, the edit composer and the page's bottom padding.
+  const mediaRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
+  const [mediaMaxW, setMediaMaxW] = useState<number | null>(null);
+  useEffect(() => {
+    const fit = () => {
+      const media = mediaRef.current;
+      const composer = composerRef.current;
+      if (!media || !composer) return;
+      const top = media.getBoundingClientRect().top + window.scrollY;
+      const below = 92 + 16 + composer.offsetHeight + 72; // timeline + gap + composer + page padding
+      const h = window.innerHeight - top - below;
+      setMediaMaxW(Math.max(320, Math.round((h * 16) / 9)));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(document.body);
+    window.addEventListener("resize", fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [notFound]);
+
   const applyJob = useCallback((j: StudioJobView) => {
     setJob(j);
     if (j.revisions.length === 0) sawGenerating.current = true;
@@ -519,7 +544,11 @@ export function VideoScreen({
         <div className="min-w-0">
           {/* Media is capped so its height fits the viewport, leaving the edit
               prompt bar on screen without scrolling. */}
-          <div className="mx-auto w-full" style={{ maxWidth: "max(320px, calc((100dvh - 566px) * 16 / 9))" }}>
+          <div
+            ref={mediaRef}
+            className="mx-auto w-full"
+            style={{ maxWidth: mediaMaxW ?? "max(320px, calc((100dvh - 566px) * 16 / 9))" }}
+          >
             {!job ? (
               <Skeleton className="aspect-video w-full rounded-2xl" />
             ) : failed && !rev ? (
@@ -581,6 +610,7 @@ export function VideoScreen({
           {/* Edit prompt bar: same look as the home composer; sticky so it
               stays visible above the mobile nav */}
           <form
+            ref={composerRef}
             className="sticky bottom-[84px] z-20 mt-4 rounded-[22px] bg-[linear-gradient(115deg,rgb(239_131_84/0.55)_0%,rgb(171_133_119/0.35)_45%,rgb(246_153_93/0.9)_100%)] p-[1.5px] shadow-[0_0_44px_-12px_rgb(239_131_84/0.6),0_24px_60px_-20px_rgb(0_0_0/0.8)] lg:bottom-4"
             onSubmit={(e) => {
               e.preventDefault();
