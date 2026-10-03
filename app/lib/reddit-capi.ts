@@ -9,6 +9,7 @@
 
 import { createHash } from "node:crypto";
 import { REDDIT_CLICK_ID_COOKIE, REDDIT_PIXEL_ID, REDDIT_UUID_COOKIE } from "./reddit-pixel";
+import { getSupabase } from "./supabase";
 
 const ENDPOINT = `https://ads-api.reddit.com/api/v3/pixels/${REDDIT_PIXEL_ID}/conversion_events`;
 const TIMEOUT_MS = 5000;
@@ -126,6 +127,39 @@ export function matchKeysToMetadata(m: RedditMatchKeys): Record<string, string> 
     if (v) out[metaKey] = v.slice(0, 500);
   }
   return out;
+}
+
+/**
+ * PURCHASE from a payment webhook (Dodo payment.succeeded / Polar order.paid).
+ * Fires once per checkout: payments without our metadata.rdtConv are skipped,
+ * $0 payments (trial starts) are skipped, and a billing_events row keyed on
+ * the conversion id stops renewals that inherit the checkout metadata from
+ * re-sending. So a trial checkout reports on its first real charge.
+ */
+export async function reportRedditPurchase(p: {
+  metadata: Record<string, unknown> | null | undefined;
+  amountCents: number;
+  currency: string | null | undefined;
+  email: string | null | undefined;
+  externalId: string | null | undefined;
+}): Promise<void> {
+  const conversionId = p.metadata?.rdtConv;
+  if (typeof conversionId !== "string" || !conversionId || !(p.amountCents > 0)) return;
+  if (!process.env.REDDIT_CAPI_TOKEN) return;
+  const { error } = await getSupabase()
+    .from("billing_events")
+    .insert({ event_id: `reddit_purchase:${conversionId}`, event_type: "reddit.purchase" });
+  if (error) {
+    if (error.code !== "23505") console.error(`[reddit-capi] purchase guard insert failed: ${error.message}`);
+    return;
+  }
+  await sendRedditConversion({
+    type: "PURCHASE",
+    conversionId,
+    value: p.amountCents / 100,
+    currency: p.currency ?? "USD",
+    match: { ...matchKeysFromMetadata(p.metadata), email: p.email, externalId: p.externalId },
+  });
 }
 
 export function matchKeysFromMetadata(meta: Record<string, unknown> | null | undefined): RedditMatchKeys {

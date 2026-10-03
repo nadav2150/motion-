@@ -45,8 +45,10 @@ const EXPOSE_ERRORS = POLAR_ENV !== "production";
 
 type Body = { tier?: string | null; pack?: string | null; source?: string | null };
 
-// What is being bought. tier=null means a pack-only top-up.
-type Order = { tier: PaidTier | null; pack: PackSize | null; source: string | null };
+// What is being bought. tier=null means a pack-only top-up. conversionId is
+// the Reddit conversion_id shared by the return-page pixel (?rdt_conv=) and
+// the payment webhook's CAPI event (metadata.rdtConv), so Reddit dedupes them.
+type Order = { tier: PaidTier | null; pack: PackSize | null; source: string | null; conversionId: string };
 
 function cleanSource(v: unknown): string | null {
   return typeof v === "string" && /^[a-z0-9_:-]{1,40}$/i.test(v) ? v : null;
@@ -58,14 +60,19 @@ function successUrl(origin: string, order: Order): string {
   else if (order.pack) params.set("purchased", `pack_${order.pack}`);
   if (order.tier && order.pack) params.set("pack", order.pack);
   if (order.source) params.set("source", order.source);
+  params.set("rdt_conv", order.conversionId);
   return `${origin}/home?${params.toString()}`;
 }
 
 function metadataFor(user: AuthUser, order: Order, request: Request): Record<string, string> {
   // Polar rejects empty-string metadata values (each value must be a non-empty
   // string or a number/bool), so only attach keys that are set. The rdt* keys
-  // carry the buyer's Reddit match keys to the order webhook (reddit-capi.ts).
-  const metadata: Record<string, string> = { userId: user.id, ...matchKeysToMetadata(matchKeysFromRequest(request)) };
+  // carry the buyer's Reddit match keys to the payment webhook (reddit-capi.ts).
+  const metadata: Record<string, string> = {
+    userId: user.id,
+    rdtConv: order.conversionId,
+    ...matchKeysToMetadata(matchKeysFromRequest(request)),
+  };
   if (order.tier) metadata.planTier = order.tier;
   if (order.pack) metadata.packKey = order.pack;
   if (order.source) metadata.source = order.source;
@@ -109,7 +116,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (tier === null && pack === null) {
     return Response.json({ error: "Choose a plan or a credit pack" }, { status: 400, headers });
   }
-  const order: Order = { tier, pack, source: cleanSource(body.source) };
+  const order: Order = { tier, pack, source: cleanSource(body.source), conversionId: crypto.randomUUID() };
 
   if (order.tier) {
     try {
@@ -180,9 +187,7 @@ export async function action({ request }: Route.ActionArgs) {
       products,
       externalCustomerId: user.id,
       metadata,
-      // Polar swaps in the real id; the return page fires the Reddit Purchase
-      // pixel with conversionId `checkout:<id>`, matching the webhook's CAPI event.
-      successUrl: `${successUrl(origin, order)}&checkout_id={CHECKOUT_ID}`,
+      successUrl: successUrl(origin, order),
     });
     console.log(`[checkout] session created user=${user.id} checkout_id=${checkout.id} url=${checkout.url}`);
     trackSession(user, order, "polar");
