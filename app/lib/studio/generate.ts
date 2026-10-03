@@ -114,6 +114,14 @@ import { captureFrames, renderVideo } from "./render";
 import { parallelScenesEnabled, splitScenes, writeScenesParallel } from "./scenes";
 import { getTemplate } from "./templates";
 import {
+  DEFAULT_VOICE_SPEED,
+  DEFAULT_VOICE_TONE,
+  parseVoiceSpeed,
+  parseVoiceTone,
+  VOICE_SPEEDS,
+  VOICE_TONES,
+} from "./voice-style";
+import {
   DEFAULT_FPS,
   DURATION_OPTIONS,
   FORMAT_PRESETS,
@@ -213,6 +221,10 @@ export function parseCreateStudioJobInput(body: unknown, policy: InputPolicy): C
     }
     voiceId = b.voiceId;
   }
+  const voiceSpeed = b.voiceSpeed === undefined || b.voiceSpeed === null ? DEFAULT_VOICE_SPEED : parseVoiceSpeed(b.voiceSpeed);
+  if (voiceSpeed === null) throw new StudioInputError(`voiceSpeed must be one of ${VOICE_SPEEDS.join(", ")}`);
+  const voiceTone = b.voiceTone === undefined || b.voiceTone === null ? DEFAULT_VOICE_TONE : parseVoiceTone(b.voiceTone);
+  if (voiceTone === null) throw new StudioInputError(`voiceTone must be one of ${VOICE_TONES.join(", ")}`);
   let musicEnabled = b.musicEnabled !== false;
   if (!policy.audioAllowed) {
     voiceId = null;
@@ -291,6 +303,7 @@ export function parseCreateStudioJobInput(body: unknown, policy: InputPolicy): C
     targetDuration,
     language,
     voiceId,
+    ...(voiceId ? { voiceSpeed, voiceTone } : {}),
     musicEnabled,
     sources,
     useBrandKit: b.useBrandKit !== false,
@@ -334,6 +347,8 @@ export async function createStudioJob(
       sources: input.sources,
       useBrandKit: input.useBrandKit,
       templateId: input.templateId ?? null,
+      ...(input.voiceId && input.voiceSpeed && input.voiceSpeed !== DEFAULT_VOICE_SPEED ? { voiceSpeed: input.voiceSpeed } : {}),
+      ...(input.voiceId && input.voiceTone && input.voiceTone !== DEFAULT_VOICE_TONE ? { voiceTone: input.voiceTone } : {}),
       ...(refUrl ? { referenceMode: input.referenceMode === "inspired" ? ("inspired" as const) : ("close" as const) } : {}),
     },
     plan: null,
@@ -843,6 +858,8 @@ export async function runStudioJob(
             fps,
             language: row.language ?? "en",
             voiceover: voiceOn,
+            voiceSpeed: record.input.voiceSpeed ?? DEFAULT_VOICE_SPEED,
+            voiceTone: record.input.voiceTone ?? DEFAULT_VOICE_TONE,
             music: musicOn,
             brandKit,
             website,
@@ -880,7 +897,12 @@ export async function runStudioJob(
         const stamp = Date.now().toString(36);
         const [vo, images, music] = await Promise.all([
           voiceOn && plan.voiceover.length
-            ? recordVoiceover({ lines: plan.voiceover.map((l) => l.text), voiceId: row.voice_id! }).catch((err) => {
+            ? recordVoiceover({
+                lines: plan.voiceover.map((l) => l.text),
+                voiceId: row.voice_id!,
+                speed: record.input.voiceSpeed,
+                tone: record.input.voiceTone,
+              }).catch((err) => {
                 // A failed voiceover should not cost the user the whole video:
                 // continue without narration (beats keep the plan's timing).
                 console.warn(`[studio ${jobId}] voiceover failed, continuing without it:`, err instanceof Error ? err.message : err);

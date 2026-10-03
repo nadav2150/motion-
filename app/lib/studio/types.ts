@@ -2,6 +2,8 @@
 // generation pipeline, the API routes and the UI — keep it free of server-only
 // imports so client code can use it too.
 
+import type { VoiceSpeed, VoiceTone } from "./voice-style";
+
 export type StudioFormat = "16:9" | "9:16" | "1:1" | "match";
 
 export type FormatPreset = { format: Exclude<StudioFormat, "match">; width: number; height: number; label: string };
@@ -30,6 +32,8 @@ export type CreateStudioJobInput = {
   targetDuration: number; // seconds; with voiceover on it is a target, not exact
   language: string; // BCP-47, e.g. "en"
   voiceId: string | null; // null = no voiceover (AI Voice: Off)
+  voiceSpeed?: VoiceSpeed; // read speed, default 1
+  voiceTone?: VoiceTone; // delivery, default "natural"
   musicEnabled: boolean;
   sources: StudioSource[]; // at most one video reference (youtube | video_url | upload)
   useBrandKit: boolean;

@@ -65,6 +65,8 @@ export type ElevenLabsVoiceoverArgs = {
   // Sharpens speaker identity. Default true; set false for whispered /
   // intimate reads to avoid amplifying artifacts.
   useSpeakerBoost?: boolean;
+  // Native read speed, 0.7..1.2 (ElevenLabs' range). Omitted = the voice's default.
+  speed?: number;
 };
 
 // Default narration model — multilingual_v2 is more expressive than turbo.
@@ -312,6 +314,7 @@ async function postTts(
       similarity_boost: args.similarityBoost ?? 0.75,
       style: args.style ?? 0,
       use_speaker_boost: args.useSpeakerBoost ?? true,
+      ...(args.speed !== undefined ? { speed: Math.min(1.2, Math.max(0.7, args.speed)) } : {}),
     },
   });
 

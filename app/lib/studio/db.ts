@@ -5,6 +5,7 @@
 import { getSupabase } from "../supabase";
 import { STORYBOARDS_BUCKET } from "../storage";
 import type { ReferenceAnalysis } from "../reference-video";
+import type { VoiceSpeed, VoiceTone } from "./voice-style";
 import {
   DEFAULT_FPS,
   STAGE_LABELS,
@@ -35,6 +36,8 @@ export type StudioPlanRecord = {
     useBrandKit: boolean;
     templateId: string | null;
     referenceMode?: ReferenceMode; // absent on older jobs → "close"
+    voiceSpeed?: VoiceSpeed; // absent → 1
+    voiceTone?: VoiceTone; // absent → "natural"
   };
   plan: StudioPlan | null;
   finalDuration?: number | null;
