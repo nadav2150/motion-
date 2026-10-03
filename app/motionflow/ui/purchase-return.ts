@@ -73,8 +73,11 @@ export function usePurchaseReturn() {
     params.delete("pack");
     const source = params.get("source");
     params.delete("source");
-    const checkoutId = params.get("checkout_id");
-    params.delete("checkout_id");
+    const conversionId = params.get("rdt_conv");
+    params.delete("rdt_conv");
+    // Dodo appends ?status= to the return URL; a failed payment isn't a purchase.
+    const status = params.get("status");
+    const paid = !status || status === "succeeded" || status === "active";
     const qs = params.toString();
     navigate(`${location.pathname}${qs ? `?${qs}` : ""}`, { replace: true });
 
@@ -85,8 +88,8 @@ export function usePurchaseReturn() {
       pack: expect.kind === "pack" ? expect.pack : null,
       source,
     });
-    // Same conversion_id as the order.paid CAPI event → Reddit dedupes.
-    if (checkoutId) rdtTrack("Purchase", { conversionId: `checkout:${checkoutId}` });
+    // Same conversion_id as the payment webhook's CAPI event → Reddit dedupes.
+    if (conversionId && paid) rdtTrack("Purchase", { conversionId });
     void confirmPurchase(expect);
     // Run once per landing; the params are stripped above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
