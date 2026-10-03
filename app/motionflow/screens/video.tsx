@@ -10,6 +10,7 @@ import {
   Captions,
   Check,
   Download,
+  Link2,
   Loader2,
   Music,
   Pencil,
@@ -252,11 +253,13 @@ export function VideoScreen({
   planTier,
   credits,
   jobId,
+  isAdmin = false,
 }: {
   user: ShellUser;
   planTier: string | null;
   credits: number | null;
   jobId: string;
+  isAdmin?: boolean;
 }) {
   const navigate = useNavigate();
   const [job, setJob] = useState<StudioJobView | null>(null);
@@ -267,6 +270,7 @@ export function VideoScreen({
   const [instruction, setInstruction] = useState("");
   const [sending, setSending] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const lastRevCount = useRef(0);
   const jobRef = useRef<StudioJobView | null>(null);
@@ -374,6 +378,25 @@ export function VideoScreen({
   const revs = job?.revisions ?? [];
   const rev = revs.find((r) => r.revision === selectedRev) ?? revs[revs.length - 1] ?? null;
   const showPlayer = !!rev;
+
+  // Admin: public /v/:slug page for this version (e.g. a Reddit giveaway).
+  const createShareLink = async () => {
+    if (!rev) return;
+    if (rev.renderStatus !== "ready") {
+      toast("Export this version first, then create the share link", "info");
+      return;
+    }
+    setSharing(true);
+    try {
+      const { url } = await api.createShareLink(jobId, rev.revision);
+      await navigator.clipboard.writeText(url).catch(() => {});
+      toast(`Share link copied: ${url}`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Couldn't create share link", "error");
+    } finally {
+      setSharing(false);
+    }
+  };
 
   const saveTitle = async () => {
     if (!job) return;
@@ -508,6 +531,16 @@ export function VideoScreen({
           >
             Re-generate
           </Button>
+          {isAdmin && (
+            <Button
+              variant="secondary"
+              icon={<Link2 className="size-4" aria-hidden />}
+              onClick={() => void createShareLink()}
+              disabled={!rev || sharing}
+            >
+              Share link
+            </Button>
+          )}
           <Button icon={<Download className="size-4" aria-hidden />} onClick={() => setExportOpen(true)} disabled={!rev}>
             Export
           </Button>

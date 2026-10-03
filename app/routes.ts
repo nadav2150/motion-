@@ -33,6 +33,11 @@ export default [
   route("synthesia-alternative",         "routes/synthesia-alternative.tsx"),
 
   // Blog. Posts live in app/lib/blog/posts and appear at their publishAt.
+  // Public share links (no login) — app/lib/share.ts
+  route("v/:slug",          "routes/v.$slug.tsx"),
+  route("v/:slug/download", "routes/v.$slug.download.tsx"),
+  route("api/share",        "routes/api.share.tsx"),
+
   route("blog",       "routes/blog.tsx"),
   route("blog/:slug", "routes/blog.$slug.tsx"),
 
@@ -88,6 +93,7 @@ export default [
   // Backoffice admin panel (gated by ADMIN_EMAILS; served at backoffice.videly.io)
   route("backoffice", "routes/backoffice.tsx"),
   route("backoffice/users/:id", "routes/backoffice.users.$id.tsx"),
+  route("backoffice/share", "routes/backoffice.share.tsx"),
   route("api/backoffice/impersonate", "routes/api.backoffice.impersonate.tsx"),
   route("impersonate/start", "routes/impersonate.start.tsx"),
   route("impersonate/stop", "routes/impersonate.stop.tsx"),
