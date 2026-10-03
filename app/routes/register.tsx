@@ -5,6 +5,8 @@ import { AuthError, registerWithEmail, setSessionCookies } from "../lib/auth";
 import { getOrCreateBilling, grantCredits } from "../lib/billing/credits";
 import { readAttribution } from "../lib/attribution";
 import { buildMeta } from "../lib/seo";
+import { matchKeysFromRequest, sendRedditConversion } from "../lib/reddit-capi";
+import { REDDIT_PENDING_COOKIE } from "../lib/reddit-pixel";
 
 // Free plan's monthly grant. Sized to exactly cover one worst-case 2-scene
 // Free generation (1,100 base + 2 × 1,000 per-scene = 3,100). After the
@@ -55,8 +57,22 @@ export async function action({ request }: Route.ActionArgs) {
       );
     }
 
+    // Reddit SIGN_UP: CAPI now, and queue the matching pixel event for the
+    // next page (this action 302s). Same conversion_id → Reddit dedupes.
+    const conversionId = `signup:${userId}`;
+    await sendRedditConversion({
+      type: "SIGN_UP",
+      conversionId,
+      match: { ...matchKeysFromRequest(request), email, externalId: userId },
+      sourceUrl: request.url,
+    });
+
     const headers = new Headers();
     setSessionCookies(headers, session);
+    headers.append(
+      "Set-Cookie",
+      `${REDDIT_PENDING_COOKIE}=${encodeURIComponent(`SignUp:${conversionId}`)}; Path=/; Max-Age=300; SameSite=Lax; Secure`,
+    );
     headers.append("Location", "/home");
     return new Response(null, { status: 302, headers });
   } catch (err) {

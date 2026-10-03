@@ -20,6 +20,7 @@ import type { PlanTier } from "../lib/billing/plan-features";
 import { applyPlanChange } from "../lib/billing/plan-change.server";
 import { tierOf } from "../lib/billing/catalog";
 import { getPostHog } from "../lib/posthog";
+import { matchKeysFromMetadata, sendRedditConversion } from "../lib/reddit-capi";
 import {
   applyPlanAndGrant as sharedApplyPlanAndGrant,
   identifyPlan as sharedIdentifyPlan,
@@ -282,8 +283,30 @@ async function handleSubscriptionCanceled(data: AnyData): Promise<void> {
   log("info", "subscription.canceled applied", { sub: subscriptionId, user_id: row?.user_id ?? null });
 }
 
+// The first paid order of a checkout (new subscription or one-time pack) is a
+// Reddit PURCHASE. Renewals and proration bills aren't new conversions, and
+// $0 orders (trial starts) carry no revenue. conversion_id matches the pixel
+// event fired on the checkout return page (purchase-return.ts).
+async function reportRedditPurchase(data: AnyData): Promise<void> {
+  if (data.billingReason !== "purchase" && data.billingReason !== "subscription_create") return;
+  const amountCents = Number(data.netAmount ?? data.totalAmount ?? 0);
+  if (!(amountCents > 0) || !data.checkoutId) return;
+  await sendRedditConversion({
+    type: "PURCHASE",
+    conversionId: `checkout:${data.checkoutId}`,
+    value: amountCents / 100,
+    currency: (data.currency as string | undefined) ?? "usd",
+    match: {
+      ...matchKeysFromMetadata(data.metadata),
+      email: data.customer?.email ?? null,
+      externalId: extractUserIdHint(data),
+    },
+  });
+}
+
 async function handleOrderPaid(data: AnyData): Promise<void> {
   const orderId = data.id as string;
+  await reportRedditPurchase(data);
   const cls = classifyOrder({ subscription_id: data.subscriptionId, billing_reason: data.billingReason });
 
   if (cls === "skip") {

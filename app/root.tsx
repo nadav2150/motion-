@@ -18,6 +18,7 @@ import {
   usePostHogPageviews,
 } from "./lib/use-posthog-pageviews";
 import { captureAttribution } from "./lib/attribution";
+import { useRedditPixel } from "./lib/reddit-pixel";
 import { useEffect } from "react";
 import "./app.css";
 
@@ -156,6 +157,7 @@ export default function App() {
   usePostHogPageviews();
   usePostHogIdentify(user);
   useEffect(captureAttribution, []);
+  useRedditPixel(user, Boolean(impersonating));
   return (
     <>
       {impersonating && <ImpersonationBanner email={impersonating.email} />}

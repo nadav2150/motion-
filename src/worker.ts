@@ -64,6 +64,7 @@ type Env = {
   DODO_LIVE_PRODUCT_PACK_LARGE?: string;
   POSTHOG_API_KEY: string;
   POSTHOG_PROJECT_ID: string;
+  REDDIT_CAPI_TOKEN?: string;
   // Backoffice admin panel: comma-separated admin email allowlist + HMAC key
   // for signing impersonation handoff tokens.
   ADMIN_EMAILS: string;
@@ -138,6 +139,7 @@ export class VidelyContainer extends Container<Env> {
     DODO_LIVE_PRODUCT_PACK_LARGE: this.env.DODO_LIVE_PRODUCT_PACK_LARGE ?? "",
     POSTHOG_API_KEY: this.env.POSTHOG_API_KEY,
     POSTHOG_PROJECT_ID: this.env.POSTHOG_PROJECT_ID,
+    REDDIT_CAPI_TOKEN: this.env.REDDIT_CAPI_TOKEN ?? "",
     ADMIN_EMAILS: this.env.ADMIN_EMAILS,
     IMPERSONATION_SECRET: this.env.IMPERSONATION_SECRET,
   };
