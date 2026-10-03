@@ -33,6 +33,7 @@ import { applyPlanAndGrant, identifyPlan, logBillingAfter, webhookLog } from "..
 import { applyPlanChange, recentPlanChange } from "../lib/billing/plan-change.server";
 import { tierOf } from "../lib/billing/catalog";
 import { getPostHog } from "../lib/posthog";
+import { reportRedditPurchase } from "../lib/reddit-capi";
 
 const log = (level: "info" | "warn" | "error", msg: string, fields: Record<string, unknown> = {}) =>
   webhookLog("dodo", level, msg, fields);
@@ -368,6 +369,13 @@ async function handleSubscriptionCancelled(data: AnyData): Promise<void> {
 
 async function handlePaymentSucceeded(data: AnyData): Promise<void> {
   const paymentId = data.payment_id as string;
+  await reportRedditPurchase({
+    metadata: data.metadata,
+    amountCents: Number(data.total_amount ?? 0) - Number(data.tax ?? 0),
+    currency: data.currency,
+    email: data.customer?.email,
+    externalId: typeof data.metadata?.userId === "string" ? data.metadata.userId : null,
+  });
   const cart: Array<{ product_id?: string; quantity?: number }> = Array.isArray(data.product_cart)
     ? data.product_cart
     : [];
