@@ -63,7 +63,7 @@ const MUTED = "text-[#8b949a]";
 const CORAL_BTN =
   "bg-[linear-gradient(180deg,#ff8d62_0%,#f2703f_100%)] text-white shadow-[0_10px_30px_-10px_rgb(242_112_63/0.75),inset_0_1px_0_rgb(255_255_255/0.25)] hover:brightness-110 active:brightness-95";
 
-function CoralLink({ to, children, size = "md", className }: { to: string; children: ReactNode; size?: "md" | "lg"; className?: string }) {
+export function CoralLink({ to, children, size = "md", className }: { to: string; children: ReactNode; size?: "md" | "lg"; className?: string }) {
   return (
     <Link
       to={to}
@@ -104,7 +104,7 @@ function H2({ children, className }: { children: ReactNode; className?: string }
   );
 }
 
-function CheckList({ items, className }: { items: string[]; className?: string }) {
+export function CheckList({ items, className }: { items: string[]; className?: string }) {
   return (
     <ul className={cn("flex flex-wrap gap-x-6 gap-y-3", className)}>
       {items.map((t) => (
@@ -804,7 +804,7 @@ function StepArrow() {
 const WAVE_VOICE = [3, 6, 9, 5, 11, 7, 12, 8, 10, 6, 9, 4, 8, 11, 6, 9, 5, 7];
 const WAVE_MUSIC = [4, 5, 7, 6, 8, 5, 9, 7, 6, 8, 5, 7, 6, 9, 5, 6, 7, 5, 8, 6];
 
-function HowItWorks() {
+export function HowItWorks() {
   return (
     <Container id="how-it-works" className="py-12 lg:py-14">
       <div className="relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#050f14] px-4 py-10 sm:px-8 lg:px-10 lg:py-12">
@@ -1072,7 +1072,7 @@ function Testimonials() {
   );
 }
 
-function FinalCta({ ctaHref }: { ctaHref: string }) {
+export function FinalCta({ ctaHref }: { ctaHref: string }) {
   return (
     <div className="relative mt-10 overflow-hidden">
       <img src={LANDING_IMG.ctaBg} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover object-center" />

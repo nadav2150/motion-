@@ -23,7 +23,11 @@ export type UpsellEvent =
   | "low_credit_banner_dismissed"
   | "low_credit_banner_clicked"
   | "locked_feature_clicked"
-  | "first_preview_ready";
+  | "first_preview_ready"
+  // Public share page /v/:slug
+  | "share_page_viewed"
+  | "share_video_downloaded"
+  | "share_cta_clicked";
 
 export function track(event: UpsellEvent, props: Record<string, unknown> = {}): void {
   try {

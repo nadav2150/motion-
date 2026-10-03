@@ -191,6 +191,10 @@ export const api = {
 
   getJob: (id: string) => request<AnyJobView>("GET", `/api/jobs/${encodeURIComponent(id)}`),
 
+  // Admin only — public /v/:slug link for an exported revision.
+  createShareLink: (jobId: string, revision: number) =>
+    request<{ slug: string; url: string }>("POST", "/api/share", { jobId, revision }),
+
   listVideos: (opts: { filter?: VideoFilter; q?: string; limit?: number; cursor?: string | null } = {}) =>
     request<{ items: StudioVideoCard[]; nextCursor: string | null }>(
       "GET",
