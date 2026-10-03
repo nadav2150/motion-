@@ -100,7 +100,7 @@ export default function BackofficeUsers() {
       <header style={S.header}>
         <div>
           <h1 style={S.h1}>Users</h1>
-          <p style={S.sub}>{total} total · signed in as {adminEmail} · <Link to="/backoffice/share" style={S.link}>Share links →</Link></p>
+          <p style={S.sub}>{total} total · signed in as {adminEmail} · <Link to="/backoffice/videos" style={S.link}>Video costs →</Link> · <Link to="/backoffice/share" style={S.link}>Share links →</Link></p>
         </div>
         <Form method="get" style={S.searchForm}>
           <input

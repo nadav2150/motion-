@@ -5,6 +5,7 @@ import { data, Form, Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/backoffice.users.$id";
 import { loadUserMarketing, requireAdminOrRedirect } from "../lib/admin";
 import { getSupabase } from "../lib/supabase";
+import { fmtUsd, loadJobCosts, type JobCost } from "../lib/admin-costs";
 import type { Attribution } from "../lib/attribution";
 
 export function meta(_: Route.MetaArgs) {
@@ -35,7 +36,7 @@ type Detail = {
   ledger: Array<{ id: string; delta: number; kind: string; reason: string; created_at: string }>;
 };
 
-type LoaderData = { detail: Detail; userId: string };
+type LoaderData = { detail: Detail; userId: string; costs: Record<string, JobCost> };
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { headers } = await requireAdminOrRedirect(request);
@@ -51,9 +52,15 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     throw new Response("User not found", { status: 404, headers });
   }
   const d = detail as Detail;
-  const marketing = await loadUserMarketing([userId]);
+  const [marketing, costs] = await Promise.all([
+    loadUserMarketing([userId]),
+    loadJobCosts(d.recent_jobs.map((j) => j.id)).catch((err) => {
+      console.error(`[backoffice] job costs for ${userId} failed:`, err instanceof Error ? err.message : err);
+      return {} as Record<string, JobCost>;
+    }),
+  ]);
   d.identity!.attribution = marketing[userId]?.attribution ?? null;
-  return data({ detail: d, userId } satisfies LoaderData, { headers });
+  return data({ detail: d, userId, costs } satisfies LoaderData, { headers });
 }
 
 function fmt(iso: string | null | undefined): string {
@@ -63,7 +70,7 @@ function fmt(iso: string | null | undefined): string {
 }
 
 export default function BackofficeUserDetail() {
-  const { detail, userId } = useLoaderData() as LoaderData;
+  const { detail, userId, costs } = useLoaderData() as LoaderData;
   const id = detail.identity!;
   const b = detail.billing;
 
@@ -139,13 +146,19 @@ export default function BackofficeUserDetail() {
         </div>
 
         <Card title="Recent jobs">
+          <p style={{ ...S.muted, marginBottom: 8 }}>
+            <Link to={`/backoffice/videos?user=${userId}`} style={S.back}>All videos with cost breakdown →</Link>
+          </p>
           {detail.recent_jobs.length === 0 ? <p style={S.muted}>No jobs.</p> : (
             <table style={S.miniTable}>
               <tbody>
                 {detail.recent_jobs.map((j) => (
                   <tr key={j.id}>
-                    <td style={S.mtd}>{j.title ?? "Untitled"}</td>
+                    <td style={S.mtd}><Link to={`/backoffice/videos/${j.id}`} style={S.back}>{j.title ?? "Untitled"}</Link></td>
                     <td style={S.mtd}><span style={S.tag}>{j.status}</span></td>
+                    <td style={{ ...S.mtd, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {costs[j.id]?.calls ? fmtUsd(costs[j.id]!.totalMicros) : "—"}
+                    </td>
                     <td style={{ ...S.mtd, color: "#8A8F98" }}>{fmt(j.created_at)}</td>
                   </tr>
                 ))}

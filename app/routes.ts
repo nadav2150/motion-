@@ -95,6 +95,8 @@ export default [
   route("backoffice", "routes/backoffice.tsx"),
   route("backoffice/users/:id", "routes/backoffice.users.$id.tsx"),
   route("backoffice/share", "routes/backoffice.share.tsx"),
+  route("backoffice/videos", "routes/backoffice.videos.tsx"),
+  route("backoffice/videos/:id", "routes/backoffice.videos.$id.tsx"),
   route("api/backoffice/impersonate", "routes/api.backoffice.impersonate.tsx"),
   route("impersonate/start", "routes/impersonate.start.tsx"),
   route("impersonate/stop", "routes/impersonate.stop.tsx"),
