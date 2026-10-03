@@ -163,6 +163,18 @@ export function usdMicrosForGpt4oVision(inputTokens: number, outputTokens: numbe
   return Math.ceil(inputTokens * GPT4O_INPUT_PER_TOKEN + outputTokens * GPT4O_OUTPUT_PER_TOKEN);
 }
 
+// ---------- Cloudflare Containers (our render compute) ----------
+// Workers Paid rates (developers.cloudflare.com/containers/platform/pricing,
+// 2026-10): $0.000020 / vCPU-s (active), $0.0000025 / GiB-s and
+// $0.00000007 / GB-s of disk (provisioned). The app runs on standard-2
+// (1 vCPU, 6 GiB, 12 GB — wrangler.jsonc). Rendering keeps the CPU busy, so
+// this prices a full vCPU per wall-clock second (an upper bound).
+const CONTAINER_MICROS_PER_SECOND = 1 * 20 + 6 * 2.5 + 12 * 0.07; // ≈ 35.84
+
+export function usdMicrosForContainerSeconds(wallSeconds: number): number {
+  return Math.ceil(Math.max(0, wallSeconds) * CONTAINER_MICROS_PER_SECOND);
+}
+
 // ---------- Free APIs ----------
 // Freesound + Jamendo are free at our usage tier. We still emit a telemetry
 // event with cost=0 so call volume / per-job dependence is visible in PostHog.

@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { adjustBalance, attachReservationToJob, getOrCreateBilling, reconcileJob, reserveCredits } from "../billing/credits";
 import { getPlanFeatures, type PlanFeatures } from "../billing/plan-features";
 import { recordModelCost } from "../billing/track-cost";
+import { usdMicrosForContainerSeconds } from "../billing/pricing-usd";
 import { scrapeBrand } from "../brand-scrape";
 import { VOICE_CATALOG_IDS } from "../elevenlabs-tts";
 import { injectWatermarkOverlay } from "../hyperframes/watermark";
@@ -1213,6 +1214,7 @@ async function renderRevisionInternal(
   const d = docContextFor(row);
   const duration = d.duration;
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), `videly-render-${jobId.slice(0, 8)}-`));
+  const renderStarted = Date.now();
   try {
     await updateRevision(jobId, revision, { render_status: "rendering", render_error: null, render_options: options });
     await setStage(jobId, "rendering");
@@ -1268,16 +1270,20 @@ async function renderRevisionInternal(
     const up = await uploadBuffer({ storagePath: paths.video, body: mp4, contentType: "video/mp4" });
     const videoUrl = `${up.publicUrl}?v=${Date.now().toString(36)}`;
 
+    // Credits follow the price list; the USD cost is the container time the
+    // render + mux + upload actually took.
     const credits = renderCredits(duration, options.resolution);
+    const wallSeconds = (Date.now() - renderStarted) / 1000;
     void recordModelCost({
       provider: "videly_render",
       model: "studio-renderer",
       reason: "studio_render",
       unitKind: "seconds",
       units: Math.ceil(duration),
-      costUsdMicros: credits * 1000,
+      costUsdMicros: usdMicrosForContainerSeconds(wallSeconds),
       creditsCharged: credits,
-      extra: { resolution: options.resolution, quality: options.quality, revision },
+      latencyMs: Math.round(wallSeconds * 1000),
+      extra: { resolution: options.resolution, quality: options.quality, revision, wall_seconds: Math.round(wallSeconds) },
     });
 
     await updateRevision(jobId, revision, {
