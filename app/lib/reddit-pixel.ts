@@ -64,7 +64,7 @@ function loadPixel(user: { id: string; email?: string | null } | null): void {
     p.callQueue = [];
     window.rdt = p;
     const t = document.createElement("script");
-    t.src = "https://www.redditstatic.com/ads/pixel.js";
+    t.src = `https://www.redditstatic.com/ads/pixel.js?pixel_id=${REDDIT_PIXEL_ID}`;
     t.async = true;
     document.head.appendChild(t);
   }
