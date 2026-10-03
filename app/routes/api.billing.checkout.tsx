@@ -36,6 +36,7 @@ import { isPack, isTier, type PackSize, type PaidTier } from "../lib/billing/cat
 import { findActiveSubscription } from "../lib/billing/subscription";
 import { getPostHog } from "../lib/posthog";
 import type { AuthUser } from "../lib/auth";
+import { matchKeysFromRequest, matchKeysToMetadata } from "../lib/reddit-capi";
 
 const POLAR_ENV = (process.env.POLAR_ENV ?? "sandbox").toLowerCase();
 // Surface the real failure reason to the client only outside production, so we
@@ -60,10 +61,11 @@ function successUrl(origin: string, order: Order): string {
   return `${origin}/home?${params.toString()}`;
 }
 
-function metadataFor(user: AuthUser, order: Order): Record<string, string> {
+function metadataFor(user: AuthUser, order: Order, request: Request): Record<string, string> {
   // Polar rejects empty-string metadata values (each value must be a non-empty
-  // string or a number/bool), so only attach keys that are set.
-  const metadata: Record<string, string> = { userId: user.id };
+  // string or a number/bool), so only attach keys that are set. The rdt* keys
+  // carry the buyer's Reddit match keys to the order webhook (reddit-capi.ts).
+  const metadata: Record<string, string> = { userId: user.id, ...matchKeysToMetadata(matchKeysFromRequest(request)) };
   if (order.tier) metadata.planTier = order.tier;
   if (order.pack) metadata.packKey = order.pack;
   if (order.source) metadata.source = order.source;
@@ -166,7 +168,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const origin = new URL(request.url).origin;
-  const metadata = metadataFor(user, order);
+  const metadata = metadataFor(user, order, request);
 
   console.log(
     `[checkout] creating session user=${user.id} tier=${order.tier ?? "none"} pack=${order.pack ?? "none"} ` +
@@ -178,7 +180,9 @@ export async function action({ request }: Route.ActionArgs) {
       products,
       externalCustomerId: user.id,
       metadata,
-      successUrl: successUrl(origin, order),
+      // Polar swaps in the real id; the return page fires the Reddit Purchase
+      // pixel with conversionId `checkout:<id>`, matching the webhook's CAPI event.
+      successUrl: `${successUrl(origin, order)}&checkout_id={CHECKOUT_ID}`,
     });
     console.log(`[checkout] session created user=${user.id} checkout_id=${checkout.id} url=${checkout.url}`);
     trackSession(user, order, "polar");
@@ -258,7 +262,7 @@ async function dodoCheckout(
   }
 
   const origin = new URL(request.url).origin;
-  const metadata = metadataFor(user, order);
+  const metadata = metadataFor(user, order, request);
   console.log(
     `[checkout] creating Dodo session user=${user.id} tier=${order.tier ?? "none"} pack=${order.pack ?? "none"} ` +
       `source=${order.source ?? "none"} env=${env} products=${productIds.join(",")}`,
