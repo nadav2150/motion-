@@ -14,6 +14,7 @@ import type { ReferenceAnalysis } from "../reference-video";
 import { formatBeatVisual, formatReferenceBrief } from "../reference-video";
 import type { SystemBlock, OpusContent, OpusMessage } from "./anthropic";
 import { formatGuide } from "./format";
+import { VOICE_TONE_SPECS, type VoiceTone } from "./voice-style";
 import type { BrandKit, FormatPreset, ReferenceMode, StudioLibrary, StudioPlan, VoLine } from "./types";
 import { DOCUMENT_RUNTIME_NOTES, LIBRARY_DOCS as LIBRARY_DOCS_TABLE, STUDIO_FONTS_DOC, STUDIO_LIBRARIES, libraryHead } from "./libs";
 
@@ -367,6 +368,8 @@ export type PlanContext = {
   fps: number;
   language: string;
   voiceover: boolean;
+  voiceSpeed?: number; // read speed multiplier, default 1
+  voiceTone?: VoiceTone; // default "natural"
   music: boolean;
   brandKit: BrandKit | null;
   website: WebsiteBrief | null;
@@ -580,6 +583,18 @@ function referenceBlocks(
 
 // ─── PLAN ──────────────────────────────────────────────────────────────────
 
+/** Plan instructions for the chosen read speed and tone (voiceover on only). */
+export function voiceDeliveryLines(speed: number, tone: VoiceTone): string[] {
+  const out = [`VOICE TONE: ${VOICE_TONE_SPECS[tone].label} — write lines that read ${VOICE_TONE_SPECS[tone].writing}.`];
+  if (speed !== 1) {
+    const wps = Math.round(2.4 * speed * 10) / 10;
+    out.push(
+      `VOICE SPEED: ${speed}× — the narration is played back ${speed}× faster than a natural read, so budget ≈ ${wps} words/second (not 2.4) to fill the target duration, and set line start/end times for the faster read.`,
+    );
+  }
+  return out;
+}
+
 export function buildPlanMessages(ctx: PlanContext): OpusMessage[] {
   const parts: string[] = [];
   parts.push(tag("user_request", ctx.prompt || "(no prompt — build the video from the sources below)"));
@@ -589,6 +604,7 @@ export function buildPlanMessages(ctx: PlanContext): OpusMessage[] {
       `TARGET DURATION: ${ctx.targetDuration}s (hard ceiling ${ctx.maxDuration}s).`,
       `LANGUAGE: ${ctx.language} — every on-screen word${ctx.voiceover ? " and every voiceover line" : ""} in this language.`,
       `VOICEOVER: ${ctx.voiceover ? "ON — write the script in `voiceover`." : "OFF — `voiceover` must be []; carry the message with on-screen text."}`,
+      ...(ctx.voiceover ? voiceDeliveryLines(ctx.voiceSpeed ?? 1, ctx.voiceTone ?? "natural") : []),
       `MUSIC: ${ctx.music ? "ON — give a musicMood." : 'OFF — musicMood "".'}`,
     ].join("\n"),
   );

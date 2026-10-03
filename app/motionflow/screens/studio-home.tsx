@@ -5,7 +5,6 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   ArrowRight,
   AudioLines,
-  Check,
   Clock,
   Ellipsis,
   FileVideo,
@@ -18,8 +17,6 @@ import {
   Monitor,
   Music,
   Palette,
-  Pause,
-  Play,
   Plus,
   Upload,
   LayoutTemplate,
@@ -37,9 +34,18 @@ import type {
 import { DURATION_OPTIONS } from "../../lib/studio/types";
 import { api, ApiError, MAX_REFERENCE_MB, type VoiceOption } from "../ui/api";
 import { AppShell, type ShellUser } from "../ui/AppShell";
-import { Button, IconButton, focusRing } from "../ui/Button";
+import { Button, focusRing } from "../ui/Button";
 import { Chip, Select, Toggle } from "../ui/controls";
 import { Menu } from "../ui/Menu";
+import { VoicePicker } from "../ui/VoicePicker";
+import {
+  DEFAULT_VOICE_SPEED,
+  DEFAULT_VOICE_TONE,
+  formatSpeed,
+  VOICE_TONE_SPECS,
+  type VoiceSpeed,
+  type VoiceTone,
+} from "../../lib/studio/voice-style";
 import { toast } from "../ui/Toast";
 import { cn, formatNumber, formatTime } from "../ui/format";
 import { FALLBACK_TEMPLATES } from "../ui/showcase";
@@ -134,8 +140,8 @@ export function StudioHomeScreen({
   const [voices, setVoices] = useState<VoiceOption[]>(loaderVoices);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; payment?: boolean } | null>(null);
-  const [sample, setSample] = useState<HTMLAudioElement | null>(null);
-  const [sampling, setSampling] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState<VoiceSpeed>(DEFAULT_VOICE_SPEED);
+  const [voiceTone, setVoiceTone] = useState<VoiceTone>(DEFAULT_VOICE_TONE);
   const [showLanguage, setShowLanguage] = useState(false);
   // Templates showcase: example videos made with Videly; each plays on hover.
   const [featured, setFeatured] = useState<StudioTemplate[] | null>(null);
@@ -212,8 +218,6 @@ export function StudioHomeScreen({
   useEffect(() => {
     if (!hasVideoRef && format === "match") setFormat("16:9");
   }, [hasVideoRef, format]);
-
-  useEffect(() => () => sample?.pause(), [sample]);
 
   const addVideoSource = useCallback((s: StudioSource) => {
     setSources((prev) => {
@@ -295,20 +299,6 @@ export function StudioHomeScreen({
     );
   };
 
-  const toggleSample = () => {
-    if (sampling && sample) {
-      sample.pause();
-      setSampling(false);
-      return;
-    }
-    if (!selectedVoice?.previewUrl) return;
-    const a = new Audio(selectedVoice.previewUrl);
-    a.onended = () => setSampling(false);
-    a.play().then(() => setSampling(true)).catch(() => setSampling(false));
-    sample?.pause();
-    setSample(a);
-  };
-
   const generate = async () => {
     if (!canGenerate) return;
     setSubmitting(true);
@@ -319,6 +309,7 @@ export function StudioHomeScreen({
       targetDuration: duration,
       language,
       voiceId: voiceId === "off" ? null : voiceId,
+      ...(voiceId !== "off" ? { voiceSpeed, voiceTone } : {}),
       musicEnabled: music,
       sources,
       useBrandKit,
@@ -362,17 +353,6 @@ export function StudioHomeScreen({
   };
   const sourceLabel = (s: StudioSource) =>
     s.kind === "image" || s.kind === "upload" ? s.name : s.kind === "youtube" ? "YouTube video" : hostOf(s.url);
-
-  const voiceOptions = useMemo(
-    () => [
-      { value: "off", label: "AI Voice: Off" },
-      ...voices.map((v) => ({
-        value: v.id,
-        label: `${v.label}${v.accent ? ` · ${v.accent[0]!.toUpperCase()}${v.accent.slice(1)}` : ""}`,
-      })),
-    ],
-    [voices],
-  );
 
   // Shared look for the prompt-bar chips (Video / Images / URL / AI Voice).
   const chipCls =
@@ -639,38 +619,32 @@ export function StudioHomeScreen({
                   <Link2 className="size-[18px]" aria-hidden />
                   URL
                 </button>
-                <div className="flex items-center gap-1">
-                  <Menu
-                    label="AI voice"
-                    align="left"
-                    triggerClassName={cn(chipCls, voiceId !== "off" && "border-coral/60")}
-                    trigger={
-                      <>
-                        <AudioLines className="size-[18px]" aria-hidden />
-                        <span className="max-w-[140px] truncate">{selectedVoice ? selectedVoice.label : "AI Voice"}</span>
-                      </>
-                    }
-                    items={voiceOptions.map((o) => ({
-                      label: !features.audio && o.value !== "off" ? `${o.label} · ${PLANS.starter.label}` : o.label,
-                      icon: o.value === voiceId ? <Check /> : !features.audio && o.value !== "off" ? <Lock /> : <span />,
-                      onSelect: () => {
-                        sample?.pause();
-                        setSampling(false);
-                        if (!features.audio && o.value !== "off") {
-                          track("locked_feature_clicked", { feature: "voiceover", surface: "home" });
-                          openUpsell("voiceover", { surface: "home_voice" });
-                          return;
-                        }
-                        setVoiceId(o.value);
-                      },
-                    }))}
-                  />
-                  {selectedVoice?.previewUrl && (
-                    <IconButton label={sampling ? "Stop voice sample" : `Play ${selectedVoice.label} sample`} onClick={toggleSample}>
-                      {sampling ? <Pause className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}
-                    </IconButton>
-                  )}
-                </div>
+                <VoicePicker
+                  voices={voices}
+                  voiceId={voiceId}
+                  speed={voiceSpeed}
+                  tone={voiceTone}
+                  locked={!features.audio}
+                  lockedLabel={PLANS.starter.label}
+                  onVoice={setVoiceId}
+                  onSpeed={setVoiceSpeed}
+                  onTone={setVoiceTone}
+                  onLocked={() => {
+                    track("locked_feature_clicked", { feature: "voiceover", surface: "home" });
+                    openUpsell("voiceover", { surface: "home_voice" });
+                  }}
+                  triggerClassName={cn(chipCls, voiceId !== "off" && "border-coral/60")}
+                  trigger={
+                    <>
+                      <AudioLines className="size-[18px]" aria-hidden />
+                      <span className="max-w-[170px] truncate">
+                        {selectedVoice
+                          ? `${selectedVoice.label}${voiceSpeed !== 1 ? ` · ${formatSpeed(voiceSpeed)}` : ""}${voiceTone !== "natural" ? ` · ${VOICE_TONE_SPECS[voiceTone].label}` : ""}`
+                          : "AI Voice"}
+                      </span>
+                    </>
+                  }
+                />
                 <Menu
                   label="More options"
                   align="left"

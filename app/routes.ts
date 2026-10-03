@@ -57,6 +57,7 @@ export default [
   route("api/jobs/:id/sfx", "routes/api.jobs.$id.sfx.tsx"),
   route("api/jobs/:id/assets", "routes/api.jobs.$id.assets.tsx"),
   // Studio (v2) API — docs/studio-v2-contract.md
+  route("api/voices/preview", "routes/api.voices.preview.tsx"),
   route("api/studio/jobs", "routes/api.studio.jobs.tsx"),
   route("api/studio/videos", "routes/api.studio.videos.tsx"),
   route("api/studio/videos/:id", "routes/api.studio.videos.$id.tsx"),

@@ -18,6 +18,7 @@ import {
 } from "../elevenlabs-tts";
 import { searchTracks, type JamendoTrack } from "../jamendo-search";
 import { roundToFrame } from "./format";
+import { DEFAULT_VOICE_TONE, splitSpeed, VOICE_TONE_SPECS, type VoiceTone } from "./voice-style";
 import type { StudioBeat, StudioPlan, VoLine } from "./types";
 
 const FFMPEG_BIN = process.env.FFMPEG_PATH || "ffmpeg";
@@ -109,15 +110,82 @@ export type RecordedVoiceover = { audio: Buffer; lines: VoLine[]; duration: numb
 export async function recordVoiceover(args: {
   lines: string[];
   voiceId: string;
+  speed?: number; // 1 = the voice's natural pace; see voice-style.ts for the options
+  tone?: VoiceTone;
 }): Promise<RecordedVoiceover> {
   const { text } = buildVoiceoverText(args.lines);
-  const tts = await generateVoiceoverWithTimestamps({ text, voiceId: args.voiceId });
-  const duration = await probeBufferDuration(tts.audio, "mp3").catch(() => {
-    const ends = tts.alignment?.character_end_times_seconds ?? [];
+  const tone = VOICE_TONE_SPECS[args.tone ?? DEFAULT_VOICE_TONE];
+  const { native, tempo } = splitSpeed(args.speed ?? 1);
+  const tts = await generateVoiceoverWithTimestamps({
+    text,
+    voiceId: args.voiceId,
+    stability: tone.stability,
+    style: tone.style,
+    ...(native !== 1 ? { speed: native } : {}),
+  });
+  let audio = tts.audio;
+  let alignment = tts.alignment ?? tts.normalizedAlignment;
+  if (tempo > 1.001) {
+    audio = await changeTempo(audio, tempo);
+    alignment = alignment ? scaleAlignment(alignment, 1 / tempo) : null;
+  }
+  const duration = await probeBufferDuration(audio, "mp3").catch(() => {
+    const ends = alignment?.character_end_times_seconds ?? [];
     return ends.length ? ends[ends.length - 1]! : 0;
   });
-  const lines = alignmentToVoLines(args.lines, tts.alignment ?? tts.normalizedAlignment, duration);
-  return { audio: tts.audio, lines, duration };
+  const lines = alignmentToVoLines(args.lines, alignment, duration);
+  return { audio, lines, duration };
+}
+
+/** Alignment times multiplied by k (k < 1 when the audio was sped up). */
+export function scaleAlignment(a: TtsAlignment, k: number): TtsAlignment {
+  return {
+    ...a,
+    character_start_times_seconds: a.character_start_times_seconds.map((t) => round3(t * k)),
+    character_end_times_seconds: a.character_end_times_seconds.map((t) => round3(t * k)),
+  };
+}
+
+/** ffmpeg atempo filter chain for a factor (each stage kept within 0.5..2). */
+export function atempoChain(factor: number): string {
+  const stages: number[] = [];
+  let f = factor;
+  while (f > 2) {
+    stages.push(2);
+    f /= 2;
+  }
+  while (f < 0.5) {
+    stages.push(0.5);
+    f /= 0.5;
+  }
+  stages.push(f);
+  return stages.map((x) => `atempo=${x.toFixed(4)}`).join(",");
+}
+
+/** Pitch-preserving speed change of an mp3 buffer. */
+async function changeTempo(buf: Buffer, factor: number): Promise<Buffer> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "videly-tempo-"));
+  const input = path.join(dir, "in.mp3");
+  const output = path.join(dir, "out.mp3");
+  try {
+    await fs.writeFile(input, buf);
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        FFMPEG_BIN,
+        ["-y", "-v", "error", "-i", input, "-filter:a", atempoChain(factor), "-c:a", "libmp3lame", "-b:a", "128k", output],
+        { windowsHide: true },
+      );
+      let stderr = "";
+      child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+      child.on("error", reject);
+      child.on("close", (code) =>
+        code === 0 ? resolve() : reject(new Error(`ffmpeg atempo exited ${code}: ${stderr.trim()}`)),
+      );
+    });
+    return await fs.readFile(output);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 // ─── Re-timing beats onto the recorded voiceover ───────────────────────────
